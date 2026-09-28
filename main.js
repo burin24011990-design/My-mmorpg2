@@ -1,7 +1,7 @@
 // ขั้นที่ 1: ตัวละครเดิน + ปุ่มโจมตี/สกิล + มอนสเตอร์ (ออฟไลน์)
 const W = 800, H = 450;
 // หลังเปิดเซิร์ฟเวอร์บน Render แล้ว ให้เอา URL มาใส่แทนบรรทัดล่างนี้
-const SERVER_URL = 'https://YOUR-SERVER.onrender.com';
+const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 
 class Main extends Phaser.Scene {
   create() {
