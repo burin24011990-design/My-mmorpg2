@@ -1,5 +1,7 @@
 // ขั้นที่ 1: ตัวละครเดิน + ปุ่มโจมตี/สกิล + มอนสเตอร์ (ออฟไลน์)
 const W = 800, H = 450;
+// หลังเปิดเซิร์ฟเวอร์บน Render แล้ว ให้เอา URL มาใส่แทนบรรทัดล่างนี้
+const SERVER_URL = 'https://YOUR-SERVER.onrender.com';
 
 class Main extends Phaser.Scene {
   create() {
@@ -77,6 +79,51 @@ class Main extends Phaser.Scene {
     // HUD
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.hudText = this.add.text(12, 26, '', { fontSize: '14px', color: '#fff' }).setScrollFactor(0).setDepth(100);
+    this.initNetwork();
+  }
+
+  // ---------- ระบบออนไลน์ ----------
+  initNetwork() {
+    this.others = {}; this.online = false; this.lastSend = 0;
+    if (typeof io === 'undefined' || SERVER_URL.includes('YOUR-SERVER')) return; // ยังไม่ตั้งค่า = เล่นออฟไลน์
+    const name = (window.prompt('ตั้งชื่อตัวละคร (ไม่เกิน 12 ตัวอักษร)', '') || 'Player').slice(0, 12);
+    this.myLabel = this.add.text(0, 0, name, { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(50);
+    this.statusText = this.add.text(W - 10, 8, 'กำลังเชื่อมต่อ...', { fontSize: '12px', color: '#ffe9a0' })
+      .setOrigin(1, 0).setScrollFactor(0).setDepth(100);
+
+    this.socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
+    this.socket.on('connect', () => { this.online = true; this.statusText.setText('ออนไลน์'); this.socket.emit('join', name); });
+    this.socket.on('disconnect', () => {
+      this.online = false; this.statusText.setText('หลุดการเชื่อมต่อ');
+      Object.keys(this.others).forEach(id => this.removeOther(id));
+    });
+    this.socket.on('init', d => Object.values(d.players).forEach(p => { if (p.id !== d.id) this.addOther(p); }));
+    this.socket.on('joined', p => this.addOther(p));
+    this.socket.on('left', id => this.removeOther(id));
+    this.socket.on('state', list => {
+      list.forEach(([id, x, y]) => { const o = this.others[id]; if (o) { o.tx = x; o.ty = y; } });
+      this.statusText.setText('ออนไลน์: ' + list.length + ' คน');
+    });
+    this.socket.on('skill', d => { // เห็นเอฟเฟกต์สกิลของผู้เล่นอื่น
+      if (d.name === 'atk') this.flash(d.x + d.fx * 40, d.y + d.fy * 40, 45, 0xffffff);
+      else if (d.name === 's1') this.flash(d.x, d.y, 110, 0x8a4ad9);
+      else if (d.name === 's2') {
+        const f = this.add.sprite(d.x, d.y, 'fireball');
+        this.tweens.add({ targets: f, x: d.x + d.fx * 456, y: d.y + d.fy * 456, duration: 1200, onComplete: () => f.destroy() });
+      }
+    });
+  }
+
+  addOther(p) {
+    if (this.others[p.id]) return;
+    const s = this.add.sprite(p.x, p.y, 'player').setTint(0xffaa44);
+    const t = this.add.text(p.x, p.y - 26, p.name, { fontSize: '12px', color: '#ffd9a0' }).setOrigin(0.5).setDepth(50);
+    this.others[p.id] = { s, t, tx: p.x, ty: p.y };
+  }
+
+  removeOther(id) {
+    const o = this.others[id]; if (!o) return;
+    o.s.destroy(); o.t.destroy(); delete this.others[id];
   }
 
   makeBtn(x, y, r, label, color) {
@@ -108,6 +155,7 @@ class Main extends Phaser.Scene {
     if (now < this.cdEnd[name]) return;
     this.cdEnd[name] = now + this.cdTime[name];
     const p = this.player;
+    if (this.online) this.socket.emit('skill', { name, x: p.x, y: p.y, fx: this.facing.x, fy: this.facing.y });
 
     if (name === 'atk') { // ฟันด้านหน้า
       const fx = p.x + this.facing.x * 40, fy = p.y + this.facing.y * 40;
@@ -164,6 +212,17 @@ class Main extends Phaser.Scene {
         if (p.hp <= 0) { p.hp = p.maxHp; p.setPosition(800, 450); }
       }
     });
+
+    // ออนไลน์: ส่งตำแหน่ง + เลื่อนตัวผู้เล่นอื่นให้ลื่น
+    if (this.myLabel) this.myLabel.setPosition(p.x, p.y - 26);
+    Object.values(this.others || {}).forEach(o => {
+      o.s.x += (o.tx - o.s.x) * 0.25; o.s.y += (o.ty - o.s.y) * 0.25;
+      o.t.setPosition(o.s.x, o.s.y - 26);
+    });
+    if (this.online && time - this.lastSend > 66) {
+      this.lastSend = time;
+      this.socket.emit('move', { x: Math.round(p.x), y: Math.round(p.y) });
+    }
 
     // HUD
     this.hud.clear();
