@@ -1,5 +1,6 @@
-// ขั้นที่ 4: ปุ่มสกิลแบบ ROV + กระเป๋า 500 ช่อง (10 หน้า x 50 ช่อง) + หน้าอุปกรณ์ + UI สวยขึ้น
-const W = 800, H = 450;
+// ขั้นที่ 5: มอนสเตอร์ประจำจุด (แบบ RO) + ล็อกเป้า/เลือกเป้า + บอทออโต้ + มินิแมป + ขยายจอ
+const W = 1000, H = 600;
+const WORLD_W = 1600, WORLD_H = 1000;
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 const BAG_SIZE = 500, PAGE_SIZE = 50, PAGES = BAG_SIZE / PAGE_SIZE;
 
@@ -11,16 +12,16 @@ const CLASSES = {
 };
 
 const BASIC_ATTACKS = {
-  sword: { name: 'โจมตี', dmg: 10, range: 55, cd: 380, type: 'melee', class: 'sword' },
+  sword: { name: 'โจมตี', dmg: 10, range: 60, cd: 380, type: 'melee', class: 'sword' },
   mage: { name: 'โจมตี', dmg: 8, range: 380, cd: 480, type: 'proj', class: 'mage' },
   archer: { name: 'โจมตี', dmg: 9, range: 360, cd: 420, type: 'proj', class: 'archer' },
 };
 
 const SKILL_DEFS = {
-  sw_slash: { name: 'ฟันตรง', class: 'sword', dmg: 12, range: 55, cd: 450, type: 'melee' },
+  sw_slash: { name: 'ฟันตรง', class: 'sword', dmg: 12, range: 60, cd: 450, type: 'melee' },
   sw_spin: { name: 'ฟันหมุน', class: 'sword', dmg: 18, range: 100, cd: 2200, type: 'aoe' },
   sw_dash: { name: 'พุ่งทะยาน', class: 'sword', dmg: 16, range: 150, cd: 3000, type: 'dash' },
-  sw_cross: { name: 'ฟันไขว้', class: 'sword', dmg: 22, range: 65, cd: 1800, type: 'melee' },
+  sw_cross: { name: 'ฟันไขว้', class: 'sword', dmg: 22, range: 70, cd: 1800, type: 'melee' },
 
   mg_fire: { name: 'ลูกไฟ', class: 'mage', dmg: 14, range: 420, cd: 1000, type: 'proj' },
   mg_ice: { name: 'ธารน้ำแข็ง', class: 'mage', dmg: 12, range: 120, cd: 1800, type: 'aoe' },
@@ -48,6 +49,15 @@ const WEAPON_DEFS = [
   { id: 'w_long_bow', name: 'ธนูยาว', atk: 13, class: 'archer' },
 ];
 
+// จุดเกิดมอนสเตอร์ประจำที่ (แบบ Ragnarok) - มอนจะวนเดินอยู่ในโซนของตัวเอง ไม่ไล่ตามข้ามแผนที่
+const ZONES = [
+  { x: 260, y: 230, r: 140, count: 4, name: 'ทุ่งสไลม์เหนือ' },
+  { x: 1340, y: 230, r: 140, count: 4, name: 'ป่าสไลม์' },
+  { x: 260, y: 800, r: 140, count: 4, name: 'หนองสไลม์' },
+  { x: 1340, y: 800, r: 140, count: 4, name: 'ถ้ำสไลม์' },
+  { x: 800, y: 500, r: 180, count: 5, name: 'ลานกลาง' },
+];
+
 class Main extends Phaser.Scene {
   create() {
     const g = this.make.graphics({ add: false });
@@ -55,41 +65,49 @@ class Main extends Phaser.Scene {
     g.clear().fillStyle(0x6bd66b).fillCircle(14, 14, 14).generateTexture('slime', 28, 28);
     g.clear().fillStyle(0xffffff).fillCircle(8, 8, 8).generateTexture('proj', 16, 16);
     g.clear().fillStyle(0xffd23d).fillCircle(9, 9, 9).lineStyle(2, 0x8a6d00).strokeCircle(9, 9, 9).generateTexture('gold', 18, 18);
-    // ไอคอนอาวุธเบื้องต้น (รูปดาบ/คทา/ธนูอย่างง่าย ใช้แทนรูปภาพจริงไปก่อน)
     g.clear().fillStyle(0xd9d9d9).fillRect(13, 2, 4, 20).fillStyle(0x8a5a2a).fillRect(9, 20, 12, 5).generateTexture('icon_sword', 30, 30);
     g.clear().fillStyle(0x8a5a2a).fillRect(13, 6, 4, 22).fillStyle(0x7ad1ff).fillCircle(15, 6, 6).generateTexture('icon_staff', 30, 30);
     g.clear().lineStyle(3, 0x8a5a2a).strokeCircle(15, 15, 12).fillStyle(0xe8e8e8).fillRect(14, 3, 2, 24).generateTexture('icon_bow', 30, 30);
     g.clear().fillStyle(0xb35ae0).fillRect(0, 0, 16, 16).generateTexture('scroll', 16, 16);
     g.destroy();
 
-    this.physics.world.setBounds(0, 0, 1600, 900);
-    this.add.grid(800, 450, 1600, 900, 64, 64, 0x2b3a2b, 1, 0x1f2b1f, 1);
-    this.cameras.main.setBounds(0, 0, 1600, 900);
+    this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
+    this.add.grid(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 64, 64, 0x2b3a2b, 1, 0x1f2b1f, 1);
+    this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
+    // วาดขอบเขตโซนมอนสเตอร์ไว้บนพื้น (มองเห็นในโลก ไม่ใช่ HUD)
+    const zoneGfx = this.add.graphics();
+    ZONES.forEach(z => { zoneGfx.lineStyle(2, 0x5a7a3a, 0.5).strokeCircle(z.x, z.y, z.r); });
 
     // สถานะผู้เล่น
     this.stats = { level: 1, exp: 0, expNext: 20, hp: 100, maxHp: 100, baseAtk: 10, gold: 0 };
-    this.bag = new Array(BAG_SIZE).fill(null); // เก็บเฉพาะอาวุธที่ยังไม่สวมใส่
+    this.bag = new Array(BAG_SIZE).fill(null);
     this.equippedWeaponId = null;
     this.learnedSkills = new Set(['sw_slash']);
     this.slots = ['sw_slash', null, null, null];
     this.ultiClass = null;
     this.cdEnd = {};
     this.computeAtk();
+    this.autoMode = false;
+    this.target = null; this.manualTarget = null;
 
-    this.player = this.physics.add.sprite(800, 450, 'player').setCollideWorldBounds(true);
+    this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, 'player').setCollideWorldBounds(true);
     this.facing = new Phaser.Math.Vector2(1, 0);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.hitCd = 0;
     this.kills = 0;
 
+    // มอนสเตอร์ตามโซน
     this.enemies = this.physics.add.group();
-    for (let i = 0; i < 8; i++) this.spawnEnemy();
+    ZONES.forEach((z, zi) => { for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(zi); });
     this.projectiles = this.physics.add.group();
     this.loot = this.physics.add.group();
     this.physics.add.overlap(this.projectiles, this.enemies, (fb, e) => {
       const dmg = fb.getData('dmg') || 10; fb.destroy(); this.damage(e, dmg);
     });
     this.physics.add.overlap(this.player, this.loot, (pl, item) => this.pickup(item));
+
+    // เป้าล็อก
+    this.targetRing = this.add.circle(0, 0, 22, 0x000000, 0).setStrokeStyle(3, 0xffe066, 0.95).setVisible(false);
 
     // คีย์บอร์ด
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -100,6 +118,7 @@ class Main extends Phaser.Scene {
     this.input.keyboard.on('keydown-THREE', () => this.useSkill(2));
     this.input.keyboard.on('keydown-FOUR', () => this.useSkill(3));
     this.input.keyboard.on('keydown-U', () => this.useUlti());
+    this.input.keyboard.on('keydown-B', () => this.toggleAuto());
 
     // จอยสติ๊ก (มือถือ)
     this.input.addPointer(2);
@@ -107,7 +126,7 @@ class Main extends Phaser.Scene {
     this.joyBase = this.add.circle(0, 0, 50, 0xffffff, 0.15).setScrollFactor(0).setDepth(100).setVisible(false);
     this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.4).setScrollFactor(0).setDepth(101).setVisible(false);
     this.input.on('pointerdown', p => {
-      if (p.x < W * 0.48 && this.joy.id === null) {
+      if (p.x < W * 0.45 && this.joy.id === null) {
         this.joy.id = p.id; this.joy.ox = p.x; this.joy.oy = p.y;
         this.joyBase.setPosition(p.x, p.y).setVisible(true);
         this.joyKnob.setPosition(p.x, p.y).setVisible(true);
@@ -128,28 +147,41 @@ class Main extends Phaser.Scene {
     this.input.on('pointerup', release);
     this.input.on('pointerupoutside', release);
 
-    // ---------- ปุ่มสกิลแบบ ROV: โจมตีธรรมดา (ใหญ่) + สกิล 4 ช่องเรียงโค้ง + อัลติ ----------
-    this.attackBtn = this.makeCircleBtn(748, 400, 42, 0xcf3d3d, 'โจมตี', () => this.useBasicAttack());
-    const arc = [{ x: 655, y: 412 }, { x: 606, y: 372 }, { x: 596, y: 315 }, { x: 630, y: 270 }];
-    this.slotBtns = arc.map((pos, i) => this.makeSlotBtn(pos.x, pos.y, 25, i));
-    this.ultiBtn = this.makeUltiBtn(560, 322, 34);
+    // ---------- ปุ่มสกิลแบบ ROV ----------
+    this.attackBtn = this.makeCircleBtn(930, 500, 48, 0xcf3d3d, 'โจมตี', () => this.useBasicAttack());
+    const arc = [{ x: 822, y: 515 }, { x: 760, y: 468 }, { x: 748, y: 400 }, { x: 788, y: 345 }];
+    this.slotBtns = arc.map((pos, i) => this.makeSlotBtn(pos.x, pos.y, 27, i));
+    this.ultiBtn = this.makeUltiBtn(700, 375, 38);
 
     // ---------- ปุ่มเมนูมุมขวาบน ----------
-    this.bagBtn = this.makePillBtn(W - 12, 20, 110, 30, '🎒 กระเป๋า', 0x2a4a2a, () => this.openInventory('bag'));
-    this.bookBtn = this.makePillBtn(W - 12, 56, 110, 30, '📜 สกิล', 0x2a2a4a, () => this.openSkillBook());
+    this.bagBtn = this.makePillBtn(W - 12, 16, 120, 32, '🎒 กระเป๋า', 0x2a4a2a, () => this.openInventory('bag'));
+    this.bookBtn = this.makePillBtn(W - 12, 54, 120, 32, '📜 สกิล', 0x2a2a4a, () => this.openSkillBook());
+    this.autoBtn = this.makePillBtn(W - 12, 92, 120, 32, 'บอท: ปิด', 0x4a3a2a, () => this.toggleAuto());
 
-    // HUD
+    // ---------- HUD ----------
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.hudNameText = this.add.text(16, 12, 'Lv.1', { fontSize: '13px', color: '#ffe066', fontStyle: 'bold' }).setScrollFactor(0).setDepth(101);
+    this.hudNameText = this.add.text(16, 12, 'Lv.1', { fontSize: '14px', color: '#ffe066', fontStyle: 'bold' }).setScrollFactor(0).setDepth(101);
     this.hudText = this.add.text(16, 50, '', { fontSize: '12px', color: '#dddddd' }).setScrollFactor(0).setDepth(101);
-    this.toast = this.add.text(W / 2, 90, '', { fontSize: '15px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+    this.targetNameText = this.add.text(W / 2, 16, '', { fontSize: '13px', color: '#ffe066' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(101);
+    this.toast = this.add.text(W / 2, 100, '', { fontSize: '15px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
+
+    // มินิแมป (คงที่ ไม่เลื่อนตามกล้อง)
+    this.mini = { x: 16, y: 96, w: 190, h: Math.round(190 * (WORLD_H / WORLD_W)) };
+    this.miniBg = this.add.graphics().setScrollFactor(0).setDepth(100);
+    this.miniBg.fillStyle(0x000000, 0.55).fillRoundedRect(this.mini.x - 4, this.mini.y - 4, this.mini.w + 8, this.mini.h + 8, 8);
+    this.miniBg.lineStyle(1, 0x5a7a3a, 0.8);
+    ZONES.forEach(z => {
+      const zx = this.mini.x + (z.x / WORLD_W) * this.mini.w, zy = this.mini.y + (z.y / WORLD_H) * this.mini.h;
+      this.miniBg.strokeCircle(zx, zy, (z.r / WORLD_W) * this.mini.w);
+    });
+    this.miniDots = this.add.graphics().setScrollFactor(0).setDepth(101);
 
     this.initNetwork();
   }
 
   // ================= UI helpers =================
-  roundRect(gfxDepth, x, y, w, h, color, alpha, radius) {
-    const gfx = this.add.graphics().setScrollFactor(0).setDepth(gfxDepth);
+  roundRect(depth, x, y, w, h, color, alpha, radius) {
+    const gfx = this.add.graphics().setScrollFactor(0).setDepth(depth);
     gfx.fillStyle(color, alpha).fillRoundedRect(x - w / 2, y - h / 2, w, h, radius);
     return gfx;
   }
@@ -165,7 +197,7 @@ class Main extends Phaser.Scene {
   makeSlotBtn(x, y, r, idx) {
     const c = this.add.circle(x, y, r, 0x3a3a3a, 0.8).setScrollFactor(0).setDepth(100).setInteractive();
     c.setStrokeStyle(2, 0xffffff, 0.6);
-    const t = this.add.text(x, y, '', { fontSize: '10px', color: '#fff', align: 'center', wordWrap: { width: 44 } }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    const t = this.add.text(x, y, '', { fontSize: '10px', color: '#fff', align: 'center', wordWrap: { width: 46 } }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
     let heldTimer = null, longPressed = false;
     c.on('pointerdown', () => {
       if (!this.slots[idx]) { this.openSkillBook(idx); return; }
@@ -204,13 +236,24 @@ class Main extends Phaser.Scene {
 
   weaponIconKey(cls) { return cls === 'sword' ? 'icon_sword' : cls === 'mage' ? 'icon_staff' : 'icon_bow'; }
 
+  toggleAuto() {
+    this.autoMode = !this.autoMode;
+    this.autoBtn.t.setText(this.autoMode ? 'บอท: เปิด' : 'บอท: ปิด');
+    this.toastMsg(this.autoMode ? 'เปิดบอทออโต้' : 'ปิดบอทออโต้');
+  }
+
   // ================= มอนสเตอร์ / ดรอป =================
-  spawnEnemy() {
+  spawnEnemyInZone(zi) {
+    const z = ZONES[zi];
+    const ang = Math.random() * Math.PI * 2, rad = Math.random() * z.r * 0.8;
+    const x = z.x + Math.cos(ang) * rad, y = z.y + Math.sin(ang) * rad;
     const lv = this.stats ? this.stats.level : 1;
-    const e = this.enemies.create(Phaser.Math.Between(50, 1550), Phaser.Math.Between(50, 850), 'slime');
+    const e = this.enemies.create(x, y, 'slime');
     e.hp = 30 + lv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(lv * 1.5);
     e.setCollideWorldBounds(true);
-    if (this.player && Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < 200) e.x += 400;
+    e.zoneIdx = zi; e.state = 'idle'; e.wanderX = x; e.wanderY = y; e.nextWander = 0;
+    e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
+    return e;
   }
 
   dropLoot(x, y) {
@@ -297,11 +340,37 @@ class Main extends Phaser.Scene {
     const t = this.add.text(e.x, e.y - 20, String(dmg), { fontSize: '16px', color: '#ffe066' }).setOrigin(0.5);
     this.tweens.add({ targets: t, y: t.y - 30, alpha: 0, duration: 600, onComplete: () => t.destroy() });
     if (e.hp <= 0) {
-      const x = e.x, y = e.y;
+      const x = e.x, y = e.y, zi = e.zoneIdx;
+      if (this.target === e) this.target = null;
+      if (this.manualTarget === e) this.manualTarget = null;
       e.destroy(); this.kills++;
       this.gainExp(8 + this.stats.level * 2);
       this.dropLoot(x, y);
-      this.time.delayedCall(2000, () => this.spawnEnemy());
+      this.time.delayedCall(2500, () => { if (this.enemies) this.spawnEnemyInZone(zi); });
+    }
+  }
+
+  // ================= เป้าหมาย =================
+  updateTargeting() {
+    if (this.manualTarget && this.manualTarget.active) {
+      this.target = this.manualTarget;
+    } else {
+      this.manualTarget = null;
+      let best = null, bestD = Infinity;
+      this.enemies.getChildren().forEach(e => {
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+        if (d < bestD) { bestD = d; best = e; }
+      });
+      this.target = best;
+    }
+    if (this.target) {
+      this.targetRing.setVisible(true).setPosition(this.target.x, this.target.y);
+      this.targetNameText.setText('เป้าหมาย: สไลม์ HP ' + Math.max(0, this.target.hp) + '/' + this.target.maxHp);
+      const dir = new Phaser.Math.Vector2(this.target.x - this.player.x, this.target.y - this.player.y);
+      if (dir.length() > 1) this.facing.copy(dir).normalize();
+    } else {
+      this.targetRing.setVisible(false);
+      this.targetNameText.setText('');
     }
   }
 
@@ -318,17 +387,23 @@ class Main extends Phaser.Scene {
 
   applySkillEffect(def, x, y, fx, fy, dmg, kind) {
     const color = CLASSES[kind] ? CLASSES[kind].color : 0xffffff;
+    const tgt = this.target && this.target.active ? this.target : null;
     if (def.type === 'melee') {
-      const ex = x + fx * 40, ey = y + fy * 40;
-      this.flash(ex, ey, 45, 0xffffff);
-      this.enemies.getChildren().slice().forEach(e => { if (Phaser.Math.Distance.Between(ex, ey, e.x, e.y) < 55) this.damage(e, dmg); });
+      if (tgt && Phaser.Math.Distance.Between(x, y, tgt.x, tgt.y) <= def.range + 12) {
+        this.flash(tgt.x, tgt.y, 40, 0xffffff);
+        this.damage(tgt, dmg);
+      } else {
+        const ex = x + fx * 40, ey = y + fy * 40;
+        this.flash(ex, ey, 45, 0xffffff);
+        this.enemies.getChildren().slice().forEach(e => { if (Phaser.Math.Distance.Between(ex, ey, e.x, e.y) < 55) this.damage(e, dmg); });
+      }
     } else if (def.type === 'aoe') {
       this.flash(x, y, def.range, color);
       this.enemies.getChildren().slice().forEach(e => { if (Phaser.Math.Distance.Between(x, y, e.x, e.y) < def.range) this.damage(e, dmg); });
     } else if (def.type === 'dash') {
       const p = this.player;
-      const nx = Phaser.Math.Clamp(p.x + fx * def.range, 20, 1580);
-      const ny = Phaser.Math.Clamp(p.y + fy * def.range, 20, 880);
+      const nx = Phaser.Math.Clamp(p.x + fx * def.range, 20, WORLD_W - 20);
+      const ny = Phaser.Math.Clamp(p.y + fy * def.range, 20, WORLD_H - 20);
       this.tweens.add({ targets: p, x: nx, y: ny, duration: 150 });
       this.flash(x, y, 60, 0xffffff);
       this.enemies.getChildren().slice().forEach(e => {
@@ -337,7 +412,9 @@ class Main extends Phaser.Scene {
     } else if (def.type === 'proj') {
       const pr = this.projectiles.create(x, y, 'proj');
       pr.setData('dmg', dmg); pr.setTint(color);
-      pr.setVelocity(fx * 420, fy * 420);
+      let vx = fx, vy = fy;
+      if (tgt) { const d = new Phaser.Math.Vector2(tgt.x - x, tgt.y - y); if (d.length() > 1) { d.normalize(); vx = d.x; vy = d.y; } }
+      pr.setVelocity(vx * 420, vy * 420);
       this.time.delayedCall(1100, () => pr.active && pr.destroy());
     }
   }
@@ -415,7 +492,7 @@ class Main extends Phaser.Scene {
     items.push(...this.tabBtn(W / 2, H / 2 - 145, 'อุปกรณ์', this.invTab === 'equip', () => this.openInventory('equip')));
 
     if (this.invTab === 'bag') {
-      const cols = 10, rows = 5, cell = 34;
+      const cols = 10, cell = 34;
       const gx0 = W / 2 - (cols * cell) / 2 + cell / 2, gy0 = H / 2 - 100;
       for (let i = 0; i < PAGE_SIZE; i++) {
         const idx = this.invPage * PAGE_SIZE + i;
@@ -528,12 +605,46 @@ class Main extends Phaser.Scene {
   removeOther(id) { const o = this.others[id]; if (!o) return; o.s.destroy(); o.t.destroy(); delete this.others[id]; }
 
   // ================= ลูป =================
-  update(time) {
+  update(time, deltaMs) {
     const p = this.player;
+    const dt = deltaMs / 1000;
 
+    // มอนสเตอร์: เดินวนในโซน / ไล่ตีเมื่อใกล้ / กลับโซนถ้าไกลเกิน
+    this.enemies.getChildren().forEach(e => {
+      const z = ZONES[e.zoneIdx];
+      const distPlayer = Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y);
+      const distZone = Phaser.Math.Distance.Between(e.x, e.y, z.x, z.y);
+      if (e.state !== 'return' && distPlayer < 130) e.state = 'chase';
+      if (e.state === 'chase' && distZone > z.r * 1.6) e.state = 'return';
+      if (e.state === 'chase' && distPlayer > 320) e.state = 'idle';
+      if (e.state === 'return' && distZone < z.r * 0.5) e.state = 'idle';
+
+      if (e.state === 'idle') {
+        if (time > e.nextWander) {
+          const ang = Math.random() * Math.PI * 2, rad = Math.random() * z.r * 0.7;
+          e.wanderX = z.x + Math.cos(ang) * rad; e.wanderY = z.y + Math.sin(ang) * rad;
+          e.nextWander = time + Phaser.Math.Between(2000, 4000);
+        }
+        this.physics.moveTo(e, e.wanderX, e.wanderY, 28);
+        if (Phaser.Math.Distance.Between(e.x, e.y, e.wanderX, e.wanderY) < 6) e.setVelocity(0, 0);
+      } else if (e.state === 'chase') {
+        this.physics.moveToObject(e, p, 70);
+      } else {
+        this.physics.moveTo(e, z.x, z.y, 60);
+      }
+
+      if (time > this.hitCd && distPlayer < 26) {
+        this.stats.hp -= (e.dmg || 8); this.hitCd = time + 600;
+        p.setTint(0xff6666); this.time.delayedCall(150, () => p.clearTint());
+        if (this.stats.hp <= 0) { this.stats.hp = this.stats.maxHp; p.setPosition(WORLD_W / 2, WORLD_H / 2); this.toastMsg('คุณสลบ! ฟื้นที่จุดเริ่มต้น'); }
+      }
+    });
+
+    this.updateTargeting();
+
+    // ปุ่มสกิล UI
     const attackLeft = Math.max(0, (this.cdEnd.basic || 0) - time);
     this.attackBtn.c.setAlpha(attackLeft > 0 ? 0.4 : 0.9);
-
     this.slots.forEach((sid, i) => {
       const b = this.slotBtns[i];
       if (!sid) { b.t.setText('+'); b.c.setFillStyle(0x3a3a3a, 0.5); return; }
@@ -547,25 +658,34 @@ class Main extends Phaser.Scene {
       this.ultiBtn.c.setAlpha(left > 0 ? 0.35 : 0.95);
     }
 
-    let vx = this.joy.dx, vy = this.joy.dy;
-    if (this.cursors.left.isDown || this.wasd.A.isDown) vx = -1;
-    if (this.cursors.right.isDown || this.wasd.D.isDown) vx = 1;
-    if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -1;
-    if (this.cursors.down.isDown || this.wasd.S.isDown) vy = 1;
-    const v = new Phaser.Math.Vector2(vx, vy);
-    if (v.length() > 1) v.normalize();
-    p.setVelocity(v.x * 190, v.y * 190);
-    if (v.length() > 0.2) this.facing.copy(v).normalize();
+    // การเคลื่อนที่: บอทออโต้ หรือ ควบคุมเอง
+    if (this.autoMode) {
+      if (this.target) {
+        const cls = this.currentClass();
+        const approach = Math.max(50, BASIC_ATTACKS[cls].range - 40);
+        const d = Phaser.Math.Distance.Between(p.x, p.y, this.target.x, this.target.y);
+        if (d > approach) {
+          this.physics.moveTo(p, this.target.x, this.target.y, 190);
+        } else {
+          p.setVelocity(0, 0);
+          this.useBasicAttack();
+          this.slots.forEach((sid, i) => { if (sid) this.useSkill(i); });
+          this.useUlti();
+        }
+      } else p.setVelocity(0, 0);
+    } else {
+      let vx = this.joy.dx, vy = this.joy.dy;
+      if (this.cursors.left.isDown || this.wasd.A.isDown) vx = -1;
+      if (this.cursors.right.isDown || this.wasd.D.isDown) vx = 1;
+      if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -1;
+      if (this.cursors.down.isDown || this.wasd.S.isDown) vy = 1;
+      const v = new Phaser.Math.Vector2(vx, vy);
+      if (v.length() > 1) v.normalize();
+      p.setVelocity(v.x * 190, v.y * 190);
+      if (v.length() > 0.2 && !this.target) this.facing.copy(v).normalize();
+    }
 
-    this.enemies.getChildren().forEach(e => {
-      this.physics.moveToObject(e, p, 55);
-      if (time > this.hitCd && Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y) < 26) {
-        this.stats.hp -= (e.dmg || 8); this.hitCd = time + 600;
-        p.setTint(0xff6666); this.time.delayedCall(150, () => p.clearTint());
-        if (this.stats.hp <= 0) { this.stats.hp = this.stats.maxHp; p.setPosition(800, 450); this.toastMsg('คุณสลบ! ฟื้นที่จุดเริ่มต้น'); }
-      }
-    });
-
+    // ออนไลน์
     if (this.myLabel) this.myLabel.setPosition(p.x, p.y - 26);
     Object.values(this.others || {}).forEach(o => {
       o.s.x += (o.tx - o.s.x) * 0.25; o.s.y += (o.ty - o.s.y) * 0.25;
@@ -573,13 +693,22 @@ class Main extends Phaser.Scene {
     });
     if (this.online && time - this.lastSend > 66) { this.lastSend = time; this.socket.emit('move', { x: Math.round(p.x), y: Math.round(p.y) }); }
 
+    // มินิแมป
+    this.miniDots.clear();
+    const mx = this.mini.x + (p.x / WORLD_W) * this.mini.w, my = this.mini.y + (p.y / WORLD_H) * this.mini.h;
+    this.enemies.getChildren().forEach(e => {
+      const ex = this.mini.x + (e.x / WORLD_W) * this.mini.w, ey = this.mini.y + (e.y / WORLD_H) * this.mini.h;
+      this.miniDots.fillStyle(0xe05a5a, 0.9).fillCircle(ex, ey, 2);
+    });
+    this.miniDots.fillStyle(0xffe066, 1).fillCircle(mx, my, 3.5);
+
     // HUD
     this.hud.clear();
-    this.hud.fillStyle(0x000000, 0.55).fillRoundedRect(10, 6, 220, 74, 10);
-    this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 30, 170, 12, 6);
-    this.hud.fillStyle(0xe03c3c).fillRoundedRect(19, 31, 168 * (this.stats.hp / this.stats.maxHp), 10, 5);
-    this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 46, 170, 8, 4);
-    this.hud.fillStyle(0x3ca7e0).fillRoundedRect(19, 47, 166 * (this.stats.exp / this.stats.expNext), 6, 3);
+    this.hud.fillStyle(0x000000, 0.55).fillRoundedRect(10, 6, 230, 74, 10);
+    this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 30, 180, 12, 6);
+    this.hud.fillStyle(0xe03c3c).fillRoundedRect(19, 31, 178 * (this.stats.hp / this.stats.maxHp), 10, 5);
+    this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 46, 180, 8, 4);
+    this.hud.fillStyle(0x3ca7e0).fillRoundedRect(19, 47, 176 * (this.stats.exp / this.stats.expNext), 6, 3);
     this.hudNameText.setText('Lv.' + this.stats.level);
     this.hudText.setText('ทอง: ' + this.stats.gold + '   ฆ่าแล้ว: ' + this.kills);
   }
