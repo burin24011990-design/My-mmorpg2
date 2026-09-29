@@ -1,5 +1,5 @@
 // ขั้นที่ 6: ระบบมานา + ดีเลย์/คูลดาวน์สมดุลขึ้น + กระเป๋ายืนยันก่อนสวมใส่ + ไอคอนสกิล + จอเต็มเมื่อหมุนแนวนอน
-const W = 1000, H = 600;
+const W = 1280, H = 600;
 const WORLD_W = 1600, WORLD_H = 1000;
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 const BAG_SIZE = 500, PAGE_SIZE = 50, PAGES = BAG_SIZE / PAGE_SIZE;
@@ -155,10 +155,11 @@ class Main extends Phaser.Scene {
     this.input.on('pointerupoutside', release);
 
     // ---------- ปุ่มสกิลแบบ ROV ----------
-    this.attackBtn = this.makeCircleBtn(930, 500, 48, 0xcf3d3d, 'โจมตี', () => this.useBasicAttack());
-    const arc = [{ x: 822, y: 515 }, { x: 760, y: 468 }, { x: 748, y: 400 }, { x: 788, y: 345 }];
-    this.slotBtns = arc.map((pos, i) => this.makeSlotBtn(pos.x, pos.y, 27, i));
-    this.ultiBtn = this.makeUltiBtn(700, 375, 38);
+    const atkX = W - 72, atkY = H - 100;
+    this.attackBtn = this.makeCircleBtn(atkX, atkY, 48, 0xcf3d3d, 'โจมตี', () => this.useBasicAttack());
+    const arc = [{ dx: -108, dy: 15 }, { dx: -170, dy: -32 }, { dx: -182, dy: -100 }, { dx: -142, dy: -155 }];
+    this.slotBtns = arc.map((pos, i) => this.makeSlotBtn(atkX + pos.dx, atkY + pos.dy, 27, i));
+    this.ultiBtn = this.makeUltiBtn(atkX - 230, atkY - 125, 38);
 
     // ---------- ปุ่มเมนูมุมขวาบน ----------
     this.bagBtn = this.makePillBtn(W - 12, 16, 120, 32, '🎒 กระเป๋า', 0x2a4a2a, () => this.openInventory('bag'));
@@ -765,7 +766,7 @@ new Phaser.Game({
   type: Phaser.AUTO,
   width: W, height: H,
   backgroundColor: '#1b241b',
-  scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   physics: { default: 'arcade' },
   scene: Main,
 });
