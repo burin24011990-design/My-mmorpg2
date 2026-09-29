@@ -1,4 +1,4 @@
-// ขั้นที่ 6: ระบบมานา + ดีเลย์/คูลดาวน์สมดุลขึ้น + กระเป๋ายืนยันก่อนสวมใส่ + ไอคอนสกิล + จอเต็มเมื่อหมุนแนวนอน
+// ขั้นที่ 8: อุปกรณ์ 8 ช่อง (หมวก/เกราะ/ถุงมือ/รองเท้า/แหวน2/สร้อย) + ระดับ+ดาว (รวม 2 ชิ้นเป็น 1 ดาว สูงสุด 99) + ดรอปเป็นกล่องสุ่ม + บอทเก็บของ
 const W = 1280, H = 600;
 const WORLD_W = 1600, WORLD_H = 1000;
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
@@ -7,12 +7,20 @@ const ULTI_CD = 40000;
 const RESPAWN_DELAY = 7000;
 const CAST_DELAY = { melee: 150, aoe: 250, proj: 200, dash: 90, ulti: 400 };
 const BASIC_DELAY = 130;
+const MAX_STAR = 99;
 
 // ---------- ข้อมูลเกม ----------
 const CLASSES = {
   sword: { label: 'นักดาบ', color: 0xe05a5a },
   mage: { label: 'นักเวท', color: 0x5a9cf0 },
   archer: { label: 'นักธนู', color: 0x6bd66b },
+};
+const WEAPON_CLASS_LABEL = { sword: 'ดาบ', mage: 'คทา', archer: 'ธนู' };
+const SLOT_LABELS = { weapon: 'อาวุธ', helmet: 'หมวก', armor: 'เกราะ', gloves: 'ถุงมือ', shoes: 'รองเท้า', ring: 'แหวน', necklace: 'สร้อยคอ' };
+const EQUIP_SLOT_KEYS = ['weapon', 'helmet', 'armor', 'gloves', 'shoes', 'ring1', 'ring2', 'necklace'];
+const STAT_GROWTH = {
+  weapon: { atk: 4 }, helmet: { hp: 8 }, armor: { hp: 10, def: 1 }, gloves: { atk: 2 },
+  shoes: { hp: 4, atk: 1 }, ring: { atk: 3 }, necklace: { mp: 6, hp: 4 },
 };
 
 const BASIC_ATTACKS = {
@@ -44,15 +52,6 @@ const ULTI_DEFS = {
   archer: { name: 'สายฝนมรณะ', dmg: 75, range: 200, cd: ULTI_CD, mp: 50, type: 'aoe' },
 };
 
-const WEAPON_DEFS = [
-  { id: 'w_wood_sword', name: 'ดาบไม้', atk: 5, class: 'sword' },
-  { id: 'w_iron_sword', name: 'ดาบเหล็ก', atk: 12, class: 'sword' },
-  { id: 'w_wood_staff', name: 'ไม้เท้าฝึกหัด', atk: 6, class: 'mage' },
-  { id: 'w_crystal_staff', name: 'คทาคริสตัล', atk: 14, class: 'mage' },
-  { id: 'w_short_bow', name: 'ธนูสั้น', atk: 5, class: 'archer' },
-  { id: 'w_long_bow', name: 'ธนูยาว', atk: 13, class: 'archer' },
-];
-
 const ZONES = [
   { x: 260, y: 230, r: 140, count: 4, name: 'ทุ่งสไลม์เหนือ' },
   { x: 1340, y: 230, r: 140, count: 4, name: 'ป่าสไลม์' },
@@ -62,6 +61,43 @@ const ZONES = [
 ];
 
 function skillIconKey(type) { return type === 'melee' ? 'ic_melee' : type === 'aoe' ? 'ic_aoe' : type === 'dash' ? 'ic_dash' : 'ic_proj'; }
+function baseSlotOf(slotKey) { return slotKey.indexOf('ring') === 0 ? 'ring' : slotKey; }
+function weaponIconKeyForClass(cls) { return cls === 'sword' ? 'icon_sword' : cls === 'mage' ? 'icon_staff' : 'icon_bow'; }
+
+function computeItemStats(item) {
+  const g = STAT_GROWTH[item.baseSlot] || {};
+  const mult = 1 + item.star * 0.08;
+  const out = {};
+  Object.keys(g).forEach(k => { out[k] = Math.round(g[k] * item.level * mult); });
+  return out;
+}
+
+function itemLabel(item) {
+  if (item.kind === 'box') return 'กล่องอุปกรณ์ เลเวล ' + item.level;
+  const base = item.baseSlot === 'weapon' ? WEAPON_CLASS_LABEL[item.class] : SLOT_LABELS[item.baseSlot];
+  return base + ' Lv.' + item.level + (item.star > 0 ? '  ' + item.star + '★' : '');
+}
+
+function iconKeyForItem(item) {
+  if (item.kind === 'box') return 'box';
+  if (item.baseSlot === 'weapon') return weaponIconKeyForClass(item.class);
+  return { helmet: 'icon_helmet', armor: 'icon_armor', gloves: 'icon_gloves', shoes: 'icon_shoes', ring: 'icon_ring', necklace: 'icon_necklace' }[item.baseSlot];
+}
+
+function randomEquipItem(level) {
+  const slots = ['weapon', 'helmet', 'armor', 'gloves', 'shoes', 'ring', 'necklace'];
+  const baseSlot = Phaser.Utils.Array.GetRandom(slots);
+  const item = { kind: 'equip', baseSlot, level, star: 0 };
+  if (baseSlot === 'weapon') item.class = Phaser.Utils.Array.GetRandom(['sword', 'mage', 'archer']);
+  return item;
+}
+
+function itemsMatch(a, b) {
+  if (!a || !b || a.kind !== 'equip' || b.kind !== 'equip') return false;
+  if (a.baseSlot !== b.baseSlot || a.level !== b.level || a.star !== b.star) return false;
+  if (a.baseSlot === 'weapon' && a.class !== b.class) return false;
+  return true;
+}
 
 class Main extends Phaser.Scene {
   create() {
@@ -74,7 +110,14 @@ class Main extends Phaser.Scene {
     g.clear().fillStyle(0x8a5a2a).fillRect(13, 6, 4, 22).fillStyle(0x7ad1ff).fillCircle(15, 6, 6).generateTexture('icon_staff', 30, 30);
     g.clear().lineStyle(3, 0x8a5a2a).strokeCircle(15, 15, 12).fillStyle(0xe8e8e8).fillRect(14, 3, 2, 24).generateTexture('icon_bow', 30, 30);
     g.clear().fillStyle(0xb35ae0).fillRect(0, 0, 16, 16).generateTexture('scroll', 16, 16);
-    // ไอคอนสกิล (ขาว ใช้ทาสีตามอาชีพตอนแสดงผล)
+    g.clear().fillStyle(0xd9a13d).fillRect(2, 2, 26, 26).lineStyle(2, 0x7a5a10).strokeRect(2, 2, 26, 26).generateTexture('box', 30, 30);
+    g.clear().fillStyle(0xd9d9d9).fillRect(6, 12, 18, 10).fillStyle(0x9a9a9a).fillRect(5, 4, 20, 10).generateTexture('icon_helmet', 30, 30);
+    g.clear().fillStyle(0x8a8a8a).fillRect(6, 4, 18, 22).fillStyle(0x5a5a5a).fillRect(6, 4, 18, 6).generateTexture('icon_armor', 30, 30);
+    g.clear().fillStyle(0xc98a4a).fillRect(4, 10, 10, 14).fillRect(16, 10, 10, 14).generateTexture('icon_gloves', 30, 30);
+    g.clear().fillStyle(0x6a4a2a).fillRect(4, 18, 22, 8).fillRect(4, 8, 10, 12).generateTexture('icon_shoes', 30, 30);
+    g.clear().lineStyle(4, 0xffd23d, 1).strokeCircle(15, 15, 9).generateTexture('icon_ring', 30, 30);
+    g.clear().lineStyle(2, 0xffd23d, 1).strokeCircle(15, 9, 6).fillStyle(0x5ad1ff).fillCircle(15, 19, 4).generateTexture('icon_necklace', 30, 30);
+    // ไอคอนสกิล
     g.clear().fillStyle(0xffffff).fillRect(3, 10, 18, 4).fillRect(10, 3, 4, 18).generateTexture('ic_melee', 24, 24);
     g.clear().lineStyle(3, 0xffffff, 1).strokeCircle(12, 12, 9).fillStyle(0xffffff).fillCircle(12, 12, 3).generateTexture('ic_aoe', 24, 24);
     g.clear().fillStyle(0xffffff).fillCircle(12, 12, 7).generateTexture('ic_proj', 24, 24);
@@ -90,7 +133,8 @@ class Main extends Phaser.Scene {
     // สถานะผู้เล่น
     this.stats = { level: 1, exp: 0, expNext: 20, hp: 100, maxHp: 100, mp: 50, maxMp: 50, baseAtk: 10, gold: 0 };
     this.bag = new Array(BAG_SIZE).fill(null);
-    this.equippedWeaponId = null;
+    this.equipment = { weapon: null, helmet: null, armor: null, gloves: null, shoes: null, ring1: null, ring2: null, necklace: null };
+    this.equipHpBonus = 0; this.equipMpBonus = 0; this.equipDefBonus = 0;
     this.learnedSkills = new Set(['sw_slash']);
     this.slots = ['sw_slash', null, null, null];
     this.ultiClass = null;
@@ -133,7 +177,7 @@ class Main extends Phaser.Scene {
     this.joyBase = this.add.circle(0, 0, 50, 0xffffff, 0.15).setScrollFactor(0).setDepth(100).setVisible(false);
     this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.4).setScrollFactor(0).setDepth(101).setVisible(false);
     this.input.on('pointerdown', p => {
-      if (p.x < W * 0.45 && this.joy.id === null) {
+      if (p.x < W * 0.4 && this.joy.id === null) {
         this.joy.id = p.id; this.joy.ox = p.x; this.joy.oy = p.y;
         this.joyBase.setPosition(p.x, p.y).setVisible(true);
         this.joyKnob.setPosition(p.x, p.y).setVisible(true);
@@ -241,15 +285,13 @@ class Main extends Phaser.Scene {
 
   toastMsg(msg) {
     this.toast.setText(msg).setAlpha(1);
-    this.tweens.add({ targets: this.toast, alpha: 0, duration: 1600, delay: 700 });
+    this.tweens.add({ targets: this.toast, alpha: 0, duration: 1800, delay: 700 });
   }
-
-  weaponIconKey(cls) { return cls === 'sword' ? 'icon_sword' : cls === 'mage' ? 'icon_staff' : 'icon_bow'; }
 
   toggleAuto() {
     this.autoMode = !this.autoMode;
     this.autoBtn.t.setText(this.autoMode ? 'บอท: เปิด' : 'บอท: ปิด');
-    this.toastMsg(this.autoMode ? 'เปิดบอทออโต้' : 'ปิดบอทออโต้');
+    this.toastMsg(this.autoMode ? 'เปิดบอทออโต้ (ล่ามอน+เก็บของอัตโนมัติ)' : 'ปิดบอทออโต้');
   }
 
   // ================= มอนสเตอร์ / ดรอป =================
@@ -272,10 +314,9 @@ class Main extends Phaser.Scene {
     gold.setData('kind', 'gold'); gold.setData('amount', Phaser.Math.Between(2 + lv, 6 + lv * 2));
     this.tweens.add({ targets: gold, y: y - 6, yoyo: true, repeat: -1, duration: 500 });
     if (Phaser.Math.Between(1, 100) <= 28) {
-      if (Phaser.Math.Between(0, 1) === 0) {
-        const wd = Phaser.Utils.Array.GetRandom(WEAPON_DEFS);
-        const it = this.loot.create(x + 14, y, this.weaponIconKey(wd.class));
-        it.setData('kind', 'weapon'); it.setData('wid', wd.id);
+      if (Phaser.Math.Between(1, 100) <= 55) {
+        const it = this.loot.create(x + 14, y, 'box');
+        it.setData('kind', 'box'); it.setData('level', lv);
       } else {
         const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
         const it = this.loot.create(x + 14, y, 'scroll');
@@ -284,10 +325,25 @@ class Main extends Phaser.Scene {
     }
   }
 
-  addToBag(wid) {
-    const idx = this.bag.findIndex(s => s === null);
-    if (idx === -1) { this.stats.gold += 8; this.toastMsg('กระเป๋าเต็ม! แลกเป็น +8 ทองแทน'); return; }
-    this.bag[idx] = wid;
+  findEmptyBagSlot() { return this.bag.findIndex(s => s === null); }
+
+  addItemToBag(item) {
+    const idx = this.findEmptyBagSlot();
+    if (idx === -1) { this.stats.gold += 8; this.toastMsg('กระเป๋าเต็ม! แลกเป็น +8 ทองแทน'); return -1; }
+    this.bag[idx] = item; return idx;
+  }
+
+  addEquipItemToBag(item) {
+    const matchIdx = this.bag.findIndex(s => itemsMatch(s, item));
+    if (matchIdx !== -1) {
+      this.bag[matchIdx] = null;
+      item = { ...item, star: Math.min(MAX_STAR, item.star + 1) };
+      this.addItemToBag(item);
+      this.toastMsg('รวมไอเทมสำเร็จ! ได้ ' + itemLabel(item));
+    } else {
+      this.addItemToBag(item);
+      this.toastMsg('ได้รับ: ' + itemLabel(item));
+    }
   }
 
   pickup(item) {
@@ -295,10 +351,9 @@ class Main extends Phaser.Scene {
     if (kind === 'gold') {
       this.stats.gold += item.getData('amount');
       this.toastMsg('+' + item.getData('amount') + ' ทอง');
-    } else if (kind === 'weapon') {
-      const wid = item.getData('wid'); const wd = WEAPON_DEFS.find(w => w.id === wid);
-      if (!this.equippedWeaponId) { this.equipWeapon(wid); this.toastMsg('ได้รับและสวมใส่: ' + wd.name); }
-      else { this.addToBag(wid); this.toastMsg('ได้รับอาวุธ: ' + wd.name + ' (เก็บในกระเป๋า)'); }
+    } else if (kind === 'box') {
+      this.addItemToBag({ kind: 'box', level: item.getData('level') });
+      this.toastMsg('ได้รับกล่องอุปกรณ์ เลเวล ' + item.getData('level'));
     } else if (kind === 'skill') {
       const sid = item.getData('sid'); const sd = SKILL_DEFS[sid];
       if (this.learnedSkills.has(sid)) { this.stats.gold += 5; this.toastMsg('สกิลซ้ำ แลกเป็น +5 ทอง'); }
@@ -307,28 +362,39 @@ class Main extends Phaser.Scene {
     item.destroy();
   }
 
-  equipWeapon(wid) {
-    const old = this.equippedWeaponId;
-    this.equippedWeaponId = wid;
-    if (old) this.addToBag(old);
+  equipItem(slotKey, item) {
+    const old = this.equipment[slotKey];
+    this.equipment[slotKey] = item;
+    if (old) this.addItemToBag(old);
     this.computeAtk();
   }
 
-  unequipWeapon() {
-    if (!this.equippedWeaponId) return;
-    this.addToBag(this.equippedWeaponId);
-    this.equippedWeaponId = null;
+  unequipSlot(slotKey) {
+    const it = this.equipment[slotKey];
+    if (!it) return;
+    this.addItemToBag(it);
+    this.equipment[slotKey] = null;
     this.computeAtk();
   }
 
   computeAtk() {
-    const wd = WEAPON_DEFS.find(w => w.id === this.equippedWeaponId);
-    this.atk = this.stats.baseAtk + (wd ? wd.atk : 0);
+    let atkBonus = 0, hpBonus = 0, mpBonus = 0, defBonus = 0;
+    EQUIP_SLOT_KEYS.forEach(k => {
+      const it = this.equipment[k];
+      if (it) { const s = computeItemStats(it); atkBonus += s.atk || 0; hpBonus += s.hp || 0; mpBonus += s.mp || 0; defBonus += s.def || 0; }
+    });
+    this.atk = this.stats.baseAtk + atkBonus;
+    this.equipHpBonus = hpBonus; this.equipMpBonus = mpBonus; this.equipDefBonus = defBonus;
+    this.stats.hp = Math.min(this.stats.hp, this.maxHp());
+    this.stats.mp = Math.min(this.stats.mp, this.maxMp());
   }
 
+  maxHp() { return this.stats.maxHp + this.equipHpBonus; }
+  maxMp() { return this.stats.maxMp + this.equipMpBonus; }
+
   currentClass() {
-    const wd = WEAPON_DEFS.find(w => w.id === this.equippedWeaponId);
-    return wd ? wd.class : 'sword';
+    const w = this.equipment.weapon;
+    return w ? w.class : 'sword';
   }
 
   gainExp(n) {
@@ -337,10 +403,8 @@ class Main extends Phaser.Scene {
       this.stats.exp -= this.stats.expNext;
       this.stats.level++;
       this.stats.expNext = Math.floor(this.stats.expNext * 1.25);
-      this.stats.maxHp += 15; this.stats.hp = this.stats.maxHp;
-      this.stats.maxMp += 8; this.stats.mp = this.stats.maxMp;
-      this.stats.baseAtk += 3;
-      this.computeAtk();
+      this.stats.maxHp += 15; this.stats.maxMp += 8; this.stats.baseAtk += 3;
+      this.stats.hp = this.maxHp(); this.stats.mp = this.maxMp();
       this.toastMsg('เลเวลอัพ! ตอนนี้เลเวล ' + this.stats.level);
     }
   }
@@ -478,11 +542,11 @@ class Main extends Phaser.Scene {
 
   panelFrame(title) {
     const items = [];
-    items.push(this.roundRect(200, W / 2, H / 2, 520, 400, 0x14161a, 0.95, 16));
-    items.push(this.add.graphics().setScrollFactor(0).setDepth(200).lineStyle(2, 0x444a55, 1).strokeRoundedRect(W / 2 - 260, H / 2 - 200, 520, 400, 16));
-    items.push(this.add.text(W / 2, H / 2 - 182, title, { fontSize: '15px', color: '#ffe066', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(201));
-    const closeZone = this.add.zone(W / 2 + 240, H / 2 - 182, 30, 30).setScrollFactor(0).setDepth(202).setInteractive();
-    const closeText = this.add.text(W / 2 + 240, H / 2 - 182, '✕', { fontSize: '16px', color: '#ff8888' }).setOrigin(0.5).setScrollFactor(0).setDepth(202);
+    items.push(this.roundRect(200, W / 2, H / 2, 560, 420, 0x14161a, 0.95, 16));
+    items.push(this.add.graphics().setScrollFactor(0).setDepth(200).lineStyle(2, 0x444a55, 1).strokeRoundedRect(W / 2 - 280, H / 2 - 210, 560, 420, 16));
+    items.push(this.add.text(W / 2, H / 2 - 192, title, { fontSize: '15px', color: '#ffe066', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(201));
+    const closeZone = this.add.zone(W / 2 + 260, H / 2 - 192, 30, 30).setScrollFactor(0).setDepth(202).setInteractive();
+    const closeText = this.add.text(W / 2 + 260, H / 2 - 192, '✕', { fontSize: '16px', color: '#ff8888' }).setOrigin(0.5).setScrollFactor(0).setDepth(202);
     closeZone.on('pointerdown', () => this.closePanel());
     items.push(closeZone, closeText);
     return items;
@@ -499,27 +563,79 @@ class Main extends Phaser.Scene {
     return items;
   }
 
-  openItemConfirm(idx, wid) {
+  openItemConfirm(idx, item) {
     this.closeSub();
-    const wd = WEAPON_DEFS.find(w => w.id === wid);
     const items = [];
-    items.push(this.roundRect(250, W / 2, H / 2, 300, 200, 0x1c1f24, 0.98, 14));
-    items.push(this.add.graphics().setScrollFactor(0).setDepth(250).lineStyle(2, 0xffe066, 0.7).strokeRoundedRect(W / 2 - 150, H / 2 - 100, 300, 200, 14));
-    items.push(this.add.image(W / 2, H / 2 - 50, this.weaponIconKey(wd.class)).setDisplaySize(48, 48).setScrollFactor(0).setDepth(251));
-    items.push(this.add.text(W / 2, H / 2 - 10, wd.name, { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
-    items.push(this.add.text(W / 2, H / 2 + 12, 'ATK +' + wd.atk + '  (' + CLASSES[wd.class].label + ')', { fontSize: '12px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
-    items.push(this.roundRect(251, W / 2 - 65, H / 2 + 60, 110, 32, 0x2a5a2a, 0.95, 8));
-    const yesZone = this.add.zone(W / 2 - 65, H / 2 + 60, 110, 32).setScrollFactor(0).setDepth(252).setInteractive();
-    items.push(this.add.text(W / 2 - 65, H / 2 + 60, 'สวมใส่', { fontSize: '13px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
-    items.push(this.roundRect(251, W / 2 + 65, H / 2 + 60, 110, 32, 0x5a2a2a, 0.95, 8));
-    const noZone = this.add.zone(W / 2 + 65, H / 2 + 60, 110, 32).setScrollFactor(0).setDepth(252).setInteractive();
-    items.push(this.add.text(W / 2 + 65, H / 2 + 60, 'ยกเลิก', { fontSize: '13px', color: '#ffcccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
-    yesZone.on('pointerdown', () => {
-      this.bag[idx] = null; this.equipWeapon(wid); this.toastMsg('สวมใส่: ' + wd.name);
-      this.closeSub(); this.openInventory('bag', this.invPage);
-    });
+    items.push(this.roundRect(250, W / 2, H / 2, 320, 220, 0x1c1f24, 0.98, 14));
+    items.push(this.add.graphics().setScrollFactor(0).setDepth(250).lineStyle(2, 0xffe066, 0.7).strokeRoundedRect(W / 2 - 160, H / 2 - 110, 320, 220, 14));
+    items.push(this.add.image(W / 2, H / 2 - 60, iconKeyForItem(item)).setDisplaySize(48, 48).setScrollFactor(0).setDepth(251));
+    items.push(this.add.text(W / 2, H / 2 - 18, itemLabel(item), { fontSize: '14px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+
+    if (item.kind === 'box') {
+      items.push(this.add.text(W / 2, H / 2 + 4, 'เปิดแล้วจะได้อุปกรณ์สุ่ม 1 ชิ้น', { fontSize: '11px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+      items.push(this.roundRect(251, W / 2, H / 2 + 60, 130, 32, 0x2a5a2a, 0.95, 8));
+      const openZone = this.add.zone(W / 2, H / 2 + 60, 130, 32).setScrollFactor(0).setDepth(252).setInteractive();
+      items.push(this.add.text(W / 2, H / 2 + 60, 'เปิดกล่อง', { fontSize: '13px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+      openZone.on('pointerdown', () => {
+        this.bag[idx] = null;
+        this.addEquipItemToBag(randomEquipItem(item.level));
+        this.closeSub(); this.openInventory('bag', this.invPage);
+      });
+      items.push(openZone);
+    } else {
+      const s = computeItemStats(item);
+      const statLine = Object.keys(s).map(k => k.toUpperCase() + ' +' + s[k]).join('   ');
+      items.push(this.add.text(W / 2, H / 2 + 4, statLine || '-', { fontSize: '12px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+
+      if (item.baseSlot === 'ring') {
+        items.push(this.roundRect(251, W / 2 - 78, H / 2 + 60, 110, 32, 0x2a5a2a, 0.95, 8));
+        const z1 = this.add.zone(W / 2 - 78, H / 2 + 60, 110, 32).setScrollFactor(0).setDepth(252).setInteractive();
+        items.push(this.add.text(W / 2 - 78, H / 2 + 60, 'ใส่แหวนซ้าย', { fontSize: '11px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+        items.push(this.roundRect(251, W / 2 + 78, H / 2 + 60, 110, 32, 0x2a5a2a, 0.95, 8));
+        const z2 = this.add.zone(W / 2 + 78, H / 2 + 60, 110, 32).setScrollFactor(0).setDepth(252).setInteractive();
+        items.push(this.add.text(W / 2 + 78, H / 2 + 60, 'ใส่แหวนขวา', { fontSize: '11px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+        z1.on('pointerdown', () => { this.bag[idx] = null; this.equipItem('ring1', item); this.toastMsg('สวมใส่: ' + itemLabel(item)); this.closeSub(); this.openInventory('bag', this.invPage); });
+        z2.on('pointerdown', () => { this.bag[idx] = null; this.equipItem('ring2', item); this.toastMsg('สวมใส่: ' + itemLabel(item)); this.closeSub(); this.openInventory('bag', this.invPage); });
+        items.push(z1, z2);
+      } else {
+        items.push(this.roundRect(251, W / 2, H / 2 + 60, 130, 32, 0x2a5a2a, 0.95, 8));
+        const yesZone = this.add.zone(W / 2, H / 2 + 60, 130, 32).setScrollFactor(0).setDepth(252).setInteractive();
+        items.push(this.add.text(W / 2, H / 2 + 60, 'สวมใส่', { fontSize: '13px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+        yesZone.on('pointerdown', () => { this.bag[idx] = null; this.equipItem(item.baseSlot, item); this.toastMsg('สวมใส่: ' + itemLabel(item)); this.closeSub(); this.openInventory('bag', this.invPage); });
+        items.push(yesZone);
+      }
+    }
+    const noZone = this.add.zone(W / 2, H / 2 + 98, 130, 26).setScrollFactor(0).setDepth(252).setInteractive();
+    items.push(this.add.text(W / 2, H / 2 + 98, 'ปิด', { fontSize: '12px', color: '#ffcccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
     noZone.on('pointerdown', () => this.closeSub());
-    items.push(yesZone, noZone);
+    items.push(noZone);
+    this.subPanel = items;
+  }
+
+  openEquipPopup(slotKey) {
+    this.closeSub();
+    const it = this.equipment[slotKey];
+    const items = [];
+    items.push(this.roundRect(250, W / 2, H / 2, 320, 220, 0x1c1f24, 0.98, 14));
+    items.push(this.add.graphics().setScrollFactor(0).setDepth(250).lineStyle(2, 0xffe066, 0.7).strokeRoundedRect(W / 2 - 160, H / 2 - 110, 320, 220, 14));
+    if (!it) {
+      items.push(this.add.text(W / 2, H / 2, 'ช่องนี้ว่างอยู่', { fontSize: '13px', color: '#999' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+    } else {
+      items.push(this.add.image(W / 2, H / 2 - 60, iconKeyForItem(it)).setDisplaySize(48, 48).setScrollFactor(0).setDepth(251));
+      items.push(this.add.text(W / 2, H / 2 - 18, itemLabel(it), { fontSize: '14px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+      const s = computeItemStats(it);
+      const statLine = Object.keys(s).map(k => k.toUpperCase() + ' +' + s[k]).join('   ');
+      items.push(this.add.text(W / 2, H / 2 + 4, statLine || '-', { fontSize: '12px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+      items.push(this.roundRect(251, W / 2, H / 2 + 60, 130, 32, 0x5a2a2a, 0.95, 8));
+      const z = this.add.zone(W / 2, H / 2 + 60, 130, 32).setScrollFactor(0).setDepth(252).setInteractive();
+      items.push(this.add.text(W / 2, H / 2 + 60, 'ถอดอุปกรณ์', { fontSize: '12px', color: '#ffcccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+      z.on('pointerdown', () => { this.unequipSlot(slotKey); this.closeSub(); this.openInventory('equip'); });
+      items.push(z);
+    }
+    const noZone = this.add.zone(W / 2, H / 2 + 98, 130, 26).setScrollFactor(0).setDepth(252).setInteractive();
+    items.push(this.add.text(W / 2, H / 2 + 98, 'ปิด', { fontSize: '12px', color: '#ffcccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+    noZone.on('pointerdown', () => this.closeSub());
+    items.push(noZone);
     this.subPanel = items;
   }
 
@@ -527,47 +643,48 @@ class Main extends Phaser.Scene {
     this.invTab = tab || this.invTab || 'bag';
     this.invPage = page !== undefined ? page : (this.invPage || 0);
     this.closePanel();
-    const items = this.panelFrame(this.invTab === 'bag' ? 'กระเป๋า (แตะไอเทมเพื่อดู/สวมใส่)' : 'อุปกรณ์ที่สวมใส่');
-    items.push(...this.tabBtn(W / 2 - 130, H / 2 - 145, 'กระเป๋า', this.invTab === 'bag', () => this.openInventory('bag', 0)));
-    items.push(...this.tabBtn(W / 2, H / 2 - 145, 'อุปกรณ์', this.invTab === 'equip', () => this.openInventory('equip')));
+    const items = this.panelFrame(this.invTab === 'bag' ? 'กระเป๋า (แตะไอเทมเพื่อดู/สวมใส่/เปิดกล่อง)' : 'อุปกรณ์ที่สวมใส่ (แตะเพื่อดูค่าพลัง/ถอด)');
+    items.push(...this.tabBtn(W / 2 - 130, H / 2 - 155, 'กระเป๋า', this.invTab === 'bag', () => this.openInventory('bag', 0)));
+    items.push(...this.tabBtn(W / 2, H / 2 - 155, 'อุปกรณ์', this.invTab === 'equip', () => this.openInventory('equip')));
 
     if (this.invTab === 'bag') {
       const cols = 10, cell = 34;
-      const gx0 = W / 2 - (cols * cell) / 2 + cell / 2, gy0 = H / 2 - 100;
+      const gx0 = W / 2 - (cols * cell) / 2 + cell / 2, gy0 = H / 2 - 108;
       for (let i = 0; i < PAGE_SIZE; i++) {
         const idx = this.invPage * PAGE_SIZE + i;
         const col = i % cols, row = Math.floor(i / cols);
         const x = gx0 + col * cell, y = gy0 + row * cell;
-        const wid = this.bag[idx];
-        items.push(this.roundRect(201, x, y, cell - 4, cell - 4, wid ? 0x2c2f36 : 0x1b1d21, 1, 5));
+        const it = this.bag[idx];
+        items.push(this.roundRect(201, x, y, cell - 4, cell - 4, it ? 0x2c2f36 : 0x1b1d21, 1, 5));
         const zone = this.add.zone(x, y, cell - 4, cell - 4).setScrollFactor(0).setDepth(203).setInteractive();
         items.push(zone);
-        if (wid) {
-          const wd = WEAPON_DEFS.find(w => w.id === wid);
-          const icon = this.add.image(x, y, this.weaponIconKey(wd.class)).setDisplaySize(24, 24).setScrollFactor(0).setDepth(203);
+        if (it) {
+          const icon = this.add.image(x, y - 3, iconKeyForItem(it)).setDisplaySize(22, 22).setScrollFactor(0).setDepth(203);
           items.push(icon);
-          zone.on('pointerdown', () => this.openItemConfirm(idx, wid));
+          if (it.kind === 'equip') items.push(this.add.text(x, y + 12, 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : ''), { fontSize: '7px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+          zone.on('pointerdown', () => this.openItemConfirm(idx, it));
         }
       }
-      const y2 = H / 2 + 130;
+      const y2 = H / 2 + 140;
       items.push(...this.tabBtn(W / 2 - 90, y2, '◀ ก่อนหน้า', false, () => this.openInventory('bag', Math.max(0, this.invPage - 1))));
       items.push(this.add.text(W / 2, y2, 'หน้า ' + (this.invPage + 1) + ' / ' + PAGES, { fontSize: '12px', color: '#ccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(202));
       items.push(...this.tabBtn(W / 2 + 90, y2, 'ถัดไป ▶', false, () => this.openInventory('bag', Math.min(PAGES - 1, this.invPage + 1))));
     } else {
-      const wd = WEAPON_DEFS.find(w => w.id === this.equippedWeaponId);
-      if (wd) {
-        items.push(this.roundRect(201, W / 2, H / 2 - 60, 72, 72, 0x2c2f36, 1, 10));
-        items.push(this.add.image(W / 2, H / 2 - 60, this.weaponIconKey(wd.class)).setDisplaySize(52, 52).setScrollFactor(0).setDepth(202));
-        items.push(this.add.text(W / 2, H / 2 - 8, wd.name, { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(202));
-        items.push(this.add.text(W / 2, H / 2 + 14, 'ATK +' + wd.atk + '   สายอาชีพ: ' + CLASSES[wd.class].label, { fontSize: '12px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(202));
-        items.push(this.roundRect(201, W / 2, H / 2 + 60, 110, 30, 0x5a2a2a, 0.95, 8));
-        const unequipZone = this.add.zone(W / 2, H / 2 + 60, 110, 30).setScrollFactor(0).setDepth(202).setInteractive();
-        items.push(this.add.text(W / 2, H / 2 + 60, 'ถอดอุปกรณ์', { fontSize: '12px', color: '#ffcccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
-        unequipZone.on('pointerdown', () => { this.unequipWeapon(); this.openInventory('equip'); });
-        items.push(unequipZone);
-      } else {
-        items.push(this.add.text(W / 2, H / 2, 'ยังไม่ได้สวมใส่อุปกรณ์', { fontSize: '13px', color: '#999' }).setOrigin(0.5).setScrollFactor(0).setDepth(202));
-      }
+      const cols = 4, cell = 100;
+      const gx0 = W / 2 - (cols * cell) / 2 + cell / 2, gy0 = H / 2 - 110;
+      EQUIP_SLOT_KEYS.forEach((slotKey, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const x = gx0 + col * cell, y = gy0 + row * cell;
+        const it = this.equipment[slotKey];
+        items.push(this.roundRect(201, x, y, cell - 12, cell - 12, it ? 0x2c3a2c : 0x1b1d21, 1, 8));
+        const zone = this.add.zone(x, y, cell - 12, cell - 12).setScrollFactor(0).setDepth(203).setInteractive();
+        items.push(zone);
+        const iconKey = it ? iconKeyForItem(it) : ({ weapon: 'icon_sword', helmet: 'icon_helmet', armor: 'icon_armor', gloves: 'icon_gloves', shoes: 'icon_shoes', ring1: 'icon_ring', ring2: 'icon_ring', necklace: 'icon_necklace' }[slotKey]);
+        items.push(this.add.image(x, y - 12, iconKey).setDisplaySize(30, 30).setScrollFactor(0).setDepth(203).setAlpha(it ? 1 : 0.35));
+        items.push(this.add.text(x, y + 14, SLOT_LABELS[baseSlotOf(slotKey)] + (slotKey === 'ring1' ? '(ซ้าย)' : slotKey === 'ring2' ? '(ขวา)' : ''), { fontSize: '9px', color: '#ccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+        if (it) items.push(this.add.text(x, y + 28, 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : ''), { fontSize: '8px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+        zone.on('pointerdown', () => this.openEquipPopup(slotKey));
+      });
     }
     this.panel = items;
   }
@@ -578,9 +695,9 @@ class Main extends Phaser.Scene {
     let row = 0;
     [...this.learnedSkills].forEach(sid => {
       const sd = SKILL_DEFS[sid];
-      const y = H / 2 - 130 + row * 30;
-      items.push(this.roundRect(201, W / 2, y, 460, 26, 0x24262b, 0.95, 6));
-      const zone = this.add.zone(W / 2, y, 460, 26).setScrollFactor(0).setDepth(202).setInteractive();
+      const y = H / 2 - 140 + row * 30;
+      items.push(this.roundRect(201, W / 2, y, 480, 26, 0x24262b, 0.95, 6));
+      const zone = this.add.zone(W / 2, y, 480, 26).setScrollFactor(0).setDepth(202).setInteractive();
       items.push(this.add.text(W / 2, y, sd.name + '  (' + CLASSES[sd.class].label + ')  dmg ' + sd.dmg + '  มานา ' + sd.mp, { fontSize: '12px', color: '#fff' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
       zone.on('pointerdown', () => {
         if (targetSlot !== undefined) { this.slots[targetSlot] = sid; this.computeCombo(); this.closePanel(); }
@@ -649,8 +766,7 @@ class Main extends Phaser.Scene {
     const p = this.player;
     const dt = deltaMs / 1000;
 
-    // ฟื้นมานาตามเวลา
-    this.stats.mp = Math.min(this.stats.maxMp, this.stats.mp + 3 * dt);
+    this.stats.mp = Math.min(this.maxMp(), this.stats.mp + 3 * dt);
 
     // มอนสเตอร์
     this.enemies.getChildren().forEach(e => {
@@ -677,9 +793,10 @@ class Main extends Phaser.Scene {
       }
 
       if (time > this.hitCd && distPlayer < 26) {
-        this.stats.hp -= (e.dmg || 8); this.hitCd = time + 600;
+        const dmg = Math.max(1, (e.dmg || 8) - this.equipDefBonus);
+        this.stats.hp -= dmg; this.hitCd = time + 600;
         p.setTint(0xff6666); this.time.delayedCall(150, () => p.clearTint());
-        if (this.stats.hp <= 0) { this.stats.hp = this.stats.maxHp; p.setPosition(WORLD_W / 2, WORLD_H / 2); this.toastMsg('คุณสลบ! ฟื้นที่จุดเริ่มต้น'); }
+        if (this.stats.hp <= 0) { this.stats.hp = this.maxHp(); p.setPosition(WORLD_W / 2, WORLD_H / 2); this.toastMsg('คุณสลบ! ฟื้นที่จุดเริ่มต้น'); }
       }
     });
 
@@ -706,7 +823,14 @@ class Main extends Phaser.Scene {
 
     // เคลื่อนที่: บอทออโต้ หรือ ควบคุมเอง
     if (this.autoMode) {
-      if (this.target) {
+      let bestLoot = null, bestLd = Infinity;
+      this.loot.getChildren().forEach(it => {
+        const d = Phaser.Math.Distance.Between(p.x, p.y, it.x, it.y);
+        if (d < bestLd) { bestLd = d; bestLoot = it; }
+      });
+      if (bestLoot && bestLd < 260) {
+        this.physics.moveTo(p, bestLoot.x, bestLoot.y, 190);
+      } else if (this.target) {
         const cls = this.currentClass();
         const approach = Math.max(50, BASIC_ATTACKS[cls].range - 40);
         const d = Phaser.Math.Distance.Between(p.x, p.y, this.target.x, this.target.y);
@@ -718,6 +842,8 @@ class Main extends Phaser.Scene {
           this.slots.forEach((sid, i) => { if (sid) this.useSkill(i); });
           this.useUlti();
         }
+      } else if (bestLoot) {
+        this.physics.moveTo(p, bestLoot.x, bestLoot.y, 190);
       } else p.setVelocity(0, 0);
     } else {
       let vx = this.joy.dx, vy = this.joy.dy;
@@ -752,11 +878,11 @@ class Main extends Phaser.Scene {
     this.hud.clear();
     this.hud.fillStyle(0x000000, 0.55).fillRoundedRect(10, 6, 230, 92, 10);
     this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 30, 180, 12, 6);
-    this.hud.fillStyle(0xe03c3c).fillRoundedRect(19, 31, 178 * (this.stats.hp / this.stats.maxHp), 10, 5);
+    this.hud.fillStyle(0xe03c3c).fillRoundedRect(19, 31, 178 * (this.stats.hp / this.maxHp()), 10, 5);
     this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 46, 180, 8, 4);
     this.hud.fillStyle(0x3ca7e0).fillRoundedRect(19, 47, 176 * (this.stats.exp / this.stats.expNext), 6, 3);
     this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 58, 180, 10, 5);
-    this.hud.fillStyle(0x9a5ae0).fillRoundedRect(19, 59, 178 * (this.stats.mp / this.stats.maxMp), 8, 4);
+    this.hud.fillStyle(0x9a5ae0).fillRoundedRect(19, 59, 178 * (this.stats.mp / this.maxMp()), 8, 4);
     this.hudNameText.setText('Lv.' + this.stats.level);
     this.hudText.setText('ทอง: ' + this.stats.gold + '   ฆ่าแล้ว: ' + this.kills);
   }
