@@ -1,6 +1,6 @@
 // ขั้นที่ 8: อุปกรณ์ 8 ช่อง (หมวก/เกราะ/ถุงมือ/รองเท้า/แหวน2/สร้อย) + ระดับ+ดาว (รวม 2 ชิ้นเป็น 1 ดาว สูงสุด 99) + ดรอปเป็นกล่องสุ่ม + บอทเก็บของ
 const W = 1280, H = 600;
-const WORLD_W = 1600, WORLD_H = 1000;
+const WORLD_W = 2400, WORLD_H = 1800;
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 const BAG_SIZE = 500, PAGE_SIZE = 50, PAGES = BAG_SIZE / PAGE_SIZE;
 const ULTI_CD = 40000;
@@ -9,6 +9,7 @@ const CAST_DELAY = { melee: 150, aoe: 250, proj: 200, dash: 90, ulti: 400 };
 const BASIC_DELAY = 130;
 const MAX_STAR = 99;
 const MAX_BOX_STACK = 999;
+const LEVEL_CAP = 90;
 
 // ---------- ข้อมูลเกม ----------
 const CLASSES = {
@@ -54,12 +55,17 @@ const ULTI_DEFS = {
 };
 
 const ZONES = [
-  { x: 260, y: 230, r: 140, count: 4, name: 'ทุ่งสไลม์เหนือ' },
-  { x: 1340, y: 230, r: 140, count: 4, name: 'ป่าสไลม์' },
-  { x: 260, y: 800, r: 140, count: 4, name: 'หนองสไลม์' },
-  { x: 1340, y: 800, r: 140, count: 4, name: 'ถ้ำสไลม์' },
-  { x: 800, y: 500, r: 180, count: 5, name: 'ลานกลาง' },
+  { id: 1, name: 'ด่าน 1', x: 400, y: 350, r: 150, count: 4, reqLv: 1, monsterLv: 5, boxLevel: 1 },
+  { id: 2, name: 'ด่าน 2', x: 1200, y: 350, r: 150, count: 4, reqLv: 11, monsterLv: 15, boxLevel: 10 },
+  { id: 3, name: 'ด่าน 3', x: 2000, y: 350, r: 150, count: 4, reqLv: 21, monsterLv: 25, boxLevel: 20 },
+  { id: 4, name: 'ด่าน 4', x: 400, y: 900, r: 150, count: 4, reqLv: 31, monsterLv: 35, boxLevel: 30 },
+  { id: 5, name: 'ด่าน 5', x: 1200, y: 900, r: 150, count: 5, reqLv: 41, monsterLv: 45, boxLevel: 40 },
+  { id: 6, name: 'ด่าน 6', x: 2000, y: 900, r: 150, count: 4, reqLv: 51, monsterLv: 55, boxLevel: 50 },
+  { id: 7, name: 'ด่าน 7', x: 400, y: 1450, r: 150, count: 4, reqLv: 61, monsterLv: 65, boxLevel: 60 },
+  { id: 8, name: 'ด่าน 8', x: 1200, y: 1450, r: 150, count: 4, reqLv: 71, monsterLv: 75, boxLevel: 70 },
+  { id: 9, name: 'ด่าน 9', x: 2000, y: 1450, r: 150, count: 5, reqLv: 81, monsterLv: 85, boxLevel: 80 },
 ];
+function levelExpNeeded(level) { return Math.floor(25 * Math.pow(level, 1.8)); }
 
 function skillIconKey(type) { return type === 'melee' ? 'ic_melee' : type === 'aoe' ? 'ic_aoe' : type === 'dash' ? 'ic_dash' : 'ic_proj'; }
 function baseSlotOf(slotKey) { return slotKey.indexOf('ring') === 0 ? 'ring' : slotKey; }
@@ -132,7 +138,7 @@ class Main extends Phaser.Scene {
     ZONES.forEach(z => { zoneGfx.lineStyle(2, 0x5a7a3a, 0.5).strokeCircle(z.x, z.y, z.r); });
 
     // สถานะผู้เล่น
-    this.stats = { level: 1, exp: 0, expNext: 20, hp: 100, maxHp: 100, mp: 50, maxMp: 50, baseAtk: 10, gold: 0 };
+    this.stats = { level: 1, exp: 0, expNext: levelExpNeeded(1), hp: 100, maxHp: 100, mp: 50, maxMp: 50, baseAtk: 10, gold: 0 };
     this.bag = new Array(BAG_SIZE).fill(null);
     this.equipment = { weapon: null, helmet: null, armor: null, gloves: null, shoes: null, ring1: null, ring2: null, necklace: null };
     this.equipHpBonus = 0; this.equipMpBonus = 0; this.equipDefBonus = 0;
@@ -144,7 +150,7 @@ class Main extends Phaser.Scene {
     this.autoMode = false;
     this.target = null; this.manualTarget = null;
 
-    this.player = this.physics.add.sprite(WORLD_W / 2, WORLD_H / 2, 'player').setCollideWorldBounds(true);
+    this.player = this.physics.add.sprite(ZONES[0].x, ZONES[0].y, 'player').setCollideWorldBounds(true);
     this.facing = new Phaser.Math.Vector2(1, 0);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.hitCd = 0;
@@ -211,6 +217,7 @@ class Main extends Phaser.Scene {
     this.bookBtn = this.makePillBtn(W - 12, 54, 120, 32, '📜 สกิล', 0x2a2a4a, () => this.openSkillBook());
     this.autoBtn = this.makePillBtn(W - 12, 92, 120, 32, 'บอท: ปิด', 0x4a3a2a, () => this.toggleAuto());
     this.equipBtn = this.makePillBtn(W - 12, 130, 120, 32, '🛡 อุปกรณ์', 0x2a2a5a, () => this.openInventory('equip'));
+    this.stageBtn = this.makePillBtn(W - 12, 168, 120, 32, '🗺 เลือกด่าน', 0x2a4a5a, () => this.openStageSelect());
 
     // ---------- HUD ----------
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(100);
@@ -301,24 +308,22 @@ class Main extends Phaser.Scene {
     const z = ZONES[zi];
     const ang = Math.random() * Math.PI * 2, rad = Math.random() * z.r * 0.8;
     const x = z.x + Math.cos(ang) * rad, y = z.y + Math.sin(ang) * rad;
-    const lv = this.stats ? this.stats.level : 1;
     const e = this.enemies.create(x, y, 'slime');
-    e.hp = 30 + lv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(lv * 1.5);
+    e.hp = 30 + z.monsterLv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(z.monsterLv * 1.5);
     e.setCollideWorldBounds(true);
     e.zoneIdx = zi; e.state = 'idle'; e.wanderX = x; e.wanderY = y; e.nextWander = 0;
     e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
     return e;
   }
 
-  dropLoot(x, y) {
-    const lv = this.stats.level;
+  dropLoot(x, y, monsterLv, boxLevel) {
     const gold = this.loot.create(x, y, 'gold');
-    gold.setData('kind', 'gold'); gold.setData('amount', Phaser.Math.Between(2 + lv, 6 + lv * 2));
+    gold.setData('kind', 'gold'); gold.setData('amount', Phaser.Math.Between(2 + monsterLv, 5 + monsterLv * 2));
     this.tweens.add({ targets: gold, y: y - 6, yoyo: true, repeat: -1, duration: 500 });
     if (Phaser.Math.Between(1, 100) <= 28) {
       if (Phaser.Math.Between(1, 100) <= 55) {
         const it = this.loot.create(x + 14, y, 'box');
-        it.setData('kind', 'box'); it.setData('level', lv);
+        it.setData('kind', 'box'); it.setData('level', boxLevel);
       } else {
         const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
         const it = this.loot.create(x + 14, y, 'scroll');
@@ -402,15 +407,17 @@ class Main extends Phaser.Scene {
   }
 
   gainExp(n) {
+    if (this.stats.level >= LEVEL_CAP) return;
     this.stats.exp += n;
-    while (this.stats.exp >= this.stats.expNext) {
+    while (this.stats.level < LEVEL_CAP && this.stats.exp >= this.stats.expNext) {
       this.stats.exp -= this.stats.expNext;
       this.stats.level++;
-      this.stats.expNext = Math.floor(this.stats.expNext * 1.25);
+      this.stats.expNext = levelExpNeeded(this.stats.level);
       this.stats.maxHp += 15; this.stats.maxMp += 8; this.stats.baseAtk += 3;
       this.stats.hp = this.maxHp(); this.stats.mp = this.maxMp();
       this.toastMsg('เลเวลอัพ! ตอนนี้เลเวล ' + this.stats.level);
     }
+    if (this.stats.level >= LEVEL_CAP) this.stats.exp = 0;
   }
 
   damage(e, dmg) {
@@ -419,12 +426,12 @@ class Main extends Phaser.Scene {
     const t = this.add.text(e.x, e.y - 20, String(dmg), { fontSize: '16px', color: '#ffe066' }).setOrigin(0.5);
     this.tweens.add({ targets: t, y: t.y - 30, alpha: 0, duration: 600, onComplete: () => t.destroy() });
     if (e.hp <= 0) {
-      const x = e.x, y = e.y, zi = e.zoneIdx;
+      const x = e.x, y = e.y, zi = e.zoneIdx, z = ZONES[zi];
       if (this.target === e) this.target = null;
       if (this.manualTarget === e) this.manualTarget = null;
       e.destroy(); this.kills++;
-      this.gainExp(8 + this.stats.level * 2);
-      this.dropLoot(x, y);
+      this.gainExp(5 + z.monsterLv * 3);
+      this.dropLoot(x, y, z.monsterLv, z.boxLevel);
       this.time.delayedCall(RESPAWN_DELAY, () => { if (this.enemies) this.spawnEnemyInZone(zi); });
     }
   }
@@ -644,6 +651,52 @@ class Main extends Phaser.Scene {
     this.subPanel = items;
   }
 
+  openStageSelect() {
+    this.closePanel();
+    const items = this.panelFrame('เลือกด่าน (ต้องเลเวลถึงเกณฑ์ถึงจะไปได้)');
+    const cols = 3, cell = 160;
+    const gx0 = W / 2 - (cols * cell) / 2 + cell / 2, gy0 = H / 2 - 110;
+    ZONES.forEach((z, i) => {
+      const col = i % cols, row = Math.floor(i / cols);
+      const x = gx0 + col * cell, y = gy0 + row * cell;
+      const unlocked = this.stats.level >= z.reqLv;
+      items.push(this.roundRect(201, x, y, cell - 14, 90, unlocked ? 0x24402a : 0x2a2424, 0.95, 10));
+      const zone = this.add.zone(x, y, cell - 14, 90).setScrollFactor(0).setDepth(202).setInteractive();
+      items.push(zone);
+      items.push(this.add.text(x, y - 24, z.name, { fontSize: '13px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      items.push(this.add.text(x, y - 2, 'มอนสเตอร์ Lv.' + z.monsterLv, { fontSize: '11px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      items.push(this.add.text(x, y + 18, unlocked ? 'แตะเพื่อเดินทาง' : 'ต้องการ Lv.' + z.reqLv, { fontSize: '11px', color: unlocked ? '#9adf9a' : '#e08a8a' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      zone.on('pointerdown', () => {
+        if (!unlocked) { this.toastMsg('เลเวลไม่ถึง! ต้องการ Lv.' + z.reqLv); return; }
+        this.player.setPosition(z.x, z.y);
+        this.manualTarget = null;
+        this.toastMsg('เดินทางไปยัง ' + z.name);
+        this.closePanel();
+      });
+    });
+    this.panel = items;
+  }
+
+  mergeAllInBag() {
+    let merges = 0, changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < this.bag.length; i++) {
+        if (!this.bag[i] || this.bag[i].kind !== 'equip') continue;
+        for (let j = i + 1; j < this.bag.length; j++) {
+          if (itemsMatch(this.bag[i], this.bag[j])) {
+            this.bag[i] = { ...this.bag[i], star: Math.min(MAX_STAR, this.bag[i].star + 1) };
+            this.bag[j] = null;
+            merges++; changed = true;
+            break;
+          }
+        }
+        if (changed) break;
+      }
+    }
+    return merges;
+  }
+
   openInventory(tab, page) {
     this.invTab = tab || this.invTab || 'bag';
     this.invPage = page !== undefined ? page : (this.invPage || 0);
@@ -675,6 +728,11 @@ class Main extends Phaser.Scene {
       items.push(...this.tabBtn(W / 2 - 90, y2, '◀ ก่อนหน้า', false, () => this.openInventory('bag', Math.max(0, this.invPage - 1))));
       items.push(this.add.text(W / 2, y2, 'หน้า ' + (this.invPage + 1) + ' / ' + PAGES, { fontSize: '12px', color: '#ccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(202));
       items.push(...this.tabBtn(W / 2 + 90, y2, 'ถัดไป ▶', false, () => this.openInventory('bag', Math.min(PAGES - 1, this.invPage + 1))));
+      items.push(...this.tabBtn(W / 2 + 210, H / 2 - 155, '🔗 รวมอุปกรณ์', false, () => {
+        const n = this.mergeAllInBag();
+        this.toastMsg(n > 0 ? 'รวมอุปกรณ์สำเร็จ ' + n + ' ครั้ง' : 'ไม่มีของที่รวมกันได้');
+        this.openInventory('bag', this.invPage);
+      }));
     } else {
       const cols = 4, cell = 100;
       const gx0 = W / 2 - (cols * cell) / 2 + cell / 2, gy0 = H / 2 - 110;
@@ -802,7 +860,7 @@ class Main extends Phaser.Scene {
         const dmg = Math.max(1, (e.dmg || 8) - this.equipDefBonus);
         this.stats.hp -= dmg; this.hitCd = time + 600;
         p.setTint(0xff6666); this.time.delayedCall(150, () => p.clearTint());
-        if (this.stats.hp <= 0) { this.stats.hp = this.maxHp(); p.setPosition(WORLD_W / 2, WORLD_H / 2); this.toastMsg('คุณสลบ! ฟื้นที่จุดเริ่มต้น'); }
+        if (this.stats.hp <= 0) { this.stats.hp = this.maxHp(); p.setPosition(ZONES[0].x, ZONES[0].y); this.toastMsg('คุณสลบ! ฟื้นที่ด่าน 1'); }
       }
     });
 
