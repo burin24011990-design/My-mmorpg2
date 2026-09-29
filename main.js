@@ -1,8 +1,12 @@
-// ขั้นที่ 5: มอนสเตอร์ประจำจุด (แบบ RO) + ล็อกเป้า/เลือกเป้า + บอทออโต้ + มินิแมป + ขยายจอ
+// ขั้นที่ 6: ระบบมานา + ดีเลย์/คูลดาวน์สมดุลขึ้น + กระเป๋ายืนยันก่อนสวมใส่ + ไอคอนสกิล + จอเต็มเมื่อหมุนแนวนอน
 const W = 1000, H = 600;
 const WORLD_W = 1600, WORLD_H = 1000;
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 const BAG_SIZE = 500, PAGE_SIZE = 50, PAGES = BAG_SIZE / PAGE_SIZE;
+const ULTI_CD = 40000;
+const RESPAWN_DELAY = 7000;
+const CAST_DELAY = { melee: 150, aoe: 250, proj: 200, dash: 90, ulti: 400 };
+const BASIC_DELAY = 130;
 
 // ---------- ข้อมูลเกม ----------
 const CLASSES = {
@@ -12,32 +16,32 @@ const CLASSES = {
 };
 
 const BASIC_ATTACKS = {
-  sword: { name: 'โจมตี', dmg: 10, range: 60, cd: 380, type: 'melee', class: 'sword' },
-  mage: { name: 'โจมตี', dmg: 8, range: 380, cd: 480, type: 'proj', class: 'mage' },
-  archer: { name: 'โจมตี', dmg: 9, range: 360, cd: 420, type: 'proj', class: 'archer' },
+  sword: { name: 'โจมตี', dmg: 10, range: 60, cd: 650, type: 'melee', class: 'sword' },
+  mage: { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' },
+  archer: { name: 'โจมตี', dmg: 9, range: 360, cd: 650, type: 'proj', class: 'archer' },
 };
 
 const SKILL_DEFS = {
-  sw_slash: { name: 'ฟันตรง', class: 'sword', dmg: 12, range: 60, cd: 450, type: 'melee' },
-  sw_spin: { name: 'ฟันหมุน', class: 'sword', dmg: 18, range: 100, cd: 2200, type: 'aoe' },
-  sw_dash: { name: 'พุ่งทะยาน', class: 'sword', dmg: 16, range: 150, cd: 3000, type: 'dash' },
-  sw_cross: { name: 'ฟันไขว้', class: 'sword', dmg: 22, range: 70, cd: 1800, type: 'melee' },
+  sw_slash: { name: 'ฟันตรง', class: 'sword', dmg: 12, range: 60, cd: 650, mp: 8, type: 'melee' },
+  sw_spin: { name: 'ฟันหมุน', class: 'sword', dmg: 18, range: 100, cd: 2800, mp: 16, type: 'aoe' },
+  sw_dash: { name: 'พุ่งทะยาน', class: 'sword', dmg: 16, range: 150, cd: 3600, mp: 14, type: 'dash' },
+  sw_cross: { name: 'ฟันไขว้', class: 'sword', dmg: 22, range: 70, cd: 2400, mp: 12, type: 'melee' },
 
-  mg_fire: { name: 'ลูกไฟ', class: 'mage', dmg: 14, range: 420, cd: 1000, type: 'proj' },
-  mg_ice: { name: 'ธารน้ำแข็ง', class: 'mage', dmg: 12, range: 120, cd: 1800, type: 'aoe' },
-  mg_bolt: { name: 'สายฟ้า', class: 'mage', dmg: 20, range: 350, cd: 2200, type: 'proj' },
-  mg_nova: { name: 'คลื่นเวท', class: 'mage', dmg: 16, range: 140, cd: 2600, type: 'aoe' },
+  mg_fire: { name: 'ลูกไฟ', class: 'mage', dmg: 14, range: 420, cd: 1400, mp: 10, type: 'proj' },
+  mg_ice: { name: 'ธารน้ำแข็ง', class: 'mage', dmg: 12, range: 120, cd: 2400, mp: 16, type: 'aoe' },
+  mg_bolt: { name: 'สายฟ้า', class: 'mage', dmg: 20, range: 350, cd: 2800, mp: 18, type: 'proj' },
+  mg_nova: { name: 'คลื่นเวท', class: 'mage', dmg: 16, range: 140, cd: 3200, mp: 16, type: 'aoe' },
 
-  ar_shot: { name: 'ยิงธนู', class: 'archer', dmg: 11, range: 380, cd: 550, type: 'proj' },
-  ar_rain: { name: 'ฝนลูกศร', class: 'archer', dmg: 10, range: 160, cd: 2000, type: 'aoe' },
-  ar_pierce: { name: 'ธนูเจาะเกราะ', class: 'archer', dmg: 24, range: 420, cd: 2400, type: 'proj' },
-  ar_multi: { name: 'ยิงกระจาย', class: 'archer', dmg: 13, range: 300, cd: 1600, type: 'proj' },
+  ar_shot: { name: 'ยิงธนู', class: 'archer', dmg: 11, range: 380, cd: 800, mp: 8, type: 'proj' },
+  ar_rain: { name: 'ฝนลูกศร', class: 'archer', dmg: 10, range: 160, cd: 2600, mp: 16, type: 'aoe' },
+  ar_pierce: { name: 'ธนูเจาะเกราะ', class: 'archer', dmg: 24, range: 420, cd: 3000, mp: 18, type: 'proj' },
+  ar_multi: { name: 'ยิงกระจาย', class: 'archer', dmg: 13, range: 300, cd: 2200, mp: 14, type: 'proj' },
 };
 
 const ULTI_DEFS = {
-  sword: { name: 'ดาบสังหาร', dmg: 70, range: 130, cd: 8000, type: 'aoe' },
-  mage: { name: 'อุกกาบาต', dmg: 80, range: 170, cd: 9000, type: 'aoe' },
-  archer: { name: 'สายฝนมรณะ', dmg: 75, range: 200, cd: 8500, type: 'aoe' },
+  sword: { name: 'ดาบสังหาร', dmg: 70, range: 130, cd: ULTI_CD, mp: 50, type: 'aoe' },
+  mage: { name: 'อุกกาบาต', dmg: 80, range: 170, cd: ULTI_CD, mp: 50, type: 'aoe' },
+  archer: { name: 'สายฝนมรณะ', dmg: 75, range: 200, cd: ULTI_CD, mp: 50, type: 'aoe' },
 };
 
 const WEAPON_DEFS = [
@@ -49,7 +53,6 @@ const WEAPON_DEFS = [
   { id: 'w_long_bow', name: 'ธนูยาว', atk: 13, class: 'archer' },
 ];
 
-// จุดเกิดมอนสเตอร์ประจำที่ (แบบ Ragnarok) - มอนจะวนเดินอยู่ในโซนของตัวเอง ไม่ไล่ตามข้ามแผนที่
 const ZONES = [
   { x: 260, y: 230, r: 140, count: 4, name: 'ทุ่งสไลม์เหนือ' },
   { x: 1340, y: 230, r: 140, count: 4, name: 'ป่าสไลม์' },
@@ -57,6 +60,8 @@ const ZONES = [
   { x: 1340, y: 800, r: 140, count: 4, name: 'ถ้ำสไลม์' },
   { x: 800, y: 500, r: 180, count: 5, name: 'ลานกลาง' },
 ];
+
+function skillIconKey(type) { return type === 'melee' ? 'ic_melee' : type === 'aoe' ? 'ic_aoe' : type === 'dash' ? 'ic_dash' : 'ic_proj'; }
 
 class Main extends Phaser.Scene {
   create() {
@@ -69,17 +74,21 @@ class Main extends Phaser.Scene {
     g.clear().fillStyle(0x8a5a2a).fillRect(13, 6, 4, 22).fillStyle(0x7ad1ff).fillCircle(15, 6, 6).generateTexture('icon_staff', 30, 30);
     g.clear().lineStyle(3, 0x8a5a2a).strokeCircle(15, 15, 12).fillStyle(0xe8e8e8).fillRect(14, 3, 2, 24).generateTexture('icon_bow', 30, 30);
     g.clear().fillStyle(0xb35ae0).fillRect(0, 0, 16, 16).generateTexture('scroll', 16, 16);
+    // ไอคอนสกิล (ขาว ใช้ทาสีตามอาชีพตอนแสดงผล)
+    g.clear().fillStyle(0xffffff).fillRect(3, 10, 18, 4).fillRect(10, 3, 4, 18).generateTexture('ic_melee', 24, 24);
+    g.clear().lineStyle(3, 0xffffff, 1).strokeCircle(12, 12, 9).fillStyle(0xffffff).fillCircle(12, 12, 3).generateTexture('ic_aoe', 24, 24);
+    g.clear().fillStyle(0xffffff).fillCircle(12, 12, 7).generateTexture('ic_proj', 24, 24);
+    g.clear().fillStyle(0xffffff).fillTriangle(4, 4, 4, 20, 21, 12).generateTexture('ic_dash', 24, 24);
     g.destroy();
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
     this.add.grid(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 64, 64, 0x2b3a2b, 1, 0x1f2b1f, 1);
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
-    // วาดขอบเขตโซนมอนสเตอร์ไว้บนพื้น (มองเห็นในโลก ไม่ใช่ HUD)
     const zoneGfx = this.add.graphics();
     ZONES.forEach(z => { zoneGfx.lineStyle(2, 0x5a7a3a, 0.5).strokeCircle(z.x, z.y, z.r); });
 
     // สถานะผู้เล่น
-    this.stats = { level: 1, exp: 0, expNext: 20, hp: 100, maxHp: 100, baseAtk: 10, gold: 0 };
+    this.stats = { level: 1, exp: 0, expNext: 20, hp: 100, maxHp: 100, mp: 50, maxMp: 50, baseAtk: 10, gold: 0 };
     this.bag = new Array(BAG_SIZE).fill(null);
     this.equippedWeaponId = null;
     this.learnedSkills = new Set(['sw_slash']);
@@ -96,7 +105,6 @@ class Main extends Phaser.Scene {
     this.hitCd = 0;
     this.kills = 0;
 
-    // มอนสเตอร์ตามโซน
     this.enemies = this.physics.add.group();
     ZONES.forEach((z, zi) => { for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(zi); });
     this.projectiles = this.physics.add.group();
@@ -106,7 +114,6 @@ class Main extends Phaser.Scene {
     });
     this.physics.add.overlap(this.player, this.loot, (pl, item) => this.pickup(item));
 
-    // เป้าล็อก
     this.targetRing = this.add.circle(0, 0, 22, 0x000000, 0).setStrokeStyle(3, 0xffe066, 0.95).setVisible(false);
 
     // คีย์บอร์ด
@@ -161,12 +168,12 @@ class Main extends Phaser.Scene {
     // ---------- HUD ----------
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.hudNameText = this.add.text(16, 12, 'Lv.1', { fontSize: '14px', color: '#ffe066', fontStyle: 'bold' }).setScrollFactor(0).setDepth(101);
-    this.hudText = this.add.text(16, 50, '', { fontSize: '12px', color: '#dddddd' }).setScrollFactor(0).setDepth(101);
+    this.hudText = this.add.text(16, 68, '', { fontSize: '12px', color: '#dddddd' }).setScrollFactor(0).setDepth(101);
     this.targetNameText = this.add.text(W / 2, 16, '', { fontSize: '13px', color: '#ffe066' }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(101);
     this.toast = this.add.text(W / 2, 100, '', { fontSize: '15px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(300);
 
-    // มินิแมป (คงที่ ไม่เลื่อนตามกล้อง)
-    this.mini = { x: 16, y: 96, w: 190, h: Math.round(190 * (WORLD_H / WORLD_W)) };
+    // มินิแมป
+    this.mini = { x: 16, y: 114, w: 190, h: Math.round(190 * (WORLD_H / WORLD_W)) };
     this.miniBg = this.add.graphics().setScrollFactor(0).setDepth(100);
     this.miniBg.fillStyle(0x000000, 0.55).fillRoundedRect(this.mini.x - 4, this.mini.y - 4, this.mini.w + 8, this.mini.h + 8, 8);
     this.miniBg.lineStyle(1, 0x5a7a3a, 0.8);
@@ -197,7 +204,9 @@ class Main extends Phaser.Scene {
   makeSlotBtn(x, y, r, idx) {
     const c = this.add.circle(x, y, r, 0x3a3a3a, 0.8).setScrollFactor(0).setDepth(100).setInteractive();
     c.setStrokeStyle(2, 0xffffff, 0.6);
-    const t = this.add.text(x, y, '', { fontSize: '10px', color: '#fff', align: 'center', wordWrap: { width: 46 } }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    const icon = this.add.image(x, y - 4, 'ic_melee').setDisplaySize(20, 20).setScrollFactor(0).setDepth(101).setVisible(false);
+    const t = this.add.text(x, y + 15, '', { fontSize: '9px', color: '#fff', align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    const cdText = this.add.text(x, y, '', { fontSize: '12px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
     let heldTimer = null, longPressed = false;
     c.on('pointerdown', () => {
       if (!this.slots[idx]) { this.openSkillBook(idx); return; }
@@ -208,7 +217,7 @@ class Main extends Phaser.Scene {
       });
     });
     c.on('pointerup', () => { if (heldTimer) heldTimer.remove(); if (!longPressed && this.slots[idx]) this.useSkill(idx); });
-    return { c, t, idx };
+    return { c, t, icon, cdText, idx };
   }
 
   makeUltiBtn(x, y, r) {
@@ -328,6 +337,7 @@ class Main extends Phaser.Scene {
       this.stats.level++;
       this.stats.expNext = Math.floor(this.stats.expNext * 1.25);
       this.stats.maxHp += 15; this.stats.hp = this.stats.maxHp;
+      this.stats.maxMp += 8; this.stats.mp = this.stats.maxMp;
       this.stats.baseAtk += 3;
       this.computeAtk();
       this.toastMsg('เลเวลอัพ! ตอนนี้เลเวล ' + this.stats.level);
@@ -346,7 +356,7 @@ class Main extends Phaser.Scene {
       e.destroy(); this.kills++;
       this.gainExp(8 + this.stats.level * 2);
       this.dropLoot(x, y);
-      this.time.delayedCall(2500, () => { if (this.enemies) this.spawnEnemyInZone(zi); });
+      this.time.delayedCall(RESPAWN_DELAY, () => { if (this.enemies) this.spawnEnemyInZone(zi); });
     }
   }
 
@@ -424,9 +434,9 @@ class Main extends Phaser.Scene {
     const now = this.time.now;
     if (now < (this.cdEnd.basic || 0)) return;
     this.cdEnd.basic = now + def.cd;
-    const p = this.player;
-    this.applySkillEffect(def, p.x, p.y, this.facing.x, this.facing.y, def.dmg + this.atk, cls);
-    if (this.online) this.socket.emit('skill', { name: 'basic_' + cls, x: p.x, y: p.y, fx: this.facing.x, fy: this.facing.y });
+    const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk;
+    this.time.delayedCall(BASIC_DELAY, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, cls));
+    if (this.online) this.socket.emit('skill', { name: 'basic_' + cls, x: p.x, y: p.y, fx, fy });
   }
 
   useSkill(idx) {
@@ -434,10 +444,12 @@ class Main extends Phaser.Scene {
     const def = SKILL_DEFS[sid];
     const now = this.time.now, key = 'slot' + idx;
     if (now < (this.cdEnd[key] || 0)) return;
+    if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอ'); return; }
     this.cdEnd[key] = now + def.cd;
-    const p = this.player;
-    this.applySkillEffect(def, p.x, p.y, this.facing.x, this.facing.y, def.dmg + this.atk, def.class);
-    if (this.online) this.socket.emit('skill', { name: sid, x: p.x, y: p.y, fx: this.facing.x, fy: this.facing.y });
+    this.stats.mp -= def.mp;
+    const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk;
+    this.time.delayedCall(CAST_DELAY[def.type] || 150, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, def.class));
+    if (this.online) this.socket.emit('skill', { name: sid, x: p.x, y: p.y, fx, fy });
   }
 
   useUlti() {
@@ -445,11 +457,13 @@ class Main extends Phaser.Scene {
     const def = ULTI_DEFS[this.ultiClass];
     const now = this.time.now;
     if (now < (this.cdEnd.ulti || 0)) return;
+    if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอสำหรับอัลติ'); return; }
     this.cdEnd.ulti = now + def.cd;
-    const p = this.player;
-    this.applySkillEffect(def, p.x, p.y, this.facing.x, this.facing.y, def.dmg + this.atk, this.ultiClass);
+    this.stats.mp -= def.mp;
+    const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk, cls = this.ultiClass;
     this.toastMsg(def.name + '!');
-    if (this.online) this.socket.emit('skill', { name: 'ulti_' + this.ultiClass, x: p.x, y: p.y, fx: this.facing.x, fy: this.facing.y });
+    this.time.delayedCall(CAST_DELAY.ulti, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, cls));
+    if (this.online) this.socket.emit('skill', { name: 'ulti_' + this.ultiClass, x: p.x, y: p.y, fx, fy });
   }
 
   flash(x, y, r, color) {
@@ -458,7 +472,8 @@ class Main extends Phaser.Scene {
   }
 
   // ================= แผงกระเป๋า / อุปกรณ์ / สกิล =================
-  closePanel() { if (this.panel) { this.panel.forEach(o => o.destroy()); this.panel = null; } }
+  closePanel() { if (this.panel) { this.panel.forEach(o => o.destroy()); this.panel = null; } this.closeSub(); }
+  closeSub() { if (this.subPanel) { this.subPanel.forEach(o => o.destroy()); this.subPanel = null; } }
 
   panelFrame(title) {
     const items = [];
@@ -483,11 +498,35 @@ class Main extends Phaser.Scene {
     return items;
   }
 
+  openItemConfirm(idx, wid) {
+    this.closeSub();
+    const wd = WEAPON_DEFS.find(w => w.id === wid);
+    const items = [];
+    items.push(this.roundRect(250, W / 2, H / 2, 300, 200, 0x1c1f24, 0.98, 14));
+    items.push(this.add.graphics().setScrollFactor(0).setDepth(250).lineStyle(2, 0xffe066, 0.7).strokeRoundedRect(W / 2 - 150, H / 2 - 100, 300, 200, 14));
+    items.push(this.add.image(W / 2, H / 2 - 50, this.weaponIconKey(wd.class)).setDisplaySize(48, 48).setScrollFactor(0).setDepth(251));
+    items.push(this.add.text(W / 2, H / 2 - 10, wd.name, { fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+    items.push(this.add.text(W / 2, H / 2 + 12, 'ATK +' + wd.atk + '  (' + CLASSES[wd.class].label + ')', { fontSize: '12px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(251));
+    items.push(this.roundRect(251, W / 2 - 65, H / 2 + 60, 110, 32, 0x2a5a2a, 0.95, 8));
+    const yesZone = this.add.zone(W / 2 - 65, H / 2 + 60, 110, 32).setScrollFactor(0).setDepth(252).setInteractive();
+    items.push(this.add.text(W / 2 - 65, H / 2 + 60, 'สวมใส่', { fontSize: '13px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+    items.push(this.roundRect(251, W / 2 + 65, H / 2 + 60, 110, 32, 0x5a2a2a, 0.95, 8));
+    const noZone = this.add.zone(W / 2 + 65, H / 2 + 60, 110, 32).setScrollFactor(0).setDepth(252).setInteractive();
+    items.push(this.add.text(W / 2 + 65, H / 2 + 60, 'ยกเลิก', { fontSize: '13px', color: '#ffcccc' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
+    yesZone.on('pointerdown', () => {
+      this.bag[idx] = null; this.equipWeapon(wid); this.toastMsg('สวมใส่: ' + wd.name);
+      this.closeSub(); this.openInventory('bag', this.invPage);
+    });
+    noZone.on('pointerdown', () => this.closeSub());
+    items.push(yesZone, noZone);
+    this.subPanel = items;
+  }
+
   openInventory(tab, page) {
     this.invTab = tab || this.invTab || 'bag';
     this.invPage = page !== undefined ? page : (this.invPage || 0);
     this.closePanel();
-    const items = this.panelFrame(this.invTab === 'bag' ? 'กระเป๋า (แตะไอเทมเพื่อสวมใส่)' : 'อุปกรณ์ที่สวมใส่');
+    const items = this.panelFrame(this.invTab === 'bag' ? 'กระเป๋า (แตะไอเทมเพื่อดู/สวมใส่)' : 'อุปกรณ์ที่สวมใส่');
     items.push(...this.tabBtn(W / 2 - 130, H / 2 - 145, 'กระเป๋า', this.invTab === 'bag', () => this.openInventory('bag', 0)));
     items.push(...this.tabBtn(W / 2, H / 2 - 145, 'อุปกรณ์', this.invTab === 'equip', () => this.openInventory('equip')));
 
@@ -506,7 +545,7 @@ class Main extends Phaser.Scene {
           const wd = WEAPON_DEFS.find(w => w.id === wid);
           const icon = this.add.image(x, y, this.weaponIconKey(wd.class)).setDisplaySize(24, 24).setScrollFactor(0).setDepth(203);
           items.push(icon);
-          zone.on('pointerdown', () => { this.bag[idx] = null; this.equipWeapon(wid); this.toastMsg('สวมใส่: ' + wd.name); this.openInventory('bag', this.invPage); });
+          zone.on('pointerdown', () => this.openItemConfirm(idx, wid));
         }
       }
       const y2 = H / 2 + 130;
@@ -541,7 +580,7 @@ class Main extends Phaser.Scene {
       const y = H / 2 - 130 + row * 30;
       items.push(this.roundRect(201, W / 2, y, 460, 26, 0x24262b, 0.95, 6));
       const zone = this.add.zone(W / 2, y, 460, 26).setScrollFactor(0).setDepth(202).setInteractive();
-      items.push(this.add.text(W / 2, y, sd.name + '  (' + CLASSES[sd.class].label + ')  dmg ' + sd.dmg, { fontSize: '12px', color: '#fff' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      items.push(this.add.text(W / 2, y, sd.name + '  (' + CLASSES[sd.class].label + ')  dmg ' + sd.dmg + '  มานา ' + sd.mp, { fontSize: '12px', color: '#fff' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
       zone.on('pointerdown', () => {
         if (targetSlot !== undefined) { this.slots[targetSlot] = sid; this.computeCombo(); this.closePanel(); }
         else this.openSkillBook(0);
@@ -609,7 +648,10 @@ class Main extends Phaser.Scene {
     const p = this.player;
     const dt = deltaMs / 1000;
 
-    // มอนสเตอร์: เดินวนในโซน / ไล่ตีเมื่อใกล้ / กลับโซนถ้าไกลเกิน
+    // ฟื้นมานาตามเวลา
+    this.stats.mp = Math.min(this.stats.maxMp, this.stats.mp + 3 * dt);
+
+    // มอนสเตอร์
     this.enemies.getChildren().forEach(e => {
       const z = ZONES[e.zoneIdx];
       const distPlayer = Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y);
@@ -647,18 +689,21 @@ class Main extends Phaser.Scene {
     this.attackBtn.c.setAlpha(attackLeft > 0 ? 0.4 : 0.9);
     this.slots.forEach((sid, i) => {
       const b = this.slotBtns[i];
-      if (!sid) { b.t.setText('+'); b.c.setFillStyle(0x3a3a3a, 0.5); return; }
+      if (!sid) { b.t.setText(''); b.cdText.setText('+'); b.icon.setVisible(false); b.c.setFillStyle(0x3a3a3a, 0.5); return; }
       const def = SKILL_DEFS[sid];
       const left = Math.max(0, (this.cdEnd['slot' + i] || 0) - time);
-      b.c.setFillStyle(CLASSES[def.class].color, left > 0 ? 0.35 : 0.85);
-      b.t.setText(left > 0 ? (left / 1000).toFixed(1) : def.name);
+      const noMana = this.stats.mp < def.mp;
+      b.c.setFillStyle(CLASSES[def.class].color, (left > 0 || noMana) ? 0.3 : 0.85);
+      b.icon.setTexture(skillIconKey(def.type)).setTint(0xffffff).setVisible(true);
+      b.t.setText(def.name);
+      b.cdText.setText(left > 0 ? (left / 1000).toFixed(1) : '');
     });
     if (this.ultiClass) {
       const left = Math.max(0, (this.cdEnd.ulti || 0) - time);
       this.ultiBtn.c.setAlpha(left > 0 ? 0.35 : 0.95);
     }
 
-    // การเคลื่อนที่: บอทออโต้ หรือ ควบคุมเอง
+    // เคลื่อนที่: บอทออโต้ หรือ ควบคุมเอง
     if (this.autoMode) {
       if (this.target) {
         const cls = this.currentClass();
@@ -704,11 +749,13 @@ class Main extends Phaser.Scene {
 
     // HUD
     this.hud.clear();
-    this.hud.fillStyle(0x000000, 0.55).fillRoundedRect(10, 6, 230, 74, 10);
+    this.hud.fillStyle(0x000000, 0.55).fillRoundedRect(10, 6, 230, 92, 10);
     this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 30, 180, 12, 6);
     this.hud.fillStyle(0xe03c3c).fillRoundedRect(19, 31, 178 * (this.stats.hp / this.stats.maxHp), 10, 5);
     this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 46, 180, 8, 4);
     this.hud.fillStyle(0x3ca7e0).fillRoundedRect(19, 47, 176 * (this.stats.exp / this.stats.expNext), 6, 3);
+    this.hud.fillStyle(0x000000, 0.6).fillRoundedRect(18, 58, 180, 10, 5);
+    this.hud.fillStyle(0x9a5ae0).fillRoundedRect(19, 59, 178 * (this.stats.mp / this.stats.maxMp), 8, 4);
     this.hudNameText.setText('Lv.' + this.stats.level);
     this.hudText.setText('ทอง: ' + this.stats.gold + '   ฆ่าแล้ว: ' + this.kills);
   }
@@ -718,7 +765,7 @@ new Phaser.Game({
   type: Phaser.AUTO,
   width: W, height: H,
   backgroundColor: '#1b241b',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scale: { mode: Phaser.Scale.ENVELOP, autoCenter: Phaser.Scale.CENTER_BOTH },
   physics: { default: 'arcade' },
   scene: Main,
 });
