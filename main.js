@@ -8,6 +8,7 @@ const RESPAWN_DELAY = 7000;
 const CAST_DELAY = { melee: 150, aoe: 250, proj: 200, dash: 90, ulti: 400 };
 const BASIC_DELAY = 130;
 const MAX_STAR = 99;
+const MAX_BOX_STACK = 999;
 
 // ---------- ข้อมูลเกม ----------
 const CLASSES = {
@@ -73,7 +74,7 @@ function computeItemStats(item) {
 }
 
 function itemLabel(item) {
-  if (item.kind === 'box') return 'กล่องอุปกรณ์ เลเวล ' + item.level;
+  if (item.kind === 'box') return 'กล่องอุปกรณ์ เลเวล ' + item.level + (item.count > 1 ? '  x' + item.count : '');
   const base = item.baseSlot === 'weapon' ? WEAPON_CLASS_LABEL[item.class] : SLOT_LABELS[item.baseSlot];
   return base + ' Lv.' + item.level + (item.star > 0 ? '  ' + item.star + '★' : '');
 }
@@ -209,6 +210,7 @@ class Main extends Phaser.Scene {
     this.bagBtn = this.makePillBtn(W - 12, 16, 120, 32, '🎒 กระเป๋า', 0x2a4a2a, () => this.openInventory('bag'));
     this.bookBtn = this.makePillBtn(W - 12, 54, 120, 32, '📜 สกิล', 0x2a2a4a, () => this.openSkillBook());
     this.autoBtn = this.makePillBtn(W - 12, 92, 120, 32, 'บอท: ปิด', 0x4a3a2a, () => this.toggleAuto());
+    this.equipBtn = this.makePillBtn(W - 12, 130, 120, 32, '🛡 อุปกรณ์', 0x2a2a5a, () => this.openInventory('equip'));
 
     // ---------- HUD ----------
     this.hud = this.add.graphics().setScrollFactor(0).setDepth(100);
@@ -352,8 +354,10 @@ class Main extends Phaser.Scene {
       this.stats.gold += item.getData('amount');
       this.toastMsg('+' + item.getData('amount') + ' ทอง');
     } else if (kind === 'box') {
-      this.addItemToBag({ kind: 'box', level: item.getData('level') });
-      this.toastMsg('ได้รับกล่องอุปกรณ์ เลเวล ' + item.getData('level'));
+      const lvl = item.getData('level');
+      const stack = this.bag.find(s => s && s.kind === 'box' && s.level === lvl && s.count < MAX_BOX_STACK);
+      if (stack) { stack.count++; this.toastMsg('กล่องอุปกรณ์ เลเวล ' + lvl + '  x' + stack.count); }
+      else { this.addItemToBag({ kind: 'box', level: lvl, count: 1 }); this.toastMsg('ได้รับกล่องอุปกรณ์ เลเวล ' + lvl); }
     } else if (kind === 'skill') {
       const sid = item.getData('sid'); const sd = SKILL_DEFS[sid];
       if (this.learnedSkills.has(sid)) { this.stats.gold += 5; this.toastMsg('สกิลซ้ำ แลกเป็น +5 ทอง'); }
@@ -577,7 +581,8 @@ class Main extends Phaser.Scene {
       const openZone = this.add.zone(W / 2, H / 2 + 60, 130, 32).setScrollFactor(0).setDepth(252).setInteractive();
       items.push(this.add.text(W / 2, H / 2 + 60, 'เปิดกล่อง', { fontSize: '13px', color: '#c6ffc6' }).setOrigin(0.5).setScrollFactor(0).setDepth(253));
       openZone.on('pointerdown', () => {
-        this.bag[idx] = null;
+        item.count -= 1;
+        if (item.count <= 0) this.bag[idx] = null;
         this.addEquipItemToBag(randomEquipItem(item.level));
         this.closeSub(); this.openInventory('bag', this.invPage);
       });
@@ -662,6 +667,7 @@ class Main extends Phaser.Scene {
           const icon = this.add.image(x, y - 3, iconKeyForItem(it)).setDisplaySize(22, 22).setScrollFactor(0).setDepth(203);
           items.push(icon);
           if (it.kind === 'equip') items.push(this.add.text(x, y + 12, 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : ''), { fontSize: '7px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+          if (it.kind === 'box' && it.count > 1) items.push(this.add.text(x, y + 12, 'x' + it.count, { fontSize: '8px', color: '#ffe066' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
           zone.on('pointerdown', () => this.openItemConfirm(idx, it));
         }
       }
