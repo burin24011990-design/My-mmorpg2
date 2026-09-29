@@ -3,13 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>My MMORPG - Stage 1</title>
+<title>My MMORPG</title>
 <style>
   html, body { margin:0; height:100%; background:#111; overflow:hidden; touch-action:none; }
   canvas { display:block; }
+  #rotate-hint {
+    display:none; position:fixed; inset:0; z-index:9999;
+    background:#111; color:#fff; align-items:center; justify-content:center;
+    text-align:center; font-size:18px; padding:24px; font-family:sans-serif;
+  }
+  @media (orientation: portrait) {
+    #rotate-hint { display:flex; }
+    canvas { display:none; }
+  }
 </style>
 </head>
 <body>
+<div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 <script src="main.js"></script>
