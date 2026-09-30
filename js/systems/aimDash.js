@@ -156,31 +156,28 @@
     g.lineStyle(3, col, 0.95).strokeCircle(pt.x, pt.y, a.def.range);       // วงที่สกิลจะตก
   };
 
-  // ---------- ปุ่มสกิล: สกิลหมู่ = ลากเล็ง, สกิลอื่น = แตะ/กดค้างถอดเหมือนเดิม ----------
+  // ---------- ปุ่มสกิล ----------
+  // ช่องว่าง = เปิดหน้าต่างสกิล | สกิลหมู่ = กดแล้วลากเล็ง | สกิลอื่น = แตะใช้
+  // ไม่มีการกดค้างถอดสกิลแล้ว: เปลี่ยนสกิลในช่องได้จากหน้าต่างสกิลเท่านั้น
   const _slot = P.makeSlotBtn;
   P.makeSlotBtn = function (x, y, r, idx) {
     const b = _slot.call(this, x, y, r, idx);
     const c = b.c;
     c.off('pointerdown'); c.off('pointerup');
-    let held = null, long = false, mode = '';
+    let mode = '';
     c.on('pointerdown', pointer => {
       if (this.panel) return;
       const sid = this.slots[idx];
       if (!sid) { this.openSkillBook(idx); return; }
       if (GROUND_CFG[sid]) { mode = 'aim'; this.beginAim('slot', idx, b, pointer); return; }
-      mode = 'press'; long = false;
-      held = this.time.delayedCall(500, () => {
-        long = true;
-        this.slots[idx] = null; this.computeCombo(); this.toastMsg('ถอดสกิลช่อง ' + (idx + 1));
-      });
+      mode = 'press';
     });
     c.on('pointerup', () => {
       if (mode !== 'press') return;
-      if (held) held.remove();
-      if (!long && this.slots[idx]) this.useSkill(idx);
       mode = '';
+      if (this.slots[idx]) this.useSkill(idx);
     });
-    c.on('pointerupoutside', () => { if (held) held.remove(); mode = ''; });
+    c.on('pointerupoutside', () => { mode = ''; });
     return b;
   };
 
