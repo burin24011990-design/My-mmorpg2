@@ -15,48 +15,70 @@ Object.assign(Main.prototype, {
     const bg = this.add.grid(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 64, 64, z.bg, 1, z.line, 1).setDepth(-10);
     const gfx = this.add.graphics().setDepth(-9);
     gfx.lineStyle(4, 0x000000, 0.5).strokeRect(0, 0, WORLD_W, WORLD_H);
-    gfx.lineStyle(2, 0x5a7a3a, 0.5).strokeCircle(z.x, z.y, z.r);
-    const title = this.add.text(z.x, z.y - z.r - 16, z.name + '  (Lv.' + z.minLv + '-' + z.maxLv + ')', { fontSize: '13px', color: '#9fd98a', fontStyle: 'bold' }).setOrigin(0.5);
-    this.stageObjs = [bg, gfx, title];
-
-    for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(idx);
+    this.stageObjs = [bg, gfx];
 
     this.player.setPosition(z.x, z.y);
     this.player.setVelocity(0, 0);
     this.cameras.main.centerOn(z.x, z.y);
+
+    for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(idx);
     this.drawMinimapFrame();
+  },
+
+  // สุ่มจุดเกิดทั่วแผนที่ (เว้นระยะจากผู้เล่น ไม่ให้เกิดทับหน้า)
+  randomSpawnPoint() {
+    const M = 100, p = this.player;
+    let x, y, tries = 0;
+    do {
+      x = Phaser.Math.Between(M, WORLD_W - M);
+      y = Phaser.Math.Between(M, WORLD_H - M);
+      tries++;
+    } while (p && Phaser.Math.Distance.Between(x, y, p.x, p.y) < 250 && tries < 20);
+    return { x, y };
   },
 
   spawnEnemyInZone(zi) {
     const z = ZONES[zi];
-    const ang = Math.random() * Math.PI * 2, rad = Math.random() * z.r * 0.8;
-    const x = z.x + Math.cos(ang) * rad, y = z.y + Math.sin(ang) * rad;
-    const lv = Phaser.Math.Between(z.minLv, z.maxLv); // แก้บั๊ก: เดิมใช้ lvMin/lvMax ที่ไม่มีอยู่
-    const e = this.enemies.create(x, y, 'slime');
+    const pt = this.randomSpawnPoint();
+    const lv = Phaser.Math.Between(z.minLv, z.maxLv);
+    const e = this.enemies.create(pt.x, pt.y, 'slime');
     e.level = lv;
     e.hp = 30 + lv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(lv * 1.5);
     e.setCollideWorldBounds(true);
-    e.zoneIdx = zi; e.state = 'idle'; e.wanderX = x; e.wanderY = y; e.nextWander = 0;
-    e.levelText = this.add.text(x, y - 22, 'Lv.' + lv, { fontSize: '10px', color: '#ffe066' }).setOrigin(0.5).setDepth(40);
+    e.zoneIdx = zi; e.state = 'idle';
+    e.homeX = pt.x; e.homeY = pt.y; // จุดประจำของมอน เดินเล่นรอบ ๆ จุดนี้
+    e.wanderX = pt.x; e.wanderY = pt.y; e.nextWander = 0;
+    e.levelText = this.add.text(pt.x, pt.y - 22, 'Lv.' + lv, { fontSize: '10px', color: '#ffe066' }).setOrigin(0.5).setDepth(40);
     e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
     return e;
+  },
+
+  // มอนที่ใกล้ผู้เล่นที่สุด (จำกัดระยะได้)
+  nearestEnemy(maxDist) {
+    let best = null, bestD = maxDist === undefined ? Infinity : maxDist;
+    this.enemies.getChildren().forEach(e => {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d < bestD) { bestD = d; best = e; }
+    });
+    return best;
   },
 
   updateEnemies(time) {
     const p = this.player;
     this.enemies.getChildren().forEach(e => {
-      const z = ZONES[e.zoneIdx];
       const distPlayer = Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y);
-      const distZone = Phaser.Math.Distance.Between(e.x, e.y, z.x, z.y);
+      // มอนที่ไกลผู้เล่นมากและไม่ได้ไล่ตาม ไม่ต้องคำนวณ (ช่วยให้เกมลื่นเมื่อมอนเยอะ)
+      if (e.state === 'idle' && distPlayer > 900) { e.setVelocity(0, 0); return; }
+      const distHome = Phaser.Math.Distance.Between(e.x, e.y, e.homeX, e.homeY);
       if (e.state !== 'return' && distPlayer < 130) e.state = 'chase';
-      if (e.state === 'chase' && distZone > z.r * 1.6) e.state = 'return';
+      if (e.state === 'chase' && distHome > 450) e.state = 'return';
       if (e.state === 'chase' && distPlayer > 320) e.state = 'idle';
-      if (e.state === 'return' && distZone < z.r * 0.5) e.state = 'idle';
+      if (e.state === 'return' && distHome < 60) e.state = 'idle';
 
       if (e.state === 'idle') {
         if (time > e.nextWander) {
-          const ang = Math.random() * Math.PI * 2, rad = Math.random() * z.r * 0.7;
-          e.wanderX = z.x + Math.cos(ang) * rad; e.wanderY = z.y + Math.sin(ang) * rad;
+          const ang = Math.random() * Math.PI * 2, rad = Math.random() * 100;
+          e.wanderX = e.homeX + Math.cos(ang) * rad; e.wanderY = e.homeY + Math.sin(ang) * rad;
           e.nextWander = time + Phaser.Math.Between(2000, 4000);
         }
         this.physics.moveTo(e, e.wanderX, e.wanderY, 28);
@@ -64,7 +86,7 @@ Object.assign(Main.prototype, {
       } else if (e.state === 'chase') {
         this.physics.moveToObject(e, p, 70);
       } else {
-        this.physics.moveTo(e, z.x, z.y, 60);
+        this.physics.moveTo(e, e.homeX, e.homeY, 60);
       }
 
       if (time > this.hitCd && distPlayer < 26) {
@@ -116,12 +138,7 @@ Object.assign(Main.prototype, {
       this.target = this.manualTarget;
     } else {
       this.manualTarget = null;
-      let best = null, bestD = Infinity;
-      this.enemies.getChildren().forEach(e => {
-        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
-        if (d < bestD) { bestD = d; best = e; }
-      });
-      this.target = best;
+      this.target = this.nearestEnemy(TARGET_RANGE);
     }
     if (this.target) {
       this.targetRing.setVisible(true).setPosition(this.target.x, this.target.y);
