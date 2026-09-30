@@ -8,7 +8,7 @@ app.get('/', (req, res) => res.send('MMORPG server OK'));
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } }); // ภายหลังควรจำกัดเฉพาะเว็บของเรา
 
-const WORLD_W = 1600, WORLD_H = 1000;
+const WORLD_W = 3600, WORLD_H = 2250;
 const players = {};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const SKILLS = new Set([
@@ -22,7 +22,7 @@ const SKILLS = new Set([
 io.on('connection', socket => {
   socket.on('join', name => {
     name = String(name || '').trim().slice(0, 12) || 'Player';
-    players[socket.id] = { id: socket.id, name, x: 400, y: 350, stage: 0 };
+    players[socket.id] = { id: socket.id, name, x: 1800, y: 1125, stage: 0 };
     socket.emit('init', { id: socket.id, players });
     socket.broadcast.emit('joined', players[socket.id]);
   });
