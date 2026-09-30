@@ -57,9 +57,11 @@
     return { icon: texUrl(s, iconKeyForItem(it)), plus: it.star || 0, rarity: rarityOf(it.star || 0) };
   }
 
-  function skillRow(s, id, def) {
+  // id = ค่าที่ส่งไปกับปุ่ม (เลขสลอต / 'off_<sid>' / 'basic' / 'ulti')
+  // sid = id สกิลจริงใน SKILL_DEFS (ใช้ในแพตช์เลเวลสกิล)
+  function skillRow(s, id, def, sid) {
     return {
-      id: id, name: def.name, lv: '', mp: def.mp || 0,
+      id: id, sid: sid, name: def.name, lv: '', mp: def.mp || 0,
       info: 'ดาเมจ ' + def.dmg + ' • คูลดาวน์ ' + (def.cd / 1000).toFixed(1) + 'วิ',
       icon: texUrl(s, skillIconKey(def.type), classTint(def.class))
     };
@@ -90,7 +92,7 @@
     ids.sort((a, b) => (equipped.indexOf(b) >= 0) - (equipped.indexOf(a) >= 0));
     ids.forEach(id => {
       const idx = equipped.indexOf(id);
-      const row = skillRow(s, String(idx), SKILL_DEFS[id]);
+      const row = skillRow(s, idx >= 0 ? String(idx) : 'off_' + id, SKILL_DEFS[id], id);
       if (idx < 0) row.off = true;
       skills.push(row);
     });
@@ -132,6 +134,7 @@
     const id = e.detail.id;
     if (id === 'basic') s.useBasicAttack();
     else if (id === 'ulti') s.useUlti();
+    else if (String(id).indexOf('off_') === 0) return;
     else s.useSkill(Number(id));
   });
 })();
