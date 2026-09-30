@@ -18,7 +18,16 @@
   }
 </style>
 </head>
-<body>
+<body> <script>
+window.addEventListener('error', function (e) {
+  var t = e.target && (e.target.src || e.target.href);
+  var msg = t ? 'โหลดไม่ได้: ' + t.split('/').slice(-3).join('/') : 'Error: ' + e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + ')';
+  var d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#400;color:#fff;font:14px monospace;padding:6px;white-space:pre-wrap';
+  d.textContent = msg;
+  document.body.appendChild(d);
+}, true);
+</script>
 <div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
 
 <!-- ไลบรารี -->
