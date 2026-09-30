@@ -14,6 +14,7 @@
     mage:   { cast: 360 },
     archer: { cast: 380 },
   };
+  window.GROUND_CFG = GROUND_CFG; window.GROUND_ULTI = GROUND_ULTI;   // ให้ไฟล์สกิลพระลงทะเบียนสกิลลากเล็งได้
   const AIM_DRAG_MIN = 14;    // ลากน้อยกว่านี้ถือว่าแตะ = ตกที่มอนที่ล็อก
   const AIM_DRAG_MAX = 110;   // ลากไกลเท่านี้ = ระยะสูงสุด
   const CANCEL_DX = -110;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี
