@@ -67,11 +67,21 @@
       if (it) defSum += (computeItemStats(it).def || 0);
     });
 
-    // สกิลทั่วไป: โจมตีปกติ + สกิลที่ใส่ช่อง
+  // สกิลทั่วไป: โจมตีปกติ + สกิลทั้งหมด (ที่ใส่อยู่ขึ้นก่อน)
     const skills = [];
     if (BASIC_ATTACKS[cls]) skills.push(skillRow(s, 'basic', BASIC_ATTACKS[cls]));
-    (s.slots || []).forEach((sid, i) => {
-      if (sid && SKILL_DEFS[sid]) skills.push(skillRow(s, String(i), SKILL_DEFS[sid]));
+    const equipped = s.slots || [];
+    let ids = Object.keys(SKILL_DEFS);
+    const own = s.ownedSkills || s.learnedSkills || s.unlockedSkills;
+    if (Array.isArray(own)) ids = own.filter(id => SKILL_DEFS[id]);
+    else if (own && typeof own === 'object') ids = Object.keys(own).filter(id => SKILL_DEFS[id] && own[id]);
+    equipped.forEach(sid => { if (sid && SKILL_DEFS[sid] && ids.indexOf(sid) < 0) ids.push(sid); });
+    ids.sort((a, b) => (equipped.indexOf(b) >= 0) - (equipped.indexOf(a) >= 0));
+    ids.forEach(id => {
+      const idx = equipped.indexOf(id);
+      const row = skillRow(s, String(idx), SKILL_DEFS[id]);
+      if (idx < 0) row.off = true;
+      skills.push(row);
     });
 
     // สกิลพิเศษ: อัลติ (ต้องมีสกิลคลาสเดียวกัน 3 ช่อง)
