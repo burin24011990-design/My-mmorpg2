@@ -5,25 +5,34 @@
 (function () {
   var scene = null;
 
-  // จับ scene ของเกมตอนเริ่มระบบสกิล (เรียกตอนโหลดเซฟ/เริ่มด่านแรก)
+  // จับ scene ของเกมตอนเริ่มระบบสกิล
   var _init = Main.prototype.initSkillData;
   Main.prototype.initSkillData = function () {
     scene = this;
     return _init.apply(this, arguments);
   };
 
+  // สำรอง: ถ้า initSkillData ยังไม่ถูกเรียก ใช้ scene จาก pixelBridge
+  function getScene() { return scene || window.__mainScene || null; }
+
   function augmentList(list) {
+    var sc = getScene();
     return (list || []).map(function (s) {
-      var def = SKILL_DEFS[s.id];
-      if (!def || !scene || !scene.learnedSkills || !scene.learnedSkills.has(s.id)) return s;
-      var lv = (scene.skillLv && scene.skillLv[s.id]) || 1;
+      var sid = s.sid;
+      var def = sid && SKILL_DEFS[sid];
+      if (!def || !sc) return s;
+      if (!sc.learnedSkills) sc.learnedSkills = new Set();
+      if (!sc.skillLv) sc.skillLv = {};
+      sc.learnedSkills.add(sid);
+      if (!sc.skillLv[sid]) sc.skillLv[sid] = 1;
+      var lv = sc.skillLv[sid];
       var maxed = lv >= SKILL_MAX_LV;
       var dmg = Math.round(def.dmg * skillLvMul(lv));
       return Object.assign({}, s, {
         lv: lv,
         maxLv: SKILL_MAX_LV,
         maxed: maxed,
-        books: scene.countSkillBooks(s.id),
+        books: sc.countSkillBooks(sid),
         need: maxed ? 0 : booksNeeded(lv),
         info: 'ดาเมจ ' + dmg + ' • คูลดาวน์ ' + (def.cd / 1000).toFixed(1) + 's'
       });
@@ -46,11 +55,14 @@
 
   // กดอัปเลเวลในหน้าต่างสกิล
   window.addEventListener('pp:upgradeSkill', function (e) {
-    if (!scene) return;
-    var sid = e.detail && e.detail.id;
-    var idx = scene.bag.findIndex(function (it) { return it && it.kind === 'skillbook' && it.sid === sid; });
-    if (idx < 0) { scene.toastMsg('ไม่มีหนังสือสกิลนี้ในกระเป๋า'); return; }
-    scene.useSkillBook(idx);
+    var sc = getScene();
+    if (!sc) return;
+    var rid = String((e.detail && e.detail.id) || '');
+    var sid = rid.indexOf('off_') === 0 ? rid.slice(4) : (sc.slots && sc.slots[Number(rid)]);
+    if (!sid) return;
+    var idx = sc.bag.findIndex(function (it) { return it && it.kind === 'skillbook' && it.sid === sid; });
+    if (idx < 0) { sc.toastMsg('ไม่มีหนังสือสกิลนี้ในกระเป๋า'); return; }
+    sc.useSkillBook(idx);
     if (window.PixelPanels) PixelPanels.refresh();
   });
 })();
