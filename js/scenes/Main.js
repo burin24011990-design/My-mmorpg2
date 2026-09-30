@@ -4,13 +4,7 @@ class Main extends Phaser.Scene {
     generateTextures(this);
 
     this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
-    this.add.grid(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 64, 64, 0x2b3a2b, 1, 0x1f2b1f, 1);
     this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
-    const zoneGfx = this.add.graphics();
-    ZONES.forEach(z => {
-      zoneGfx.lineStyle(2, 0x5a7a3a, 0.5).strokeCircle(z.x, z.y, z.r);
-      this.add.text(z.x, z.y - z.r - 16, z.name + '  (Lv.' + z.minLv + '-' + z.maxLv + ')', { fontSize: '13px', color: '#9fd98a', fontStyle: 'bold' }).setOrigin(0.5);
-    });
 
     this.initPlayerState();
     this.bag = new Array(BAG_SIZE).fill(null);
@@ -22,7 +16,6 @@ class Main extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
     this.enemies = this.physics.add.group();
-    ZONES.forEach((z, zi) => { for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(zi); });
     this.projectiles = this.physics.add.group();
     this.loot = this.physics.add.group();
     this.physics.add.overlap(this.projectiles, this.enemies, (fb, e) => {
@@ -34,6 +27,7 @@ class Main extends Phaser.Scene {
     this.setupInput();
     this.setupHud();
     this.setupButtons();
+    this.loadStage(0); // เริ่มที่ด่าน 1
     this.initNetwork();
   }
 
