@@ -20,5 +20,10 @@ function generateTextures(scene) {
   g.clear().lineStyle(3, 0xffffff, 1).strokeCircle(12, 12, 9).fillStyle(0xffffff).fillCircle(12, 12, 3).generateTexture('ic_aoe', 24, 24);
   g.clear().fillStyle(0xffffff).fillCircle(12, 12, 7).generateTexture('ic_proj', 24, 24);
   g.clear().fillStyle(0xffffff).fillTriangle(4, 4, 4, 20, 21, 12).generateTexture('ic_dash', 24, 24);
+  g.clear().fillStyle(0xe0883a).fillCircle(14, 14, 14).fillStyle(0x5a2a0a).fillCircle(14, 14, 5).generateTexture('shooter', 28, 28);
+  g.clear().fillStyle(0xff5050).fillCircle(6, 6, 6).generateTexture('eshot', 12, 12);
+  g.clear().fillStyle(0x9a3ae0).fillCircle(28, 30, 26).lineStyle(4, 0xffd23d, 1).strokeCircle(28, 30, 26)
+    .fillStyle(0xffd23d).fillTriangle(12, 12, 18, 2, 24, 12).fillTriangle(24, 12, 28, 0, 32, 12).fillTriangle(32, 12, 38, 2, 44, 12)
+    .fillStyle(0x2a0a3a).fillCircle(20, 30, 4).fillCircle(36, 30, 4).generateTexture('boss', 56, 58);
   g.destroy();
 }
