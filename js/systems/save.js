@@ -12,6 +12,7 @@ const SAVE_KEY = 'my_mmorpg_save_v1';
       this._saveLoaded = true;
       const savedStage = this.loadGame();
       if (savedStage !== null) idx = savedStage;
+      if (this.initSkillData) this.initSkillData();   // เตรียมเลเวลสกิล (เซฟเก่าที่ไม่มีข้อมูลสกิลก็ใช้ได้)
       this.startAutoSave();
     }
     return _loadStage.call(this, idx);
@@ -26,9 +27,10 @@ Object.assign(Main.prototype, {
         v: 1,
         savedAt: Date.now(),
         stats: this.stats,
-        bag: this.bag,
+        bag: this.bag,                      // หนังสือสกิลเก็บอยู่ในกระเป๋าเป็นไอเทม
         equipment: this.equipment,
         learned: [...this.learnedSkills],
+        skillLv: this.skillLv || {},
         slots: this.slots,
         kills: this.kills,
         stageIdx: this.stageIdx || 0,
@@ -58,6 +60,7 @@ Object.assign(Main.prototype, {
     try {
       const validItem = it => it && typeof it === 'object' && (
         (it.kind === 'box' && Number.isFinite(it.level) && Number.isFinite(it.count)) ||
+        (it.kind === 'skillbook' && SKILL_DEFS[it.sid] && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'equip' && STAT_GROWTH[it.baseSlot] && Number.isFinite(it.level) && Number.isFinite(it.star) &&
           (it.baseSlot !== 'weapon' || CLASSES[it.class]))
       );
@@ -70,7 +73,12 @@ Object.assign(Main.prototype, {
       this.stats.expNext = levelExpNeeded(this.stats.level);
 
       const bag = new Array(BAG_SIZE).fill(null);
-      (Array.isArray(d.bag) ? d.bag : []).forEach((it, i) => { if (i < BAG_SIZE && validItem(it)) bag[i] = it; });
+      (Array.isArray(d.bag) ? d.bag : []).forEach((it, i) => {
+        if (i < BAG_SIZE && validItem(it)) {
+          if (it.kind === 'skillbook') it = { kind: 'skillbook', sid: it.sid, count: Math.min(MAX_SKILLBOOK_STACK, Math.floor(it.count)) };
+          bag[i] = it;
+        }
+      });
       this.bag = bag;
 
       Object.keys(this.equipment).forEach(k => {
@@ -80,6 +88,22 @@ Object.assign(Main.prototype, {
 
       this.learnedSkills = new Set(['sw_slash']);
       (Array.isArray(d.learned) ? d.learned : []).forEach(sid => { if (SKILL_DEFS[sid]) this.learnedSkills.add(sid); });
+
+      // เลเวลสกิล (เซฟเก่าที่ไม่มีข้อมูล = Lv.1)
+      this.skillLv = {};
+      this.learnedSkills.forEach(sid => {
+        const lv = d.skillLv ? Number(d.skillLv[sid]) : NaN;
+        this.skillLv[sid] = Number.isFinite(lv) ? Phaser.Math.Clamp(Math.floor(lv), 1, SKILL_MAX_LV) : 1;
+      });
+
+      // แปลงหนังสือสกิลแบบเก่า (skillBooks ที่เก็บเป็นตัวเลข) ให้เป็นไอเทมในกระเป๋า
+      if (d.skillBooks && typeof d.skillBooks === 'object') {
+        Object.keys(d.skillBooks).forEach(sid => {
+          const n = Math.floor(Number(d.skillBooks[sid]));
+          if (SKILL_DEFS[sid] && Number.isFinite(n) && n > 0) this.addSkillBookToBag(sid, n);
+        });
+      }
+
       this.slots = [0, 1, 2, 3].map(i => {
         const sid = Array.isArray(d.slots) ? d.slots[i] : null;
         return sid && this.learnedSkills.has(sid) ? sid : null;
