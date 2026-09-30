@@ -1,23 +1,21 @@
 /* Pixel RPG panels: สถานะ / อุปกรณ์ / สกิล
- * ใช้งาน:
- *   PixelPanels.setData(() => ({ ...ข้อมูลจริงของเกม... }));   // ดูรูปแบบข้อมูลด้านล่าง
+ *   PixelPanels.setData(() => ({ ...ข้อมูลจริงของเกม... }));
  *   PixelPanels.toggle('status' | 'equip' | 'skills');
- * กดปุ่ม "ใช้งาน" จะยิง event:  window 'pp:useSkill'  (detail = {id})
- * กดช่องอุปกรณ์ จะยิง event:    window 'pp:slot'      (detail = {slot})
+ *   PixelPanels.closeAll();
+ * events: window 'pp:useSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
  */
 (function () {
   var layer = document.getElementById('ui-layer') || document.body;
 
-  // ---------- ข้อมูลตัวอย่าง (แทนที่ด้วยข้อมูลจริงผ่าน setData) ----------
   var demo = function () {
     return {
       name: 'Kurokitsune', level: 48, title: 'Nine-Tailed Shadow', guild: 'DarkMoon',
-      portrait: '', character: '',           // url รูป (ถ้าไม่มีจะใช้ emoji)
+      portrait: '', character: '',
       hp: [4820, 4820], mp: [1360, 1360], exp: 32.7,
       stats: { 'พลังโจมตี': 1245, 'พลังป้องกัน': 742, 'พลังเวท': 683,
                'ความเร็วโจมตี': 1.32, 'คริติคอล': '18.5%', 'หลบหลีก': '7.2%' },
       statPoints: 0,
-      equipment: {                            // slot: {icon, plus, rarity: rare|epic|legend}
+      equipment: {
         weapon:{icon:'🗡️',plus:9,rarity:'epic'}, armor:{icon:'🥋',plus:9,rarity:'epic'},
         legs:{icon:'👖',plus:9,rarity:'epic'},  boots:{icon:'👢',plus:9,rarity:'epic'},
         helm:{icon:'🐺',plus:9,rarity:'epic'},  gloves:{icon:'🧤',plus:9,rarity:'epic'},
@@ -30,43 +28,44 @@
         { id:'s3', name:'กระชั้นหางเก้าชั้น', lv:3, mp:150, icon:'🦊' },
         { id:'s4', name:'ความมืดครอบงำ', lv:2, mp:200, icon:'🌑' }
       ],
+      specialSkills: [],
       passives: [ { name:'วิญญาณจิ้งจอก', desc:'เพิ่มพลังโจมตีและอัตราคริติคอล', icon:'🔥' } ]
     };
   };
   var getter = demo;
 
-  // ---------- helpers ----------
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function fmt(n){ return typeof n === 'number' ? n.toLocaleString('en-US') : esc(n); }
   function icon(v){ return /^(https?:|\/|\.|data:)/.test(v || '') ? '<img src="' + esc(v) + '">' : esc(v || ''); }
-  function pct(a){ return a[1] ? Math.max(0, Math.min(100, a[0] / a[1] * 100)) : 0; }
-  function bar(cls, a, label){
-    return '<div class="pp-bar ' + cls + '"><i style="width:' + pct(a) + '%"></i><b>' + label + ' ' + fmt(a[0]) + ' / ' + fmt(a[1]) + '</b></div>';
-  }
   function slot(key, it){
     var cls = 'pp-slot' + (it ? (it.rarity ? ' r-' + it.rarity : '') : ' empty');
     return '<div class="' + cls + '" data-slot="' + key + '">' + (it ? icon(it.icon) + (it.plus ? '<em>+' + it.plus + '</em>' : '') : '＋') + '</div>';
   }
 
-  // ---------- view ส่วนเนื้อหา ----------
-  var state = { statusTab: 'basic', equipTab: 'equip' };
+  var state = { statusTab: 'basic', skillTab: 'general' };
+
+  function skillRow(s) {
+    return '<div class="pp-skill"><div class="pp-slot">' + icon(s.icon) + '</div>' +
+      '<div><h4>' + esc(s.name) + '</h4><small>Lv. ' + s.lv + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
+      '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button></div>';
+  }
 
   var views = {
     status: function (d) {
       var menu = [['basic','ข้อมูลพื้นฐาน'],['stat','สเตตัส'],['equip','อุปกรณ์'],['skill','สกิล']];
-      var rows = '<div class="pp-row"><span>HP</span><b>' + fmt(d.hp[0]) + ' / ' + fmt(d.hp[1]) + '</b></div>' +
-                 '<div class="pp-row"><span>MP</span><b>' + fmt(d.mp[0]) + ' / ' + fmt(d.mp[1]) + '</b></div>';
-      Object.keys(d.stats).forEach(function (k) { rows += '<div class="pp-row"><span>' + esc(k) + '</span><b>' + fmt(d.stats[k]) + '</b></div>'; });
-      return '<div class="pp-status"><div>' +
+      var rows = '<div class="pp-row"><span>❤️ HP</span><b>' + fmt(d.hp[0]) + ' / ' + fmt(d.hp[1]) + '</b></div>' +
+                 '<div class="pp-row"><span>💧 MP</span><b>' + fmt(d.mp[0]) + ' / ' + fmt(d.mp[1]) + '</b></div>';
+      Object.keys(d.stats || {}).forEach(function (k) { rows += '<div class="pp-row"><span>' + esc(k) + '</span><b>' + fmt(d.stats[k]) + '</b></div>'; });
+      return '<div class="pp-status"><div class="pp-left">' +
         '<div class="pp-portrait">' + (d.portrait ? icon(d.portrait) : '🦊') + '</div>' +
         '<div class="pp-menu">' + menu.map(function (m) { return '<button data-go="' + m[0] + '" class="' + (state.statusTab === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '</div>' +
         '</div><div>' +
         '<div class="pp-name">' + esc(d.name) + '</div><div>Lv. ' + d.level + '</div>' +
         '<div class="pp-title">' + esc(d.title) + '</div>' +
-        '<div style="color:var(--pp-mute);font-size:.9em">กิลด์ : ' + esc(d.guild) + '</div>' +
-        '<div class="pp-bar xp"><i style="width:' + d.exp + '%"></i><b>EXP ' + d.exp + '%</b></div>' +
+        '<div class="pp-sub2">กิลด์ : ' + esc(d.guild) + '</div>' +
+        '<div class="pp-bar xp"><i style="width:' + Math.max(0, Math.min(100, d.exp)) + '%"></i><b>EXP ' + d.exp + '%</b></div>' +
         '<div class="pp-stats">' + rows + '</div>' +
-        '<div class="pp-pts"><span>แต้มสกิลที่เหลือ : ' + d.statPoints + '</span><button class="pp-btn" data-act="reset">รีเซ็ต</button></div>' +
+        '<div class="pp-pts"><span>แต้มสกิลที่เหลือ : ' + (d.statPoints || 0) + '</span><button class="pp-btn" data-act="reset">รีเซ็ต</button></div>' +
         '</div></div>';
     },
 
@@ -82,13 +81,13 @@
     },
 
     skills: function (d) {
-      var out = '<div class="pp-tabs"><button class="on">สกิลทั่วไป</button><button data-tab="special">สกิลพิเศษ</button></div>';
-      (d.skills || []).forEach(function (s) {
-        out += '<div class="pp-skill"><div class="pp-slot r-rare">' + icon(s.icon) + '</div>' +
-          '<div><h4>' + esc(s.name) + '</h4><small>Lv. ' + s.lv + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
-          '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button></div>';
-      });
-      if ((d.passives || []).length) {
+      var g = state.skillTab === 'general';
+      var out = '<div class="pp-tabs"><button data-stab="general" class="' + (g ? 'on' : '') + '">สกิลทั่วไป</button>' +
+                '<button data-stab="special" class="' + (g ? '' : 'on') + '">สกิลพิเศษ</button></div>';
+      var list = (g ? d.skills : d.specialSkills) || [];
+      if (!list.length) out += '<div class="pp-empty">ยังไม่มีสกิล</div>';
+      list.forEach(function (s) { out += skillRow(s); });
+      if (g && (d.passives || []).length) {
         out += '<div class="pp-sub">สกิลติดตัว</div>';
         d.passives.forEach(function (s) {
           out += '<div class="pp-skill pp-passive"><div class="pp-slot r-epic">' + icon(s.icon) + '</div>' +
@@ -106,7 +105,6 @@
     skills: { title: 'สกิล',   ico: '✨' }
   };
 
-  // ---------- window management ----------
   var wins = {};
   function ensure(name) {
     if (wins[name]) return wins[name];
@@ -118,17 +116,20 @@
     w.querySelector('.pp-x').addEventListener('click', function () { api.close(name); });
 
     w.addEventListener('click', function (ev) {
-      var t = ev.target.closest('[data-skill],[data-slot],[data-go],[data-tab]');
+      var t = ev.target.closest('[data-skill],[data-slot],[data-go],[data-tab],[data-stab],[data-act]');
       if (!t) return;
       if (t.dataset.skill) window.dispatchEvent(new CustomEvent('pp:useSkill', { detail: { id: t.dataset.skill } }));
       else if (t.dataset.slot) window.dispatchEvent(new CustomEvent('pp:slot', { detail: { slot: t.dataset.slot } }));
-      else if (t.dataset.go) { var go = t.dataset.go; state.statusTab = go;
+      else if (t.dataset.act === 'reset') window.dispatchEvent(new CustomEvent('pp:reset'));
+      else if (t.dataset.stab) { state.skillTab = t.dataset.stab; render('skills'); }
+      else if (t.dataset.go) {
+        var go = t.dataset.go; state.statusTab = go;
         if (go === 'equip') { api.close('status'); api.open('equip'); }
         else if (go === 'skill') { api.close('status'); api.open('skills'); }
-        else render('status'); }
+        else render('status');
+      }
       else if (t.dataset.tab === 'stat') { api.close('equip'); api.open('status'); }
     });
-    // กัน touch ทะลุไปโดน canvas ของ Phaser
     ['pointerdown','touchstart','touchmove','mousedown'].forEach(function (evn) {
       w.addEventListener(evn, function (e) { e.stopPropagation(); }, { passive: true });
     });
@@ -136,14 +137,23 @@
   }
 
   function render(name) {
-    var w = ensure(name);
-    w.querySelector('.pp-body').innerHTML = views[name](getter());
+    var w = ensure(name), body = w.querySelector('.pp-body'), top = body.scrollTop;
+    body.innerHTML = views[name](getter());
+    body.scrollTop = top;
   }
+
+  // รีเฟรชอัตโนมัติทุก 1 วิ ขณะเปิด (HP/MP/EXP อัปเดตสด)
+  setInterval(function () { api.refresh(); }, 1000);
 
   var api = {
     setData: function (fn) { getter = typeof fn === 'function' ? fn : function () { return fn; }; },
-    open: function (name) { render(name); wins[name].classList.add('open'); },
+    open: function (name) {
+      api.closeAll();                       // เปิดทีละหน้าต่าง ไม่ซ้อนกัน
+      render(name); wins[name].classList.add('open');
+    },
     close: function (name) { if (wins[name]) wins[name].classList.remove('open'); },
+    closeAll: function () { Object.keys(wins).forEach(api.close); },
+    isOpen: function () { return Object.keys(wins).some(function (n) { return wins[n].classList.contains('open'); }); },
     toggle: function (name) { (wins[name] && wins[name].classList.contains('open')) ? api.close(name) : api.open(name); },
     refresh: function () { Object.keys(wins).forEach(function (n) { if (wins[n].classList.contains('open')) render(n); }); }
   };
