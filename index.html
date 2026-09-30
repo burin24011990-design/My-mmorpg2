@@ -20,8 +20,28 @@
 </head>
 <body>
 <div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
+
+<!-- ไลบรารี -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
-<script src="main.js"></script>
+
+<!-- ลำดับสำคัญ: config -> data -> scene -> systems -> main -->
+<script src="js/config.js"></script>
+<script src="js/data/zones.js"></script>
+<script src="js/data/skills.js"></script>
+<script src="js/data/items.js"></script>
+<script src="js/data/textures.js"></script>
+<script src="js/scenes/Main.js"></script>
+<script src="js/systems/player.js"></script>
+<script src="js/systems/monsters.js"></script>
+<script src="js/systems/inventory.js"></script>
+<script src="js/systems/equipment.js"></script>
+<script src="js/systems/skills.js"></script>
+<script src="js/systems/input.js"></script>
+<script src="js/systems/ui.js"></script>
+<script src="js/systems/panels.js"></script>
+<script src="js/systems/inventoryPanel.js"></script>
+<script src="js/systems/network.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>
