@@ -1,6 +1,7 @@
 // ===== หน้าต่างกระเป๋า / อุปกรณ์ (HTML ซ้อนบนแคนวาส) =====
 // แทนที่ openInventory เดิม แต่ใช้ข้อมูลและฟังก์ชันเดิมทั้งหมด
 // (this.bag, this.equipment, equipItem, unequipSlot, mergeSingleItem, mergeAllInBag ...)
+// รองรับไอเทม "หนังสือสกิล" (kind: 'skillbook') ซ้อนได้ กดใช้เพื่อเรียนรู้/อัปสกิล
 // ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
@@ -13,6 +14,14 @@
   let scene = null;
 
   const hex = (c) => '#' + c.toString(16).padStart(6, '0');
+
+  // ---- ตัวช่วยรองรับหนังสือสกิล (ไม่ต้องแก้ items.js) ----
+  const isBook = (it) => !!it && it.kind === 'skillbook';
+  const itemIcon = (it) => isBook(it) ? skillIconKey(SKILL_DEFS[it.sid].type) : iconKeyForItem(it);
+  const itemColor = (it) => isBook(it)
+    ? ((CLASSES[SKILL_DEFS[it.sid].class] || {}).color || 0xffffff)
+    : rarityColor(it);
+  const itemName = (it) => isBook(it) ? '📕 ' + SKILL_DEFS[it.sid].name : itemLabel(it);
 
   // แปลงเท็กซ์เจอร์ของ Phaser เป็นรูปที่ HTML ใช้ได้
   function iconSrc(key) {
@@ -67,9 +76,10 @@
   function cellHTML(it, act, id, selected) {
     if (!it) return '<button class="cell"></button>';
     const lv = it.kind === 'equip' ? 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
-    const cnt = it.kind === 'box' && it.count > 1 ? 'x' + it.count : '';
-    return '<button class="cell has' + (selected ? ' sel' : '') + '" style="--c:' + hex(rarityColor(it)) + '" data-act="' + act + '" data-id="' + id + '">'
-      + '<img src="' + iconSrc(iconKeyForItem(it)) + '" alt="">'
+    const stackable = it.kind === 'box' || isBook(it);
+    const cnt = stackable && it.count > 1 ? 'x' + it.count : '';
+    return '<button class="cell has' + (selected ? ' sel' : '') + '" style="--c:' + hex(itemColor(it)) + '" data-act="' + act + '" data-id="' + id + '">'
+      + '<img src="' + iconSrc(itemIcon(it)) + '" alt="">'
       + (lv ? '<span class="lv">' + lv + '</span>' : '')
       + (cnt ? '<span class="cnt">' + cnt + '</span>' : '')
       + '</button>';
@@ -102,13 +112,47 @@
       const sel = state.sel && state.sel.src === 'equip' && state.sel.id === key;
       const lv = it ? 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
       h += '<button class="cell' + (it ? ' has' : '') + (sel ? ' sel' : '') + '"'
-        + (it ? ' style="--c:' + hex(rarityColor(it)) + '"' : '') + ' data-act="sel-equip" data-id="' + key + '">'
+        + (it ? ' style="--c:' + hex(itemColor(it)) + '"' : '') + ' data-act="sel-equip" data-id="' + key + '">'
         + '<span class="slot-name">' + name + '</span>'
-        + '<img src="' + iconSrc(it ? iconKeyForItem(it) : emptyIcons[key]) + '" alt="">'
+        + '<img src="' + iconSrc(it ? itemIcon(it) : emptyIcons[key]) + '" alt="">'
         + (lv ? '<span class="lv">' + lv + '</span>' : '')
         + '</button>';
     });
     return h + '</div>';
+  }
+
+  // รายละเอียด + ปุ่มใช้ของหนังสือสกิล
+  function bookDetailHTML(it) {
+    const s = scene;
+    const d = SKILL_DEFS[it.sid];
+    const learned = s.learnedSkills.has(it.sid);
+    const lv = (s.skillLv && s.skillLv[it.sid]) || 1;
+    const have = s.countSkillBooks(it.sid);
+    const maxed = learned && lv >= SKILL_MAX_LV;
+    const need = !learned ? 1 : (maxed ? 0 : booksNeeded(lv));
+    const can = !maxed && have >= need;
+
+    let action;
+    if (!learned) action = 'เรียนรู้สกิล (ใช้ 1 เล่ม)';
+    else if (maxed) action = 'เลเวลสูงสุดแล้ว';
+    else action = 'อัปเป็น Lv.' + (lv + 1) + ' (ใช้ ' + need + ' เล่ม)';
+
+    const color = hex(itemColor(it));
+    let h = '<div class="d-top" style="--c:' + color + '">'
+      + '<div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
+      + '<div><div class="d-name">' + itemName(it) + '</div>'
+      + '<div class="d-type">หนังสือสกิล (' + (WEAPON_CLASS_LABEL[d.class] || d.class) + ')</div></div></div>';
+
+    h += '<div class="d-note">กดใช้เพื่อเรียนรู้สกิลนี้ หรืออัปเลเวลถ้าเรียนแล้ว</div>'
+      + '<div class="d-row"><span>สถานะ</span><span>' + (learned ? 'เรียนแล้ว Lv.' + lv + ' / ' + SKILL_MAX_LV : 'ยังไม่เรียน') + '</span></div>'
+      + '<div class="d-row"><span>การใช้ครั้งนี้</span><span>' + action + '</span></div>'
+      + '<div class="d-row"><span>มีในกระเป๋า (ทุกกอง)</span><span>' + have + (maxed ? '' : ' / ' + need) + ' เล่ม</span></div>'
+      + '<div class="d-row"><span>ดาเมจสกิล</span><span>x' + skillLvMul(learned ? lv : 1).toFixed(1) + '</span></div>';
+
+    h += '<div class="d-actions">'
+      + '<button class="btn ok" data-act="use-book"' + (can ? '' : ' disabled') + '>'
+      + (maxed ? 'MAX' : (learned ? 'อัปสกิล' : 'เรียนรู้')) + '</button></div>';
+    return h;
   }
 
   function detailHTML() {
@@ -118,13 +162,15 @@
     const it = sel.src === 'bag' ? s.bag[sel.id] : s.equipment[sel.id];
     if (!it) return '<div class="d-empty">ช่องนี้ยังว่างอยู่</div>';
 
-    const color = hex(rarityColor(it));
+    if (isBook(it)) return bookDetailHTML(it);
+
+    const color = hex(itemColor(it));
     const typeLabel = it.kind === 'box' ? 'กล่องอุปกรณ์'
       : (it.baseSlot === 'weapon' ? 'อาวุธ (' + CLASSES[it.class].label + ')' : SLOT_LABELS[it.baseSlot]);
 
     let h = '<div class="d-top" style="--c:' + color + '">'
-      + '<div class="d-icon"><img src="' + iconSrc(iconKeyForItem(it)) + '" alt=""></div>'
-      + '<div><div class="d-name">' + itemLabel(it) + '</div><div class="d-type">' + typeLabel + '</div></div></div>';
+      + '<div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
+      + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">' + typeLabel + '</div></div></div>';
 
     if (it.kind === 'equip') {
       const st = computeItemStats(it);
@@ -212,6 +258,10 @@
         s.addEquipItemToBag(randomEquipItem(item.level));
       }
       state.sel = null;
+    }
+    else if (act === 'use-book' && sel && sel.src === 'bag') {
+      s.useSkillBook(sel.id);
+      if (!s.bag[sel.id]) state.sel = null;   // หนังสือหมดกอง -> ยกเลิกการเลือก
     }
     else if (act === 'unequip' && sel && sel.src === 'equip') {
       s.unequipSlot(sel.id);
