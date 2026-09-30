@@ -1,9 +1,20 @@
 (function () {
   const P = Main.prototype;
-  const scene = () => Phaser.GAMES[0] && Phaser.GAMES[0].scene.scenes[0];
-  const num = (...v) => { for (const x of v) if (typeof x === 'number' && !isNaN(x)) return x; return 0; };
 
-  // ชื่อช่องในหน้าต่างใหม่ -> ชื่อช่องในเกมคุณ
+  // จับ scene ตอนเกมสร้างฉาก
+  const _create = P.create;
+  P.create = function () {
+    window.__mainScene = this;
+    return _create.apply(this, arguments);
+  };
+  const scene = () => window.__mainScene;
+
+  const num = (...v) => {
+    for (const x of v) if (typeof x === 'number' && !isNaN(x)) return x;
+    return 0;
+  };
+
+  // ช่องในหน้าต่างใหม่ -> ช่องในเกมคุณ
   const SLOT_MAP = {
     weapon: 'weapon', armor: 'armor', helm: 'helmet', gloves: 'gloves',
     boots: 'shoes', amulet: 'necklace', ring: 'ring1', relic: 'ring2'
@@ -20,14 +31,19 @@
 
   PixelPanels.setData(() => {
     const s = scene();
-    if (!s || !s.stats) return { name:'-', level:1, title:'', guild:'-', hp:[0,0], mp:[0,0], exp:0, stats:{}, equipment:{}, skills:[], passives:[] };
+    if (!s || !s.stats) {
+      return { name: '-', level: 1, title: '', guild: '-', hp: [0, 0], mp: [0, 0],
+               exp: 0, stats: {}, equipment: {}, skills: [], passives: [] };
+    }
     const st = s.stats;
     const maxHp = s.maxHp ? s.maxHp() : num(st.maxHp);
     const maxMp = s.maxMp ? s.maxMp() : num(st.maxMp);
     const expNeed = num(st.expNext, st.maxExp, st.next);
 
     const equipment = {};
-    Object.keys(SLOT_MAP).forEach(k => { equipment[k] = mapItem(s.equipment && s.equipment[SLOT_MAP[k]]); });
+    Object.keys(SLOT_MAP).forEach(k => {
+      equipment[k] = mapItem(s.equipment && s.equipment[SLOT_MAP[k]]);
+    });
 
     return {
       name: st.name || s.playerName || 'Player',
@@ -40,7 +56,8 @@
       stats: { 'พลังโจมตี': num(s.atk, st.atk), 'พลังป้องกัน': num(st.def) },
       statPoints: num(st.points, st.statPoints),
       equipment: equipment,
-      skills: [], passives: []
+      skills: [],
+      passives: []
     };
   });
 
