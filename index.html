@@ -36,7 +36,9 @@ window.addEventListener('error', function (e) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 
 <!-- ลำดับสำคัญ: config -> data -> scene -> systems -> main -->
-<script src="js/config.js"></script>
+<link rel="stylesheet" href="css/ui.css">
+<div id="ui-layer"></div>
+  <script src="js/config.js"></script>
 <script src="js/data/zones.js"></script>
 <script src="js/data/skills.js"></script>
 <script src="js/data/items.js"></script>
@@ -56,6 +58,7 @@ window.addEventListener('error', function (e) {
 <script src="js/systems/obstacles.js"></script>
   <script src="js/systems/bot.js"></script>
 <script src="js/systems/save.js"></script>
+  <script src="js/systems/bagWindow.js"></script>
 <script src="js/systems/fixes.js"></script>
 <script src="js/main.js"></script>
 </body>
