@@ -1,0 +1,139 @@
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600&family=Sarabun:wght@400;600&display=swap');
+
+:root{
+  --pp-bg:#130f1e; --pp-bg2:#1d1730; --pp-slot:#0c0913;
+  --pp-gold:#c9a45c; --pp-gold-d:#6b5330; --pp-gold-l:#f2d48a;
+  --pp-text:#e9e2d0; --pp-mute:#9a90a8;
+  --pp-red:#e0413a; --pp-blue:#3b8fe0; --pp-green:#3fbf6f; --pp-purple:#a25cff;
+}
+
+/* #ui-layer ถูกกำหนดไว้ใน ui.css แล้ว จึงไม่ประกาศซ้ำ */
+
+/* ---------- Window frame ---------- */
+.pp-win{
+  position:absolute; pointer-events:auto;
+  top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(92vw, 560px); max-height:92vh;
+  display:none; flex-direction:column;
+  font-family:'Kanit','Sarabun',sans-serif; color:var(--pp-text);
+  font-size:clamp(10px, 2.7vh, 14px);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.04), transparent 18%),
+    linear-gradient(var(--pp-bg2), var(--pp-bg));
+  /* pixel frame: black outline / gold / dark gold / black */
+  box-shadow:
+    0 0 0 2px #000,
+    0 0 0 4px var(--pp-gold),
+    0 0 0 6px var(--pp-gold-d),
+    0 0 0 8px #000,
+    0 10px 30px rgba(0,0,0,.7);
+  image-rendering:pixelated;
+  -webkit-user-select:none; user-select:none; touch-action:manipulation;
+}
+.pp-win.open{ display:flex; animation:pp-pop .14s steps(3); }
+@keyframes pp-pop{ from{ transform:translate(-50%,-48%) scale(.96); opacity:0 } }
+@media (prefers-reduced-motion:reduce){ .pp-win.open{ animation:none } }
+
+/* gold corner studs */
+.pp-win::before,.pp-win::after{
+  content:""; position:absolute; width:10px; height:10px; z-index:3;
+  background:var(--pp-gold-l); box-shadow:0 0 0 2px #000, 0 0 6px rgba(242,212,138,.7);
+}
+.pp-win::before{ top:-9px; left:-9px; }
+.pp-win::after{ bottom:-9px; right:-9px; }
+
+.pp-head{
+  display:flex; align-items:center; gap:.5em; padding:.45em .7em;
+  border-bottom:2px solid var(--pp-gold-d);
+  background:linear-gradient(#2a2040,#191227);
+}
+.pp-head .pp-ico{ font-size:1.3em; }
+.pp-head h2{ margin:0; flex:1; font-size:1.15em; font-weight:600; color:var(--pp-gold-l); text-shadow:0 2px 0 #000; }
+.pp-x{
+  width:2.4em; height:2.4em; min-width:32px; min-height:32px;
+  background:#2a1a1a; color:#fff; border:2px solid var(--pp-gold-d); cursor:pointer;
+  font:inherit; line-height:1; box-shadow:inset 0 0 0 1px #000;
+}
+.pp-x:active{ background:var(--pp-red); }
+
+.pp-body{ padding:.6em; overflow:auto; flex:1; -webkit-overflow-scrolling:touch; touch-action:pan-y; }
+
+/* ---------- Bars ---------- */
+.pp-bar{ position:relative; height:1.3em; background:#000; border:2px solid #000; outline:1px solid var(--pp-gold-d); margin:.25em 0; }
+.pp-bar i{ display:block; height:100%; }
+.pp-bar.hp i{ background:linear-gradient(#ff6a5e,#a81f1f); }
+.pp-bar.mp i{ background:linear-gradient(#5db0ff,#1c5fb0); }
+.pp-bar.xp i{ background:linear-gradient(#58b0ff,#1f5fbf); }
+.pp-bar b{ position:absolute; inset:0; text-align:center; font-weight:500; font-size:.85em; line-height:1.5em; text-shadow:0 1px 0 #000; }
+
+/* ---------- Status window ---------- */
+.pp-status{ display:grid; grid-template-columns:38% 1fr; gap:.6em; }
+.pp-portrait{ aspect-ratio:1; background:var(--pp-slot); border:2px solid var(--pp-gold-d); outline:1px solid #000;
+  display:flex; align-items:center; justify-content:center; font-size:4em; overflow:hidden; }
+.pp-portrait img{ width:100%; height:100%; object-fit:cover; image-rendering:pixelated; }
+.pp-name{ font-size:1.3em; font-weight:600; line-height:1.1; }
+.pp-title{ color:#ff5a4f; font-size:.9em; }
+.pp-menu{ display:flex; flex-direction:column; gap:.25em; margin-top:.5em; }
+.pp-menu button{
+  text-align:left; padding:.5em .6em; min-height:36px; cursor:pointer;
+  font:inherit; color:var(--pp-text); background:#1a1428; border:2px solid #2d2342;
+}
+.pp-menu button.on{ color:var(--pp-gold-l); border-color:var(--pp-gold); background:#2c2140; box-shadow:0 0 8px rgba(201,164,92,.35); }
+.pp-stats{ background:rgba(0,0,0,.3); border:2px solid #2d2342; padding:.3em .6em; }
+.pp-row{ display:flex; justify-content:space-between; gap:.6em; padding:.4em 0; border-bottom:1px dashed #33294a; }
+.pp-row:last-child{ border-bottom:0; }
+.pp-row span:first-child{ color:var(--pp-mute); }
+.pp-row b{ font-weight:500; }
+.pp-pts{ display:flex; align-items:center; justify-content:space-between; margin-top:.5em; font-size:.9em; color:var(--pp-mute); }
+
+/* ---------- Buttons ---------- */
+.pp-btn{
+  font:inherit; color:#fff; cursor:pointer; min-height:36px; padding:.35em 1em;
+  background:linear-gradient(#5b4a85,#35294f); border:2px solid var(--pp-gold);
+  box-shadow:inset 0 0 0 1px #000, 0 2px 0 #000;
+}
+.pp-btn:active{ transform:translateY(2px); box-shadow:inset 0 0 0 1px #000; }
+.pp-btn[disabled]{ opacity:.4; }
+.pp-btn.green{ background:linear-gradient(#2e8f58,#1b5c37); }
+
+/* ---------- Equipment window ---------- */
+.pp-tabs{ display:flex; gap:.3em; margin-bottom:.6em; }
+.pp-tabs button{ flex:1; min-height:34px; font:inherit; cursor:pointer; color:var(--pp-mute); background:#1a1428; border:2px solid #2d2342; }
+.pp-tabs button.on{ color:var(--pp-gold-l); border-color:var(--pp-gold); background:#2c2140; }
+
+.pp-equip{ display:grid; grid-template-columns:auto 1fr auto; gap:.6em; align-items:center; }
+.pp-col{ display:flex; flex-direction:column; gap:.5em; }
+.pp-char{ aspect-ratio:3/4; max-height:48vh; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 50% 60%, rgba(162,92,255,.25), transparent 65%); font-size:5em; }
+.pp-char img{ max-width:100%; max-height:100%; image-rendering:pixelated; }
+.pp-bottom{ display:flex; justify-content:center; gap:.8em; margin-top:.6em; }
+
+.pp-slot{
+  position:relative; width:clamp(38px, 10vh, 58px); aspect-ratio:1; cursor:pointer;
+  background:var(--pp-slot); border:2px solid #3a2f52; outline:1px solid #000;
+  display:flex; align-items:center; justify-content:center; font-size:1.8em;
+}
+.pp-slot img{ width:88%; height:88%; image-rendering:pixelated; }
+.pp-slot.empty{ opacity:.55; filter:grayscale(1); }
+.pp-slot.r-rare{ border-color:var(--pp-blue); box-shadow:0 0 8px rgba(59,143,224,.6), inset 0 0 8px rgba(59,143,224,.3); }
+.pp-slot.r-epic{ border-color:var(--pp-purple); box-shadow:0 0 8px rgba(162,92,255,.7), inset 0 0 8px rgba(162,92,255,.35); }
+.pp-slot.r-legend{ border-color:var(--pp-gold-l); box-shadow:0 0 10px rgba(242,212,138,.8), inset 0 0 8px rgba(242,212,138,.4); }
+.pp-slot em{ position:absolute; top:-2px; right:1px; font:600 .5em 'Kanit',sans-serif; font-style:normal; color:var(--pp-gold-l); text-shadow:0 1px 0 #000,1px 0 0 #000; }
+
+/* ---------- Skill window ---------- */
+.pp-skill{
+  display:grid; grid-template-columns:auto 1fr auto; gap:.6em; align-items:center;
+  padding:.5em; margin-bottom:.45em; background:rgba(0,0,0,.3); border:2px solid #2d2342;
+}
+.pp-skill .pp-slot{ cursor:default; }
+.pp-skill h4{ margin:0; font-size:1em; font-weight:500; color:var(--pp-gold-l); }
+.pp-skill small{ display:block; color:var(--pp-mute); font-size:.85em; line-height:1.4; }
+.pp-skill small .mp{ color:#6fb6ff; }
+.pp-passive{ border-color:var(--pp-gold-d); background:rgba(201,164,92,.08); }
+.pp-sub{ margin:.6em 0 .3em; color:var(--pp-gold); font-size:.9em; }
+
+/* ---------- Portrait phones: the game already asks to rotate ---------- */
+@media (max-height:380px){
+  .pp-body{ padding:.4em; }
+  .pp-slot{ width:clamp(34px, 11vh, 48px); }
+}
