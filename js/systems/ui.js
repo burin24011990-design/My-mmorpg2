@@ -81,14 +81,16 @@ Object.assign(Main.prototype, {
 
     this.mini = { x: 16, y: 114, w: 190, h: Math.round(190 * (WORLD_H / WORLD_W)) };
     this.miniBg = this.add.graphics().setScrollFactor(0).setDepth(100);
-    this.miniBg.fillStyle(0x000000, 0.55).fillRoundedRect(this.mini.x - 4, this.mini.y - 4, this.mini.w + 8, this.mini.h + 8, 8);
-    this.miniBg.lineStyle(1, 0x5a7a3a, 0.8);
-    ZONES.forEach(z => {
-      const zx = this.mini.x + (z.x / WORLD_W) * this.mini.w, zy = this.mini.y + (z.y / WORLD_H) * this.mini.h;
-      this.miniBg.strokeCircle(zx, zy, (z.r / WORLD_W) * this.mini.w);
-      this.add.text(zx, zy, String(z.id), { fontSize: '9px', color: '#cfe8c0' }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
-    });
+    this.stageText = this.add.text(this.mini.x, this.mini.y + this.mini.h + 10, '', { fontSize: '12px', color: '#9fd98a', fontStyle: 'bold' }).setScrollFactor(0).setDepth(101);
     this.miniDots = this.add.graphics().setScrollFactor(0).setDepth(101);
+  },
+
+  drawMinimapFrame() {
+    const m = this.mini, z = ZONES[this.stageIdx];
+    this.miniBg.clear();
+    this.miniBg.fillStyle(0x000000, 0.55).fillRoundedRect(m.x - 4, m.y - 4, m.w + 8, m.h + 8, 8);
+    this.miniBg.lineStyle(1, 0x5a7a3a, 0.8).strokeCircle(m.x + (z.x / WORLD_W) * m.w, m.y + (z.y / WORLD_H) * m.h, (z.r / WORLD_W) * m.w);
+    this.stageText.setText(z.name + '  (Lv.' + z.minLv + '-' + z.maxLv + ')');
   },
 
   updateSkillButtons(time) {
