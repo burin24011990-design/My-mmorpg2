@@ -6,6 +6,9 @@
 const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
+// โอกาสดรอปหนังสือสกิล (ปรับตรงนี้)
+const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
+const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
 
 Object.assign(Main.prototype, {
   // โหลดด่าน: ล้างของเก่า วาดพื้นใหม่ สร้างพุ่ม/หิน เสกมอนของด่านนี้เท่านั้น
@@ -220,8 +223,8 @@ Object.assign(Main.prototype, {
         const it = this.loot.create(x + 20 + i * 18, y + 14, 'box');
         it.setData('kind', 'box'); it.setData('level', boxLevel);
       }
-      // หนังสือสกิล: ดรอปจากมินิบอสเท่านั้น โอกาส SKILL_DROP_CHANCE (5%) สุ่มสกิลใดสกิลหนึ่ง
-      if (Math.random() < SKILL_DROP_CHANCE) {
+      // หนังสือสกิล: มินิบอสโอกาส BOSS_SKILL_DROP_CHANCE (60%) สุ่มสกิลใดสกิลหนึ่ง
+      if (Math.random() < BOSS_SKILL_DROP_CHANCE) {
         const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
         const sc = this.loot.create(x - 22, y + 14, 'scroll');
         sc.setData('kind', 'skill'); sc.setData('sid', sid);
@@ -229,10 +232,16 @@ Object.assign(Main.prototype, {
       }
       return;
     }
-    // มอนธรรมดา: ดรอปกล่องอย่างเดียว (ไม่ดรอปสกิลแล้ว) ~15% เท่ากับโอกาสกล่องเดิม (28% x 55%)
+    // มอนธรรมดา: กล่อง ~15% (เท่าโอกาสเดิม 28% x 55%) และหนังสือสกิล 5% (สุ่มแยกกัน)
     if (Phaser.Math.Between(1, 100) <= 15) {
       const it = this.loot.create(x + 14, y, 'box');
       it.setData('kind', 'box'); it.setData('level', boxLevel);
+    }
+    if (Math.random() < NORMAL_SKILL_DROP_CHANCE) {
+      const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
+      const sc = this.loot.create(x - 14, y + 6, 'scroll');
+      sc.setData('kind', 'skill'); sc.setData('sid', sid);
+      this.toastMsg('📕 ดรอปหนังสือสกิล: ' + SKILL_DEFS[sid].name);
     }
   },
 
