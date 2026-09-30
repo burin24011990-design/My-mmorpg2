@@ -1,4 +1,6 @@
-// ===== กระเป๋า / เก็บของ / รวมดาว =====
+// ===== กระเป๋า / เก็บของ / รวมดาว / หนังสือสกิล =====
+const MAX_SKILLBOOK_STACK = 999; // หนังสือสกิลซ้อนได้สูงสุดต่อช่อง
+
 Object.assign(Main.prototype, {
   findEmptyBagSlot() { return this.bag.findIndex(s => s === null); },
 
@@ -21,6 +23,50 @@ Object.assign(Main.prototype, {
     }
   },
 
+  // ---------- หนังสือสกิล (ไอเทมซ้อนได้) ----------
+  // ใส่หนังสือ n เล่มลงกระเป๋า คืนค่าจำนวนที่ใส่ไม่ได้ (0 = ใส่ครบ)
+  addSkillBookToBag(sid, n) {
+    let left = n || 1;
+    this.bag.forEach(s => {
+      if (left > 0 && s && s.kind === 'skillbook' && s.sid === sid && s.count < MAX_SKILLBOOK_STACK) {
+        const add = Math.min(left, MAX_SKILLBOOK_STACK - s.count);
+        s.count += add; left -= add;
+      }
+    });
+    while (left > 0) {
+      const idx = this.findEmptyBagSlot();
+      if (idx === -1) break;
+      const add = Math.min(left, MAX_SKILLBOOK_STACK);
+      this.bag[idx] = { kind: 'skillbook', sid, count: add };
+      left -= add;
+    }
+    return left;
+  },
+
+  // จำนวนหนังสือสกิลนั้นทั้งหมดในกระเป๋า (รวมทุกกอง)
+  countSkillBooks(sid) {
+    let n = 0;
+    this.bag.forEach(s => { if (s && s.kind === 'skillbook' && s.sid === sid) n += s.count; });
+    return n;
+  },
+
+  // หักหนังสือ n เล่ม (เริ่มจากช่อง preferIdx ก่อน) คืน true ถ้าหักครบ
+  consumeSkillBooks(sid, n, preferIdx) {
+    if (this.countSkillBooks(sid) < n) return false;
+    const order = [];
+    if (preferIdx !== undefined) order.push(preferIdx);
+    for (let i = 0; i < this.bag.length; i++) if (i !== preferIdx) order.push(i);
+    for (const i of order) {
+      if (n <= 0) break;
+      const s = this.bag[i];
+      if (!s || s.kind !== 'skillbook' || s.sid !== sid) continue;
+      const take = Math.min(n, s.count);
+      s.count -= take; n -= take;
+      if (s.count <= 0) this.bag[i] = null;
+    }
+    return true;
+  },
+
   pickup(item) {
     const kind = item.getData('kind');
     if (kind === 'gold') {
@@ -33,8 +79,15 @@ Object.assign(Main.prototype, {
       else { this.addItemToBag({ kind: 'box', level: lvl, count: 1 }); this.toastMsg('ได้รับกล่องอุปกรณ์ เลเวล ' + lvl); }
     } else if (kind === 'skill') {
       const sid = item.getData('sid'); const sd = SKILL_DEFS[sid];
-      if (this.learnedSkills.has(sid)) { this.stats.gold += 5; this.toastMsg('สกิลซ้ำ แลกเป็น +5 ทอง'); }
-      else { this.learnedSkills.add(sid); this.toastMsg('เรียนรู้สกิลใหม่: ' + sd.name); }
+      if (this.addSkillBookToBag(sid, 1) > 0) {
+        // กระเป๋าเต็ม: ปล่อยหนังสือไว้บนพื้น (เตือนไม่ถี่เกินไป)
+        if (this.time.now > (this._bookFullToastAt || 0)) {
+          this._bookFullToastAt = this.time.now + 1500;
+          this.toastMsg('กระเป๋าเต็ม! เก็บหนังสือ ' + sd.name + ' ไม่ได้');
+        }
+        return;
+      }
+      this.toastMsg('📕 ได้รับหนังสือสกิล: ' + sd.name + ' (มี ' + this.countSkillBooks(sid) + ' เล่ม)');
     }
     item.destroy();
   },
