@@ -1,5 +1,32 @@
 // ===== มอนสเตอร์: เกิด, AI, รับดาเมจ, เลือกเป้าหมาย, ดรอป =====
 Object.assign(Main.prototype, {
+  // โหลดด่าน: ล้างของเก่า วาดพื้นใหม่ เสกมอนของด่านนี้เท่านั้น
+  loadStage(idx) {
+    const z = ZONES[idx];
+    this.stageIdx = idx;
+    this.stageToken = (this.stageToken || 0) + 1;
+
+    this.enemies.getChildren().slice().forEach(e => { if (e.levelText) e.levelText.destroy(); e.destroy(); });
+    this.loot.getChildren().slice().forEach(it => { this.tweens.killTweensOf(it); it.destroy(); });
+    this.projectiles.getChildren().slice().forEach(pr => pr.destroy());
+    this.target = null; this.manualTarget = null;
+
+    if (this.stageObjs) this.stageObjs.forEach(o => o.destroy());
+    const bg = this.add.grid(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 64, 64, z.bg, 1, z.line, 1).setDepth(-10);
+    const gfx = this.add.graphics().setDepth(-9);
+    gfx.lineStyle(4, 0x000000, 0.5).strokeRect(0, 0, WORLD_W, WORLD_H);
+    gfx.lineStyle(2, 0x5a7a3a, 0.5).strokeCircle(z.x, z.y, z.r);
+    const title = this.add.text(z.x, z.y - z.r - 16, z.name + '  (Lv.' + z.minLv + '-' + z.maxLv + ')', { fontSize: '13px', color: '#9fd98a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.stageObjs = [bg, gfx, title];
+
+    for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(idx);
+
+    this.player.setPosition(z.x, z.y);
+    this.player.setVelocity(0, 0);
+    this.cameras.main.centerOn(z.x, z.y);
+    this.drawMinimapFrame();
+  },
+
   spawnEnemyInZone(zi) {
     const z = ZONES[zi];
     const ang = Math.random() * Math.PI * 2, rad = Math.random() * z.r * 0.8;
@@ -44,7 +71,7 @@ Object.assign(Main.prototype, {
         const dmg = Math.max(1, (e.dmg || 8) - this.equipDefBonus);
         this.stats.hp -= dmg; this.hitCd = time + 600;
         p.setTint(0xff6666); this.time.delayedCall(150, () => p.clearTint());
-        if (this.stats.hp <= 0) { this.stats.hp = this.maxHp(); p.setPosition(ZONES[0].x, ZONES[0].y); this.toastMsg('คุณสลบ! ฟื้นที่ด่าน 1'); }
+        if (this.stats.hp <= 0) { this.stats.hp = this.maxHp(); const cz = ZONES[this.stageIdx]; p.setPosition(cz.x, cz.y); this.toastMsg('คุณสลบ! ฟื้นกลางด่าน'); }
       }
       if (e.levelText) e.levelText.setPosition(e.x, e.y - 22);
     });
@@ -63,7 +90,8 @@ Object.assign(Main.prototype, {
       e.destroy(); this.kills++;
       this.gainExp(5 + lv * 3);
       this.dropLoot(x, y, lv, z.boxLevel);
-      this.time.delayedCall(RESPAWN_DELAY, () => { if (this.enemies) this.spawnEnemyInZone(zi); });
+      const token = this.stageToken; // ถ้าย้ายด่านไปแล้ว ไม่ต้องเกิดใหม่ในด่านเก่า
+      this.time.delayedCall(RESPAWN_DELAY, () => { if (this.enemies && this.stageToken === token) this.spawnEnemyInZone(zi); });
     }
   },
 
