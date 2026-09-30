@@ -14,13 +14,14 @@ Object.assign(Main.prototype, {
     this.socket.on('joined', p => this.addOther(p));
     this.socket.on('left', id => this.removeOther(id));
     this.socket.on('state', list => {
-      list.forEach(([id, x, y]) => { const o = this.others[id]; if (o) { o.tx = x; o.ty = y; } });
+      list.forEach(([id, x, y, st]) => { const o = this.others[id]; if (o) { o.tx = x; o.ty = y; o.stage = st; } });
       this.statusText.setText('ออนไลน์: ' + list.length + ' คน');
     });
     this.socket.on('skill', d => this.showRemoteSkill(d));
   },
 
   showRemoteSkill(d) {
+    if (d.stage !== undefined && d.stage !== this.stageIdx) return; // อยู่คนละด่าน ไม่ต้องแสดง
     if (String(d.name).startsWith('ulti_')) {
       const cls = d.name.replace('ulti_', ''); const def = ULTI_DEFS[cls];
       if (def) this.flash(d.x, d.y, def.range, CLASSES[cls].color);
@@ -43,6 +44,12 @@ Object.assign(Main.prototype, {
     this.tweens.add({ targets: f, x: d.x + d.fx * 462, y: d.y + d.fy * 462, duration: 1100, onComplete: () => f.destroy() });
   },
 
+  // ส่งข้อมูลไปเซิร์ฟเวอร์พร้อมบอกด่านที่อยู่
+  sendNet(ev, data) {
+    if (!this.online) return;
+    this.socket.emit(ev, Object.assign({ stage: this.stageIdx }, data));
+  },
+
   addOther(p) {
     if (this.others[p.id]) return;
     const s = this.add.sprite(p.x, p.y, 'player').setTint(0xffaa44);
@@ -58,7 +65,9 @@ Object.assign(Main.prototype, {
     Object.values(this.others || {}).forEach(o => {
       o.s.x += (o.tx - o.s.x) * 0.25; o.s.y += (o.ty - o.s.y) * 0.25;
       o.t.setPosition(o.s.x, o.s.y - 26);
+      const vis = o.stage === undefined || o.stage === this.stageIdx; // เห็นเฉพาะคนในด่านเดียวกัน
+      o.s.setVisible(vis); o.t.setVisible(vis);
     });
-    if (this.online && time - this.lastSend > 66) { this.lastSend = time; this.socket.emit('move', { x: Math.round(p.x), y: Math.round(p.y) }); }
+    if (this.online && time - this.lastSend > 66) { this.lastSend = time; this.sendNet('move', { x: Math.round(p.x), y: Math.round(p.y) }); }
   },
 });
