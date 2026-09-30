@@ -64,13 +64,13 @@ Object.assign(Main.prototype, {
       items.push(zone);
       items.push(this.add.text(x, y - 24, z.name, { fontSize: '13px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
       items.push(this.add.text(x, y - 2, 'มอนสเตอร์ Lv.' + z.minLv + '-' + z.maxLv, { fontSize: '11px', color: '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(203)); // แก้บั๊ก: minLv/maxLv
-      items.push(this.add.text(x, y + 18, unlocked ? 'แตะเพื่อเดินทาง' : 'ต้องการ Lv.' + z.reqLv, { fontSize: '11px', color: unlocked ? '#9adf9a' : '#e08a8a' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      items.push(this.add.text(x, y + 18, unlocked ? (i === this.stageIdx ? 'อยู่ที่นี่' : 'แตะเพื่อเดินทาง') : 'ต้องการ Lv.' + z.reqLv, { fontSize: '11px', color: unlocked ? '#9adf9a' : '#e08a8a' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
       zone.on('pointerdown', () => {
         if (!unlocked) { this.toastMsg('เลเวลไม่ถึง! ต้องการ Lv.' + z.reqLv); return; }
-        this.player.setPosition(z.x, z.y);
-        this.manualTarget = null;
-        this.toastMsg('เดินทางไปยัง ' + z.name);
         this.closePanel();
+        if (i === this.stageIdx) { this.toastMsg('คุณอยู่ที่ ' + z.name + ' แล้ว'); return; }
+        this.loadStage(i);
+        this.toastMsg('เดินทางไปยัง ' + z.name);
       });
     });
     this.panel = items;
