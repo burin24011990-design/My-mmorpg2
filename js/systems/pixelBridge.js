@@ -13,17 +13,33 @@
     return 0;
   };
 
-  // แปลงเท็กซ์เจอร์ Phaser -> data URL (เก็บแคชไว้)
+  // แปลงเท็กซ์เจอร์ Phaser -> data URL (ย้อมสีได้, เก็บแคช)
   const cache = {};
-  function texUrl(s, key) {
+  function texUrl(s, key, tint) {
     if (!key) return '';
-    if (cache[key]) return cache[key];
+    const ck = key + '|' + (tint || '');
+    if (cache[ck]) return cache[ck];
     try {
       const src = s.textures.get(key).getSourceImage();
       const c = document.createElement('canvas');
       c.width = src.width; c.height = src.height;
-      c.getContext('2d').drawImage(src, 0, 0);
-      return (cache[key] = c.toDataURL());
+      const g = c.getContext('2d');
+      g.drawImage(src, 0, 0);
+      if (tint) {
+        g.globalCompositeOperation = 'multiply';
+        g.fillStyle = tint;
+        g.fillRect(0, 0, c.width, c.height);
+        g.globalCompositeOperation = 'destination-in';
+        g.drawImage(src, 0, 0);
+      }
+      return (cache[ck] = c.toDataURL());
+    } catch (e) { return ''; }
+  }
+
+  function classTint(cls) {
+    try {
+      const col = CLASSES[cls] && CLASSES[cls].color;
+      return col != null ? '#' + ('000000' + col.toString(16)).slice(-6) : '';
     } catch (e) { return ''; }
   }
 
@@ -45,7 +61,7 @@
     return {
       id: id, name: def.name, lv: '', mp: def.mp || 0,
       info: 'ดาเมจ ' + def.dmg + ' • คูลดาวน์ ' + (def.cd / 1000).toFixed(1) + 'วิ',
-      icon: texUrl(s, skillIconKey(def.type))
+      icon: texUrl(s, skillIconKey(def.type), classTint(def.class))
     };
   }
 
@@ -56,26 +72,21 @@
                exp: 0, stats: {}, equipment: {}, skills: [], passives: [] };
     }
     const st = s.stats;
-    const cls = s.currentClass ? s.currentClass() : 'sword';
+    const cls = s.currentClass();
 
-    // โบนัสป้องกันจากอุปกรณ์
-    let defSum = 0;
+    // อุปกรณ์
     const equipment = {};
     Object.keys(SLOT_MAP).forEach(k => {
-      const it = s.equipment && s.equipment[SLOT_MAP[k]];
-      equipment[k] = mapItem(s, it);
-      if (it) defSum += (computeItemStats(it).def || 0);
+      equipment[k] = mapItem(s, s.equipment && s.equipment[SLOT_MAP[k]]);
     });
 
-  // สกิลทั่วไป: โจมตีปกติ + สกิลทั้งหมด (ที่ใส่อยู่ขึ้นก่อน)
+    // สกิลทั่วไป: โจมตีปกติ + สกิลที่เรียนแล้วทั้งหมด (ที่ใส่อยู่ขึ้นก่อน)
     const skills = [];
     if (BASIC_ATTACKS[cls]) skills.push(skillRow(s, 'basic', BASIC_ATTACKS[cls]));
     const equipped = s.slots || [];
-    let ids = Object.keys(SKILL_DEFS);
-    const own = s.ownedSkills || s.learnedSkills || s.unlockedSkills;
-    if (Array.isArray(own)) ids = own.filter(id => SKILL_DEFS[id]);
-    else if (own && typeof own === 'object') ids = Object.keys(own).filter(id => SKILL_DEFS[id] && own[id]);
-    equipped.forEach(sid => { if (sid && SKILL_DEFS[sid] && ids.indexOf(sid) < 0) ids.push(sid); });
+    const learned = Array.from(s.learnedSkills || []);
+    equipped.forEach(id => { if (id && learned.indexOf(id) < 0) learned.push(id); });
+    const ids = learned.filter(id => SKILL_DEFS[id]);
     ids.sort((a, b) => (equipped.indexOf(b) >= 0) - (equipped.indexOf(a) >= 0));
     ids.forEach(id => {
       const idx = equipped.indexOf(id);
@@ -84,20 +95,26 @@
       skills.push(row);
     });
 
-    // สกิลพิเศษ: อัลติ (ต้องมีสกิลคลาสเดียวกัน 3 ช่อง)
+    // สกิลพิเศษ: อัลติ (ต้องใส่สกิลคลาสเดียวกัน 3 ช่อง)
     const special = [];
-    if (s.ultiClass && ULTI_DEFS[s.ultiClass]) special.push(skillRow(s, 'ulti', ULTI_DEFS[s.ultiClass]));
+    if (s.ultiClass && ULTI_DEFS[s.ultiClass]) {
+      special.push(skillRow(s, 'ulti', ULTI_DEFS[s.ultiClass]));
+    }
 
-    const expNeed = num(st.expNext, st.maxExp, st.next, st.expMax);
     return {
-      name: st.name || s.playerName || 'Player',
-      level: num(st.level, st.lv, s.level, 1),
+      name: 'Player',
+      level: num(st.level, 1),
       title: WEAPON_CLASS_LABEL[cls] || '',
       guild: '-',
-      hp: [Math.floor(num(st.hp)), s.maxHp ? s.maxHp() : num(st.maxHp)],
-      mp: [Math.floor(num(st.mp)), s.maxMp ? s.maxMp() : num(st.maxMp)],
-      exp: expNeed ? +(num(st.exp) / expNeed * 100).toFixed(1) : 0,
-      stats: { 'พลังโจมตี': num(s.atk), 'พลังป้องกัน': defSum },
+      hp: [Math.floor(num(st.hp)), s.maxHp()],
+      mp: [Math.floor(num(st.mp)), s.maxMp()],
+      exp: st.expNext ? +(num(st.exp) / st.expNext * 100).toFixed(1) : 0,
+      stats: {
+        'พลังโจมตี': num(s.atk),
+        'พลังป้องกัน': num(s.equipDefBonus),
+        'ทอง': num(st.gold),
+        'ฆ่าแล้ว': num(s.kills)
+      },
       statPoints: 0,
       equipment: equipment,
       skills: skills,
