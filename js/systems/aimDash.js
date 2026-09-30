@@ -1,4 +1,4 @@
-// ===== ลากเล็งสกิลหมู่ระยะไกล (สไตล์ RoV) + ปุ่มแดช + บอทล็อกเป้ายิงสกิลหมู่ =====
+// ===== ลากเล็งสกิลหมู่ระยะไกล (สไตล์ RoV) + ปุ่มยกเลิก ✕ + ปุ่มแดช + บอทล็อกเป้ายิงสกิลหมู่ =====
 // โหลดหลัง skillLevelPatch.js และก่อน main.js
 (function () {
   const P = Main.prototype;
@@ -16,6 +16,9 @@
   };
   const AIM_DRAG_MIN = 14;    // ลากน้อยกว่านี้ถือว่าแตะ = ตกที่มอนที่ล็อก
   const AIM_DRAG_MAX = 110;   // ลากไกลเท่านี้ = ระยะสูงสุด
+  const CANCEL_DX = -110;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี
+  const CANCEL_DY = -200;
+  const CANCEL_R = 30;        // รัศมีปุ่ม ✕ (พื้นที่รับนิ้วกว้างกว่านี้อีก 10)
   const DASH_CD = 20000;      // คูลดาวน์แดช 20 วิ
   const DASH_DIST = 170;
   const DASH_MS = 160;
@@ -84,7 +87,10 @@
     if (this._aimInit) return;
     this._aimInit = true;
     this.aim = null;
-    this.aimGfx = this.add.graphics().setDepth(90);
+    this.aimGfx = this.add.graphics().setDepth(90);                       // วงเล็งบนแผนที่
+    this.cancelGfx = this.add.graphics().setScrollFactor(0).setDepth(105); // ปุ่ม ✕ บนหน้าจอ
+    this.cancelTxt = this.add.text(0, 0, 'ยกเลิก', { fontSize: '11px', color: '#fff', stroke: '#000', strokeThickness: 3 })
+      .setOrigin(0.5).setScrollFactor(0).setDepth(106).setVisible(false);
 
     this.input.on('pointermove', p => {
       const a = this.aim;
@@ -95,8 +101,10 @@
         a.dx = vx / len; a.dy = vy / len;
         a.ratio = Math.min(len / AIM_DRAG_MAX, 1);
       }
-      // ลากกลับมาปล่อยบนปุ่ม = ยกเลิก
-      a.cancel = a.dragged && Math.hypot(p.x - a.bx, p.y - a.by) < a.br;
+      // ยกเลิก: นิ้วอยู่บนปุ่ม ✕ หรือลากกลับมาบนปุ่มสกิลเดิม
+      a.overX = a.dragged && Math.hypot(p.x - a.cx, p.y - a.cy) < a.cr + 10;
+      const overBtn = a.dragged && Math.hypot(p.x - a.bx, p.y - a.by) < a.br;
+      a.cancel = a.overX || overBtn;
     });
 
     const fin = p => {
@@ -104,6 +112,8 @@
       if (!a || p.id !== a.pid) return;
       this.aim = null;
       this.aimGfx.clear();
+      this.cancelGfx.clear();
+      this.cancelTxt.setVisible(false);
       if (this.panel) return;
       if (a.dragged && a.cancel) return;
       let gp = null;
@@ -131,20 +141,24 @@
     }
     if (this.time.now < (this.cdEnd[key] || 0)) return;
     if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอ'); return; }
+    const base = (typeof ROV !== 'undefined') ? ROV : { ax: W - 96, ay: H - 92 };
     this.aim = {
       isUlti: isUlti, idx: idx, def: def, cfg: cfg, clsKey: clsKey, pid: pointer.id,
       sx: pointer.x, sy: pointer.y, bx: btn.c.x, by: btn.c.y, br: btn.c.radius,
-      dragged: false, dx: 0, dy: 0, ratio: 0, cancel: false,
+      cx: base.ax + CANCEL_DX, cy: Math.max(40, base.ay + CANCEL_DY), cr: CANCEL_R,
+      dragged: false, dx: 0, dy: 0, ratio: 0, cancel: false, overX: false,
     };
   };
 
   P.drawAim = function () {
-    const g = this.aimGfx;
-    if (!g) return;
-    g.clear();
+    const g = this.aimGfx, cg = this.cancelGfx;
+    if (!g || !cg) return;
+    g.clear(); cg.clear();
     const a = this.aim;
-    if (!a) return;
-    if (this.panel) { this.aim = null; return; }
+    if (!a) { this.cancelTxt.setVisible(false); return; }
+    if (this.panel) { this.aim = null; this.cancelTxt.setVisible(false); return; }
+
+    // วงเล็งบนแผนที่
     const p = this.player;
     const pt = a.dragged
       ? { x: p.x + a.dx * a.ratio * a.cfg.cast, y: p.y + a.dy * a.ratio * a.cfg.cast }
@@ -154,11 +168,20 @@
     g.lineStyle(3, col, 0.8).lineBetween(p.x, p.y, pt.x, pt.y);
     g.fillStyle(col, a.cancel ? 0.12 : 0.28).fillCircle(pt.x, pt.y, a.def.range);
     g.lineStyle(3, col, 0.95).strokeCircle(pt.x, pt.y, a.def.range);       // วงที่สกิลจะตก
+
+    // ปุ่มกากะบาท ✕ (สว่างเป็นสีแดงเมื่อนิ้วอยู่บนปุ่ม)
+    const hot = a.overX, k = a.cr * 0.42;
+    cg.fillStyle(hot ? 0xd83a3a : 0x000000, hot ? 0.95 : 0.55).fillCircle(a.cx, a.cy, a.cr);
+    cg.lineStyle(3, 0xffffff, hot ? 1 : 0.8).strokeCircle(a.cx, a.cy, a.cr);
+    cg.lineStyle(5, 0xffffff, 1)
+      .lineBetween(a.cx - k, a.cy - k, a.cx + k, a.cy + k)
+      .lineBetween(a.cx + k, a.cy - k, a.cx - k, a.cy + k);
+    this.cancelTxt.setPosition(a.cx, a.cy + a.cr + 12).setVisible(true);
   };
 
   // ---------- ปุ่มสกิล ----------
   // ช่องว่าง = เปิดหน้าต่างสกิล | สกิลหมู่ = กดแล้วลากเล็ง | สกิลอื่น = แตะใช้
-  // ไม่มีการกดค้างถอดสกิลแล้ว: เปลี่ยนสกิลในช่องได้จากหน้าต่างสกิลเท่านั้น
+  // ไม่มีการกดค้างถอดสกิล: เปลี่ยน/ถอดสกิลในช่องได้จากหน้าต่างสกิลเท่านั้น
   const _slot = P.makeSlotBtn;
   P.makeSlotBtn = function (x, y, r, idx) {
     const b = _slot.call(this, x, y, r, idx);
