@@ -54,7 +54,7 @@
 
 /* ตารางช่อง */
 .grid { flex: 1; min-height: 0; display: grid; gap: 3px; justify-content: center; align-content: start; }
-.grid.bag { grid-template-columns: repeat(10, minmax(0, 34px)); grid-template-rows: repeat(5, minmax(0, 34px)); }
+.grid.bag { grid-template-columns: repeat(10, minmax(0, 22px)); grid-template-rows: repeat(5, minmax(0, 22px)); gap: 3px; }
 .grid.equip { grid-template-columns: repeat(4, minmax(0, 64px)); grid-template-rows: repeat(2, minmax(0, 64px)); gap: 6px; }
 .cell {
   position: relative; padding: 0; overflow: hidden; border-radius: 5px;
@@ -64,6 +64,10 @@
 .cell.has { border-color: var(--c, #9a9a9a); background: #181e2a; }
 .cell.sel { box-shadow: 0 0 0 2px var(--gold); }
 .cell img { width: 66%; height: 66%; object-fit: contain; image-rendering: pixelated; pointer-events: none; }
+.grid.bag .cell { border-width: 1px; border-radius: 4px; }
+.grid.bag .cell img { width: 76%; height: 76%; }
+.grid.bag .cell .lv { font-size: 5px; }
+.grid.bag .cell .cnt { font-size: 7px; }
 .cell .lv { position: absolute; left: 1px; bottom: 0; font-size: 7px; line-height: 1; color: var(--gold); text-shadow: 0 0 2px #000, 0 0 2px #000; }
 .cell .cnt { position: absolute; right: 2px; bottom: 1px; font-size: 9px; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
 .cell .slot-name { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: 9px; color: var(--text-dim); }
