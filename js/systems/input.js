@@ -86,6 +86,11 @@ Object.assign(Main.prototype, {
       }
     } else if (bestLoot) {
       this.physics.moveTo(p, bestLoot.x, bestLoot.y, 190);
-    } else p.setVelocity(0, 0);
+    } else {
+      // ไม่มีเป้าในระยะ: เดินไปหามอนที่ใกล้ที่สุดในแผนที่
+      const far = this.nearestEnemy();
+      if (far) this.physics.moveTo(p, far.x, far.y, 190);
+      else p.setVelocity(0, 0);
+    }
   },
 });
