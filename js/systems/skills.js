@@ -57,7 +57,7 @@ Object.assign(Main.prototype, {
     this.cdEnd.basic = now + def.cd;
     const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk;
     this.time.delayedCall(BASIC_DELAY, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, cls));
-    if (this.online) this.socket.emit('skill', { name: 'basic_' + cls, x: p.x, y: p.y, fx, fy });
+    if (this.online) this.sendNet('skill', { name: 'basic_' + cls, x: p.x, y: p.y, fx, fy });
   },
 
   useSkill(idx) {
@@ -71,7 +71,7 @@ Object.assign(Main.prototype, {
     this.stats.mp -= def.mp;
     const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk;
     this.time.delayedCall(CAST_DELAY[def.type] || 150, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, def.class));
-    if (this.online) this.socket.emit('skill', { name: sid, x: p.x, y: p.y, fx, fy });
+    if (this.online) this.sendNet('skill', { name: sid, x: p.x, y: p.y, fx, fy });
   },
 
   useUlti() {
@@ -85,6 +85,6 @@ Object.assign(Main.prototype, {
     const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk, cls = this.ultiClass;
     this.toastMsg(def.name + '!');
     this.time.delayedCall(CAST_DELAY.ulti, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, cls));
-    if (this.online) this.socket.emit('skill', { name: 'ulti_' + this.ultiClass, x: p.x, y: p.y, fx, fy });
+    if (this.online) this.sendNet('skill', { name: 'ulti_' + this.ultiClass, x: p.x, y: p.y, fx, fy });
   },
 });
