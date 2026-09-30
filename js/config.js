@@ -1,6 +1,6 @@
 // ===== ค่าคงที่และการตั้งค่าทั้งหมดของเกม =====
 const W = 1280, H = 600;
-const WORLD_W = 2400, WORLD_H = 1800;
+const WORLD_W = 1600, WORLD_H = 1000; // ขนาดแผนที่ของแต่ละด่าน (1 ด่าน = 1 แผนที่)
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 const BAG_SIZE = 500, PAGE_SIZE = 50, PAGES = BAG_SIZE / PAGE_SIZE;
 const ULTI_CD = 40000;
