@@ -2,10 +2,16 @@
 <html lang="th">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>My MMORPG</title>
 <style>
-  html, body { margin:0; height:100%; background:#111; overflow:hidden; touch-action:none; }
+  html, body { margin:0; height:100%; background:#111; overflow:hidden; touch-action:none; overscroll-behavior:none; }
   canvas { display:block; }
   #rotate-hint {
     display:none; position:fixed; inset:0; z-index:9999;
@@ -16,6 +22,19 @@
     #rotate-hint { display:flex; }
     canvas { display:none; }
   }
+
+  /* หน้าจอเริ่มเกม: แตะ 1 ครั้งเพื่อเข้าเต็มจอ + ล็อกแนวนอน */
+  #start-overlay {
+    position:fixed; inset:0; z-index:10000; background:#111; color:#fff;
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    font-family:sans-serif; cursor:pointer; -webkit-tap-highlight-color:transparent;
+  }
+  #start-overlay .title { font-size:28px; font-weight:bold; color:#ffe066; margin-bottom:16px; }
+  #start-overlay .btn {
+    display:inline-block; padding:14px 28px; border:2px solid #ffe066; border-radius:12px;
+    font-size:20px; background:#1c1f24;
+  }
+  #start-overlay .sub { margin-top:14px; font-size:13px; color:#999; }
 </style>
 </head>
 <body>
@@ -31,39 +50,105 @@ window.addEventListener('error', function (e) {
 </script>
 <div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
 
+<div id="start-overlay">
+  <div>
+    <div class="title">My MMORPG</div>
+    <div class="btn">แตะเพื่อเริ่มเล่นเต็มจอ</div>
+    <div class="sub">เกมจะหมุนเป็นแนวนอนและซ่อนแถบเบราว์เซอร์อัตโนมัติ</div>
+  </div>
+</div>
+
+<script>
+// ===== บังคับเต็มจอ + แนวนอน =====
+// เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงต้องแตะ 1 ครั้งตอนเปิดเกม
+// ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอแนวนอนทันทีโดยไม่ต้องแตะ
+(function () {
+  var ov = document.getElementById('start-overlay');
+  var de = document.documentElement;
+
+  function isFS() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function isInstalled() {
+    return (window.matchMedia && (window.matchMedia('(display-mode: fullscreen)').matches ||
+            window.matchMedia('(display-mode: standalone)').matches)) || window.navigator.standalone === true;
+  }
+  function lockLandscape() {
+    try {
+      var o = screen.orientation;
+      if (o && o.lock) { var p = o.lock('landscape'); if (p && p.catch) p.catch(function () {}); }
+    } catch (e) {}
+  }
+  function nudgeResize() {
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 800);
+  }
+  function hideOverlay() { ov.style.display = 'none'; }
+  function showOverlay() { if (!isInstalled()) ov.style.display = 'flex'; }
+
+  function goFull() {
+    var req = de.requestFullscreen || de.webkitRequestFullscreen || de.msRequestFullscreen;
+    if (!req) { hideOverlay(); return; }          // เช่น iPhone: ไม่รองรับเต็มจอ ให้เข้าเกมเลย
+    var p;
+    try { p = req.call(de, { navigationUI: 'hide' }); } catch (e) { hideOverlay(); return; }
+    Promise.resolve(p).then(function () {
+      lockLandscape(); hideOverlay(); nudgeResize();
+    }).catch(function () { hideOverlay(); });
+  }
+
+  ov.addEventListener('click', goFull);
+
+  function onFsChange() {
+    if (isFS()) { lockLandscape(); hideOverlay(); }
+    else showOverlay();                            // ออกจากเต็มจอ -> ขึ้นหน้าแตะเพื่อกลับเข้าเต็มจอ
+    nudgeResize();
+  }
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+
+  if (isInstalled()) { hideOverlay(); lockLandscape(); }
+})();
+
+// ลงทะเบียน service worker เพื่อให้ติดตั้งลงหน้าจอโฮมแบบเต็มจอได้ (ไม่แคชไฟล์เกม)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+
 <!-- ไลบรารี -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 
 <!-- ลำดับสำคัญ: config -> data -> scene -> systems -> main -->
-<link rel="stylesheet" href="css/ui.css?v=4">
+<!-- เลข ?v=5 ใช้บังคับมือถือโหลดไฟล์ใหม่ ถ้าแก้ไฟล์แล้วไม่เปลี่ยน ให้เพิ่มเลขนี้ทุกตัว -->
+<link rel="stylesheet" href="css/ui.css?v=5">
 <div id="ui-layer"></div>
-  <link rel="stylesheet" href="css/pixel-panels.css?v=4">
-  <script src="js/config.js"></script>
-<script src="js/data/zones.js"></script>
-<script src="js/data/skills.js"></script>
-<script src="js/data/items.js"></script>
-<script src="js/data/textures.js"></script>
-<script src="js/scenes/Main.js"></script>
-<script src="js/systems/player.js"></script>
-<script src="js/systems/monsters.js"></script>
-<script src="js/systems/inventory.js"></script>
-<script src="js/systems/equipment.js"></script>
-<script src="js/systems/skills.js"></script>
-<script src="js/systems/input.js"></script>
-<script src="js/systems/ui.js"></script>
-<script src="js/systems/panels.js"></script>
-<script src="js/systems/inventoryPanel.js"></script>
-<script src="js/systems/network.js"></script>
-  <script src="js/systems/hudLayout.js"></script>
-<script src="js/systems/obstacles.js"></script>
-  <script src="js/systems/bot.js"></script>
-<script src="js/systems/save.js"></script>
-  <script src="js/systems/bagWindow.js?v=4"></script>
-<script src="js/systems/fixes.js"></script>
-  <script src="js/systems/pixelPanels.js?=v4"></script>
-  <script src="js/systems/panelFix.js"></script>
-  <script src="js/systems/pixelBridge.js?=v4"></script>
-<script src="js/main.js"></script>
+  <link rel="stylesheet" href="css/pixel-panels.css?v=5">
+  <script src="js/config.js?v=5"></script>
+<script src="js/data/zones.js?v=5"></script>
+<script src="js/data/skills.js?v=5"></script>
+<script src="js/data/items.js?v=5"></script>
+<script src="js/data/textures.js?v=5"></script>
+<script src="js/scenes/Main.js?v=5"></script>
+<script src="js/systems/player.js?v=5"></script>
+<script src="js/systems/monsters.js?v=5"></script>
+<script src="js/systems/inventory.js?v=5"></script>
+<script src="js/systems/equipment.js?v=5"></script>
+<script src="js/systems/skills.js?v=5"></script>
+<script src="js/systems/input.js?v=5"></script>
+<script src="js/systems/ui.js?v=5"></script>
+<script src="js/systems/panels.js?v=5"></script>
+<script src="js/systems/inventoryPanel.js?v=5"></script>
+<script src="js/systems/network.js?v=5"></script>
+  <script src="js/systems/hudLayout.js?v=5"></script>
+<script src="js/systems/obstacles.js?v=5"></script>
+  <script src="js/systems/bot.js?v=5"></script>
+<script src="js/systems/save.js?v=5"></script>
+  <script src="js/systems/bagWindow.js?v=5"></script>
+<script src="js/systems/fixes.js?v=5"></script>
+  <script src="js/systems/pixelPanels.js?v=5"></script>
+  <script src="js/systems/panelFix.js?v=5"></script>
+  <script src="js/systems/pixelBridge.js?v=5"></script>
+<script src="js/main.js?v=5"></script>
 </body>
 </html>
