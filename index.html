@@ -18,7 +18,8 @@
   }
 </style>
 </head>
-<body> <script>
+<body>
+<script>
 window.addEventListener('error', function (e) {
   var t = e.target && (e.target.src || e.target.href);
   var msg = t ? 'โหลดไม่ได้: ' + t.split('/').slice(-3).join('/') : 'Error: ' + e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + ')';
