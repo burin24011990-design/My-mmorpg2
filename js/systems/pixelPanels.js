@@ -46,11 +46,13 @@
 
   function skillRow(s) {
     var sub = s.info ? esc(s.info) : 'Lv. ' + s.lv;
+    var btn = s.off
+      ? '<button class="pp-btn" disabled>ยังไม่ได้ใส่</button>'
+      : '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button>';
     return '<div class="pp-skill"><div class="pp-slot">' + icon(s.icon) + '</div>' +
       '<div><h4>' + esc(s.name) + '</h4><small>' + sub + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
-      '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button></div>';
+      btn + '</div>';
   }
-
   var views = {
     status: function (d) {
       var menu = [['basic','ข้อมูลพื้นฐาน'],['stat','สเตตัส'],['equip','อุปกรณ์'],['skill','สกิล']];
