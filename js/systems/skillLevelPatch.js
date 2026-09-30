@@ -1,4 +1,4 @@
-// ===== เชื่อมหน้าต่างสกิล (pixelPanels) กับระบบเลเวลสกิล/หนังสือ + ใส่สกิลลงช่องต่อสู้ =====
+// ===== เชื่อมหน้าต่างสกิล (pixelPanels) กับระบบเลเวลสกิล/หนังสือ + ใส่/ถอดสกิลลงช่องต่อสู้ =====
 // โหลดหลัง pixelPanels.js และ pixelBridge.js ก่อน main.js
 (function () {
   var scene = null;
@@ -24,13 +24,15 @@
       var lv = sc.skillLv[sid];
       var maxed = lv >= SKILL_MAX_LV;
       var dmg = Math.round(def.dmg * skillLvMul(lv));
+      var notSlotted = String(s.id).indexOf('off_') === 0;
       return Object.assign({}, s, {
         lv: lv,
         maxLv: SKILL_MAX_LV,
         maxed: maxed,
         books: sc.countSkillBooks(sid),
         need: maxed ? 0 : booksNeeded(lv),
-        equip: String(s.id).indexOf('off_') === 0,   // สกิลที่ยังไม่ได้ใส่ -> แสดงปุ่ม "ใส่สกิล"
+        equip: notSlotted,        // ยังไม่ได้ใส่ -> ปุ่ม "ใส่สกิล"
+        unequip: !notSlotted,     // ใส่อยู่ -> ปุ่ม "ถอดสกิล"
         info: 'ดาเมจ ' + dmg + ' • คูลดาวน์ ' + (def.cd / 1000).toFixed(1) + 's'
       });
     });
@@ -50,8 +52,8 @@
     var t = setInterval(function () { if (install()) clearInterval(t); }, 200);
   }
 
-  // ---------- ใส่สกิลลงช่อง ----------
-  function afterEquip(sc) {
+  // ---------- ใส่ / ถอดสกิล ----------
+  function afterChange(sc) {
     try { if (sc.computeCombo) sc.computeCombo(); } catch (e) {}
     // พยายามรีเฟรชปุ่มสกิลบนหน้าจอ (ชื่อฟังก์ชันต่างกันได้ ลองทุกชื่อที่น่าจะมี)
     ['refreshSlots', 'refreshSlotButtons', 'refreshSkillButtons', 'updateSlotUI',
@@ -64,7 +66,7 @@
   function equipTo(sc, sid, i) {
     sc.slots[i] = sid;
     sc.toastMsg('ใส่ ' + SKILL_DEFS[sid].name + ' ในช่อง ' + (i + 1));
-    afterEquip(sc);
+    afterChange(sc);
   }
 
   function pickSlot(sc, sid) {
@@ -110,6 +112,18 @@
     for (var i = 0; i < sc.slots.length; i++) { if (!sc.slots[i]) { empty = i; break; } }
     if (empty >= 0) equipTo(sc, sid, empty);
     else if (sc.slots.length) pickSlot(sc, sid);
+  });
+
+  // กดปุ่ม "ถอดสกิล" (id = เลขช่อง)
+  window.addEventListener('pp:unequipSkill', function (e) {
+    var sc = getScene();
+    if (!sc || !sc.slots) return;
+    var idx = Number(e.detail && e.detail.id);
+    var sid = sc.slots[idx];
+    if (!sid) return;
+    sc.slots[idx] = null;
+    sc.toastMsg('ถอด ' + SKILL_DEFS[sid].name + ' ออกจากช่อง ' + (idx + 1));
+    afterChange(sc);
   });
 
   // กดอัปเลเวลในหน้าต่างสกิล
