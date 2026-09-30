@@ -142,8 +142,11 @@ Object.assign(Main.prototype, {
       const cls = this.currentClass();
       const approach = Math.max(50, BASIC_ATTACKS[cls].range - 40);
       const d = Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y);
-      if (d > approach) {
-        say('เดินเข้าหาเป้า');
+      // สายยิง (คทา/ธนู) ต้องมีแนวยิงโล่ง ถ้ามีหินบังให้เดินอ้อมไปหามุมยิง
+      const noLine = BASIC_ATTACKS[cls].type === 'proj' && PLAYER_SHOTS_BLOCKED_BY_ROCKS &&
+        this.segmentBlocked(p.x, p.y, t.x, t.y, 8);
+      if (d > approach || noLine) {
+        say(noLine ? 'หามุมยิงเลี่ยงหิน' : 'เดินเข้าหาเป้า');
         this.botMove(t.x, t.y);
       } else {
         say('โจมตี'); this.botStuckRef = null;
@@ -161,14 +164,28 @@ Object.assign(Main.prototype, {
     else { say('ไม่มีเป้าหมายที่เลือกไว้'); this.botStuckRef = null; p.setVelocity(0, 0); }
   },
 
-  // เดินไปจุดหมาย พร้อมตรวจว่าติดสิ่งกีดขวางไหม (ขยับน้อยกว่า 25px ใน 0.7 วิ = ติด)
+  // เดินไปจุดหมาย: ถ้าเส้นตรงชนหิน ใช้ A* เดินอ้อม (คำนวณใหม่ทุก 0.6 วิ) | ถ้ายังติด ค่อยเลี้ยวข้างเป็นแผนสำรอง
   botMove(x, y) {
     const p = this.player, now = this.time.now;
-    this.physics.moveTo(p, x, y, BOT_SPEED);
+    let tx = x, ty = y;
+    if (this.segmentBlocked && this.segmentBlocked(p.x, p.y, x, y, 18)) {
+      let pr = this.botPath;
+      if (!pr || Phaser.Math.Distance.Between(pr.gx, pr.gy, x, y) > 60 || now - pr.t > 600) {
+        pr = this.botPath = { pts: this.findPath(p.x, p.y, x, y), i: 0, gx: x, gy: y, t: now };
+      }
+      if (pr.pts && pr.pts.length) {
+        while (pr.i < pr.pts.length - 1 && Phaser.Math.Distance.Between(p.x, p.y, pr.pts[pr.i].x, pr.pts[pr.i].y) < 30) pr.i++;
+        tx = pr.pts[pr.i].x; ty = pr.pts[pr.i].y;
+      }
+    } else {
+      this.botPath = null;
+    }
+    this.physics.moveTo(p, tx, ty, BOT_SPEED);
+
     const ref = this.botStuckRef;
     if (!ref || now - ref.t > 700) {
       if (ref && Phaser.Math.Distance.Between(p.x, p.y, ref.x, ref.y) < 25) {
-        const ang = Math.atan2(y - p.y, x - p.x) + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
+        const ang = Math.atan2(ty - p.y, tx - p.x) + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
         this.botUnstickVec = new Phaser.Math.Vector2(Math.cos(ang), Math.sin(ang));
         this.botUnstickUntil = now + 600;
       }
