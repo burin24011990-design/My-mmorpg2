@@ -1,6 +1,14 @@
 // ===== ข้อมูลสกิล / โจมตีปกติ / อัลติ =====
 const WEAPON_CLASS_LABEL = { sword: 'ดาบ', mage: 'คทา', archer: 'ธนู' };
 
+// ---- ตั้งค่าระบบเลเวลสกิล (ปรับได้ตรงนี้) ----
+const SKILL_MAX_LV = 15;          // เลเวลสูงสุดของสกิล
+const SKILL_DROP_CHANCE = 0.05;   // โอกาสมินิบอสดรอปหนังสือสกิล (5%)
+// หนังสือที่ใช้อัปจาก lv -> lv+1 : 1, 2, 4, 8, ... (x2 ทุกเลเวล)
+function booksNeeded(lv) { return Math.pow(2, lv - 1); }
+// ตัวคูณดาเมจตามเลเวลสกิล (Lv.1 = x1.0, Lv.15 = x2.4)
+function skillLvMul(lv) { return 1 + ((lv || 1) - 1) * 0.1; }
+
 const BASIC_ATTACKS = {
   sword: { name: 'โจมตี', dmg: 10, range: 60, cd: 650, type: 'melee', class: 'sword' },
   mage: { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' },
