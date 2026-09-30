@@ -89,7 +89,7 @@ Object.assign(Main.prototype, {
     const m = this.mini, z = ZONES[this.stageIdx];
     this.miniBg.clear();
     this.miniBg.fillStyle(0x000000, 0.55).fillRoundedRect(m.x - 4, m.y - 4, m.w + 8, m.h + 8, 8);
-    this.miniBg.lineStyle(1, 0x5a7a3a, 0.8).strokeCircle(m.x + (z.x / WORLD_W) * m.w, m.y + (z.y / WORLD_H) * m.h, (z.r / WORLD_W) * m.w);
+    this.miniBg.lineStyle(1, 0x5a7a3a, 0.8).strokeRect(m.x, m.y, m.w, m.h);
     this.stageText.setText(z.name + '  (Lv.' + z.minLv + '-' + z.maxLv + ')');
   },
 
