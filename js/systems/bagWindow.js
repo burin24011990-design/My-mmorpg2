@@ -30,6 +30,22 @@
     } catch (e) { return ''; }
   }
 
+  // ปรับเลเยอร์ UI ให้เท่าพื้นที่ที่มองเห็นจริง (ไม่รวมแถบที่อยู่/แถบสถานะของเบราว์เซอร์)
+  function fit() {
+    const layer = document.getElementById('ui-layer');
+    if (!layer) return;
+    const vv = window.visualViewport;
+    layer.style.right = 'auto';
+    layer.style.bottom = 'auto';
+    layer.style.left = (vv ? vv.offsetLeft : 0) + 'px';
+    layer.style.top = (vv ? vv.offsetTop : 0) + 'px';
+    layer.style.width = (vv ? vv.width : window.innerWidth) + 'px';
+    layer.style.height = (vv ? vv.height : window.innerHeight) + 'px';
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', () => setTimeout(fit, 200));
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+
   function ensureRoot() {
     if (root) return;
     let layer = document.getElementById('ui-layer');
@@ -208,6 +224,7 @@
   Main.prototype.openInventory = function (tab, page) {
     scene = this;
     ensureRoot();
+    fit();
     state.tab = tab || state.tab || 'bag';
     if (page !== undefined) state.page = page;
     state.sel = null;
