@@ -1,8 +1,10 @@
 /* Pixel RPG panels: สถานะ / อุปกรณ์ / สกิล
  *   PixelPanels.setData(() => ({ ...ข้อมูลจริงของเกม... }));
+ *   PixelPanels.addDataHook(d => d2);   // ดักแก้ข้อมูลก่อนวาด (ใช้ใน skillLevelPatch.js)
  *   PixelPanels.toggle('status' | 'equip' | 'skills');
  *   PixelPanels.closeAll();
- * events: window 'pp:useSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
+ * events: window 'pp:useSkill' {id} | 'pp:upgradeSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
+ * ฟิลด์เสริมของสกิล (ถ้ามี จะแสดงเลเวลและปุ่มอัป): lv, maxLv, books, need, maxed
  */
 (function () {
   var layer = document.getElementById('ui-layer') || document.body;
@@ -33,6 +35,16 @@
     };
   };
   var getter = demo;
+  var hooks = [];
+
+  // ข้อมูลที่ใช้วาดจริง = ข้อมูลจากเกม ผ่าน hook ทุกตัว (hook พังก็ข้าม ไม่ให้หน้าต่างล่ม)
+  function getData() {
+    var d = getter();
+    hooks.forEach(function (h) {
+      try { var r = h(d); if (r) d = r; } catch (e) { console.error('PixelPanels hook error', e); }
+    });
+    return d;
+  }
 
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function fmt(n){ return typeof n === 'number' ? n.toLocaleString('en-US') : esc(n); }
@@ -45,13 +57,27 @@
   var state = { statusTab: 'basic', skillTab: 'general' };
 
   function skillRow(s) {
+    var hasLv = s.maxLv != null;
     var sub = s.info ? esc(s.info) : 'Lv. ' + s.lv;
-    var btn = s.off
+    var lvBadge = hasLv ? ' <span style="color:#ffe066;font-size:.8em">Lv.' + s.lv + '/' + s.maxLv + '</span>' : '';
+    var bookLine = hasLv
+      ? '<br><span style="color:#9fd0ff">📕 หนังสือ ' + s.books + (s.maxed ? '' : '/' + s.need) + ' เล่ม</span>'
+      : '';
+    var useBtn = s.off
       ? '<button class="pp-btn" disabled>ยังไม่ได้ใส่</button>'
       : '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button>';
+    var upBtn = '';
+    if (hasLv) {
+      upBtn = s.maxed
+        ? '<button class="pp-btn" disabled>MAX</button>'
+        : '<button class="pp-btn" data-upg="' + esc(s.id) + '"' + (s.books >= s.need ? '' : ' disabled') + '>อัปเลเวล</button>';
+    }
+    var btns = hasLv
+      ? '<div style="display:flex;flex-direction:column;gap:6px">' + useBtn + upBtn + '</div>'
+      : useBtn;
     return '<div class="pp-skill"><div class="pp-slot">' + icon(s.icon) + '</div>' +
-      '<div><h4>' + esc(s.name) + '</h4><small>' + sub + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
-      btn + '</div>';
+      '<div><h4>' + esc(s.name) + lvBadge + '</h4><small>' + sub + '<br><span class="mp">ใช้ MP ' + s.mp + '</span>' + bookLine + '</small></div>' +
+      btns + '</div>';
   }
   var views = {
     status: function (d) {
@@ -119,9 +145,10 @@
     w.querySelector('.pp-x').addEventListener('click', function () { api.close(name); });
 
     w.addEventListener('click', function (ev) {
-      var t = ev.target.closest('[data-skill],[data-slot],[data-go],[data-tab],[data-stab],[data-act]');
+      var t = ev.target.closest('[data-skill],[data-upg],[data-slot],[data-go],[data-tab],[data-stab],[data-act]');
       if (!t) return;
       if (t.dataset.skill) window.dispatchEvent(new CustomEvent('pp:useSkill', { detail: { id: t.dataset.skill } }));
+      else if (t.dataset.upg) window.dispatchEvent(new CustomEvent('pp:upgradeSkill', { detail: { id: t.dataset.upg } }));
       else if (t.dataset.slot) window.dispatchEvent(new CustomEvent('pp:slot', { detail: { slot: t.dataset.slot } }));
       else if (t.dataset.act === 'reset') window.dispatchEvent(new CustomEvent('pp:reset'));
       else if (t.dataset.stab) { state.skillTab = t.dataset.stab; render('skills'); }
@@ -141,7 +168,7 @@
 
   function render(name) {
     var w = ensure(name), body = w.querySelector('.pp-body'), top = body.scrollTop;
-    body.innerHTML = views[name](getter());
+    body.innerHTML = views[name](getData());
     body.scrollTop = top;
   }
 
@@ -150,6 +177,7 @@
 
   var api = {
     setData: function (fn) { getter = typeof fn === 'function' ? fn : function () { return fn; }; },
+    addDataHook: function (fn) { if (typeof fn === 'function') hooks.push(fn); },
     open: function (name) {
       api.closeAll();                       // เปิดทีละหน้าต่าง ไม่ซ้อนกัน
       render(name); wins[name].classList.add('open');
