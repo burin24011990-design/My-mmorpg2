@@ -1,13 +1,60 @@
 // ===== สกิล / โจมตี / อัลติ / เอฟเฟกต์ =====
 Object.assign(Main.prototype, {
+  // ---------- ระบบเลเวลสกิล (หนังสือเป็นไอเทมในกระเป๋า) ----------
+  initSkillData() {
+    this.skillLv = this.skillLv || {};
+    if (!this.learnedSkills) this.learnedSkills = new Set(['sw_slash']);
+    this.learnedSkills.forEach(sid => { if (!this.skillLv[sid]) this.skillLv[sid] = 1; });
+    this.computeCombo();
+  },
+
+  // กดใช้หนังสือสกิลในช่องกระเป๋า idx
+  // - ยังไม่เคยเรียน: เรียนรู้สกิล Lv.1 (ใช้ 1 เล่ม)
+  // - เรียนแล้ว: อัปเลเวล ใช้ booksNeeded(lv) เล่ม (นับรวมทุกกองในกระเป๋า)
+  useSkillBook(idx) {
+    const it = this.bag[idx];
+    if (!it || it.kind !== 'skillbook') return false;
+    const sid = it.sid, d = SKILL_DEFS[sid];
+    if (!d) return false;
+
+    if (!this.learnedSkills.has(sid)) {
+      this.consumeSkillBooks(sid, 1, idx);
+      this.learnedSkills.add(sid);
+      this.skillLv[sid] = 1;
+      this.toastMsg('📕 เรียนรู้สกิล ' + d.name + '!');
+      if (this.saveGame) this.saveGame();
+      return true;
+    }
+
+    const lv = this.skillLv[sid] || 1;
+    if (lv >= SKILL_MAX_LV) { this.toastMsg(d.name + ' เลเวลสูงสุดแล้ว'); return false; }
+    const need = booksNeeded(lv), have = this.countSkillBooks(sid);
+    if (have < need) { this.toastMsg('หนังสือไม่พอ ' + have + '/' + need + ' เล่ม'); return false; }
+    this.consumeSkillBooks(sid, need, idx);
+    this.skillLv[sid] = lv + 1;
+    this.toastMsg(d.name + ' เลเวล ' + (lv + 1) + '!');
+    this.computeCombo();          // อัปเดตเลเวลอัลติ
+    if (this.saveGame) this.saveGame();
+    return true;
+  },
+
+  // ---------- คอมโบ / อัลติ ----------
   computeCombo() {
     const count = {};
     this.slots.forEach(sid => { if (sid) { const c = SKILL_DEFS[sid].class; count[c] = (count[c] || 0) + 1; } });
     let found = null;
     Object.keys(count).forEach(c => { if (count[c] >= 3) found = c; });
     this.ultiClass = found;
+    // เลเวลอัลติ = เลเวลต่ำสุดของสกิลในสลอตที่เป็นคลาสเดียวกับอัลติ
+    this.ultiLv = 1;
+    if (found) {
+      const lvs = this.slots
+        .filter(s => s && SKILL_DEFS[s].class === found)
+        .map(s => (this.skillLv && this.skillLv[s]) || 1);
+      this.ultiLv = Math.min.apply(null, lvs);
+    }
     this.ultiBtn.c.setVisible(!!found); this.ultiBtn.t.setVisible(!!found);
-    if (found) this.ultiBtn.t.setText(ULTI_DEFS[found].name);
+    if (found) this.ultiBtn.t.setText(ULTI_DEFS[found].name + ' Lv.' + this.ultiLv);
   },
 
   flash(x, y, r, color) {
@@ -69,7 +116,8 @@ Object.assign(Main.prototype, {
     if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอ'); return; }
     this.cdEnd[key] = now + def.cd;
     this.stats.mp -= def.mp;
-    const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk;
+    const p = this.player, fx = this.facing.x, fy = this.facing.y;
+    const dmg = Math.round(def.dmg * skillLvMul(this.skillLv && this.skillLv[sid]) + this.atk);
     this.time.delayedCall(CAST_DELAY[def.type] || 150, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, def.class));
     if (this.online) this.sendNet('skill', { name: sid, x: p.x, y: p.y, fx, fy });
   },
@@ -82,7 +130,8 @@ Object.assign(Main.prototype, {
     if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอสำหรับอัลติ'); return; }
     this.cdEnd.ulti = now + def.cd;
     this.stats.mp -= def.mp;
-    const p = this.player, fx = this.facing.x, fy = this.facing.y, dmg = def.dmg + this.atk, cls = this.ultiClass;
+    const p = this.player, fx = this.facing.x, fy = this.facing.y, cls = this.ultiClass;
+    const dmg = Math.round(def.dmg * skillLvMul(this.ultiLv || 1) + this.atk);
     this.toastMsg(def.name + '!');
     this.time.delayedCall(CAST_DELAY.ulti, () => this.applySkillEffect(def, p.x, p.y, fx, fy, dmg, cls));
     if (this.online) this.sendNet('skill', { name: 'ulti_' + this.ultiClass, x: p.x, y: p.y, fx, fy });
