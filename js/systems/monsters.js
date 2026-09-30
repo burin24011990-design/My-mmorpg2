@@ -2,6 +2,7 @@
 // ด่าน 1-4: มอนไม่โจมตีก่อน (สู้กลับเมื่อโดนตี) | ด่าน 5 ขึ้นไป: โจมตีก่อนทั้งหมด
 // ผู้เล่นอยู่ในพุ่มหญ้า: มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น (ดู obstacles.js)
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
+// หมายเหตุ: หนังสือสกิลดรอปจากมินิบอสเท่านั้น (5%) เป็นไอเทมบนพื้น -> เก็บเข้ากระเป๋า (ดู pickup ใน inventory.js)
 const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
@@ -219,20 +220,19 @@ Object.assign(Main.prototype, {
         const it = this.loot.create(x + 20 + i * 18, y + 14, 'box');
         it.setData('kind', 'box'); it.setData('level', boxLevel);
       }
-      const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
-      const sc = this.loot.create(x - 22, y + 14, 'scroll');
-      sc.setData('kind', 'skill'); sc.setData('sid', sid);
+      // หนังสือสกิล: ดรอปจากมินิบอสเท่านั้น โอกาส SKILL_DROP_CHANCE (5%) สุ่มสกิลใดสกิลหนึ่ง
+      if (Math.random() < SKILL_DROP_CHANCE) {
+        const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
+        const sc = this.loot.create(x - 22, y + 14, 'scroll');
+        sc.setData('kind', 'skill'); sc.setData('sid', sid);
+        this.toastMsg('📕 มินิบอสดรอปหนังสือสกิล: ' + SKILL_DEFS[sid].name);
+      }
       return;
     }
-    if (Phaser.Math.Between(1, 100) <= 28) {
-      if (Phaser.Math.Between(1, 100) <= 55) {
-        const it = this.loot.create(x + 14, y, 'box');
-        it.setData('kind', 'box'); it.setData('level', boxLevel);
-      } else {
-        const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
-        const it = this.loot.create(x + 14, y, 'scroll');
-        it.setData('kind', 'skill'); it.setData('sid', sid);
-      }
+    // มอนธรรมดา: ดรอปกล่องอย่างเดียว (ไม่ดรอปสกิลแล้ว) ~15% เท่ากับโอกาสกล่องเดิม (28% x 55%)
+    if (Phaser.Math.Between(1, 100) <= 15) {
+      const it = this.loot.create(x + 14, y, 'box');
+      it.setData('kind', 'box'); it.setData('level', boxLevel);
     }
   },
 
