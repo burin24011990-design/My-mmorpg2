@@ -2,6 +2,10 @@
 const W = 1280, H = 600;
 const WORLD_W = 3600, WORLD_H = 2250; // ขนาดแผนที่ของแต่ละด่าน (ใหญ่ขึ้นราว 5 เท่าของพื้นที่เดิม)
 const TARGET_RANGE = 600;           // ระยะที่ล็อกเป้ามอนอัตโนมัติ
+const BOSS_COUNT = 5;               // จำนวนมินิบอสต่อด่าน
+const BOSS_MULT = 10;               // มินิบอสแรงกว่ามอนธรรมดา (HP / ดาเมจ / EXP / ทอง)
+const BOSS_RESPAWN_MIN_MINUTES = 30; // มินิบอสเกิดใหม่หลังตาย สุ่ม 30-50 นาที
+const BOSS_RESPAWN_MAX_MINUTES = 50;
 const SERVER_URL = 'https://my-mmorpg2-1.onrender.com';
 const BAG_SIZE = 500, PAGE_SIZE = 50, PAGES = BAG_SIZE / PAGE_SIZE;
 const ULTI_CD = 40000;
