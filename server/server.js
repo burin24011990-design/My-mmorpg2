@@ -8,7 +8,7 @@ app.get('/', (req, res) => res.send('MMORPG server OK'));
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } }); // ภายหลังควรจำกัดเฉพาะเว็บของเรา
 
-const WORLD_W = 2400, WORLD_H = 1800;
+const WORLD_W = 1600, WORLD_H = 1000;
 const players = {};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const SKILLS = new Set([
@@ -22,7 +22,7 @@ const SKILLS = new Set([
 io.on('connection', socket => {
   socket.on('join', name => {
     name = String(name || '').trim().slice(0, 12) || 'Player';
-    players[socket.id] = { id: socket.id, name, x: 400, y: 350 };
+    players[socket.id] = { id: socket.id, name, x: 400, y: 350, stage: 0 };
     socket.emit('init', { id: socket.id, players });
     socket.broadcast.emit('joined', players[socket.id]);
   });
@@ -32,6 +32,7 @@ io.on('connection', socket => {
     if (!p || !d || typeof d.x !== 'number' || typeof d.y !== 'number') return;
     p.x = clamp(d.x, 0, WORLD_W);
     p.y = clamp(d.y, 0, WORLD_H);
+    p.stage = Number.isInteger(d.stage) ? d.stage : 0;
   });
 
   socket.on('skill', d => {
@@ -40,6 +41,7 @@ io.on('connection', socket => {
       id: socket.id, name: d.name,
       x: Number(d.x) || 0, y: Number(d.y) || 0,
       fx: Number(d.fx) || 0, fy: Number(d.fy) || 0,
+      stage: Number.isInteger(d.stage) ? d.stage : 0,
     });
   });
 
@@ -53,7 +55,7 @@ io.on('connection', socket => {
 
 // ส่งตำแหน่งทุกคน 20 ครั้ง/วินาที
 setInterval(() => {
-  const list = Object.values(players).map(p => [p.id, p.x, p.y]);
+  const list = Object.values(players).map(p => [p.id, p.x, p.y, p.stage]);
   if (list.length) io.emit('state', list);
 }, 50);
 
