@@ -1,0 +1,151 @@
+/* Pixel RPG panels: สถานะ / อุปกรณ์ / สกิล
+ * ใช้งาน:
+ *   PixelPanels.setData(() => ({ ...ข้อมูลจริงของเกม... }));   // ดูรูปแบบข้อมูลด้านล่าง
+ *   PixelPanels.toggle('status' | 'equip' | 'skills');
+ * กดปุ่ม "ใช้งาน" จะยิง event:  window 'pp:useSkill'  (detail = {id})
+ * กดช่องอุปกรณ์ จะยิง event:    window 'pp:slot'      (detail = {slot})
+ */
+(function () {
+  var layer = document.getElementById('ui-layer') || document.body;
+
+  // ---------- ข้อมูลตัวอย่าง (แทนที่ด้วยข้อมูลจริงผ่าน setData) ----------
+  var demo = function () {
+    return {
+      name: 'Kurokitsune', level: 48, title: 'Nine-Tailed Shadow', guild: 'DarkMoon',
+      portrait: '', character: '',           // url รูป (ถ้าไม่มีจะใช้ emoji)
+      hp: [4820, 4820], mp: [1360, 1360], exp: 32.7,
+      stats: { 'พลังโจมตี': 1245, 'พลังป้องกัน': 742, 'พลังเวท': 683,
+               'ความเร็วโจมตี': 1.32, 'คริติคอล': '18.5%', 'หลบหลีก': '7.2%' },
+      statPoints: 0,
+      equipment: {                            // slot: {icon, plus, rarity: rare|epic|legend}
+        weapon:{icon:'🗡️',plus:9,rarity:'epic'}, armor:{icon:'🥋',plus:9,rarity:'epic'},
+        legs:{icon:'👖',plus:9,rarity:'epic'},  boots:{icon:'👢',plus:9,rarity:'epic'},
+        helm:{icon:'🐺',plus:9,rarity:'epic'},  gloves:{icon:'🧤',plus:9,rarity:'epic'},
+        cape:{icon:'🧣',plus:9,rarity:'rare'},  amulet:{icon:'📿',plus:7,rarity:'legend'},
+        bag:{icon:'🎒',rarity:'legend'}, relic:null, ring:{icon:'💍',rarity:'legend'}
+      },
+      skills: [
+        { id:'s1', name:'จันทร์พิฆาต', lv:5, mp:120, icon:'🌙' },
+        { id:'s2', name:'เงาจันทรา',   lv:4, mp:90,  icon:'👤' },
+        { id:'s3', name:'กระชั้นหางเก้าชั้น', lv:3, mp:150, icon:'🦊' },
+        { id:'s4', name:'ความมืดครอบงำ', lv:2, mp:200, icon:'🌑' }
+      ],
+      passives: [ { name:'วิญญาณจิ้งจอก', desc:'เพิ่มพลังโจมตีและอัตราคริติคอล', icon:'🔥' } ]
+    };
+  };
+  var getter = demo;
+
+  // ---------- helpers ----------
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function fmt(n){ return typeof n === 'number' ? n.toLocaleString('en-US') : esc(n); }
+  function icon(v){ return /^(https?:|\/|\.|data:)/.test(v || '') ? '<img src="' + esc(v) + '">' : esc(v || ''); }
+  function pct(a){ return a[1] ? Math.max(0, Math.min(100, a[0] / a[1] * 100)) : 0; }
+  function bar(cls, a, label){
+    return '<div class="pp-bar ' + cls + '"><i style="width:' + pct(a) + '%"></i><b>' + label + ' ' + fmt(a[0]) + ' / ' + fmt(a[1]) + '</b></div>';
+  }
+  function slot(key, it){
+    var cls = 'pp-slot' + (it ? (it.rarity ? ' r-' + it.rarity : '') : ' empty');
+    return '<div class="' + cls + '" data-slot="' + key + '">' + (it ? icon(it.icon) + (it.plus ? '<em>+' + it.plus + '</em>' : '') : '＋') + '</div>';
+  }
+
+  // ---------- view ส่วนเนื้อหา ----------
+  var state = { statusTab: 'basic', equipTab: 'equip' };
+
+  var views = {
+    status: function (d) {
+      var menu = [['basic','ข้อมูลพื้นฐาน'],['stat','สเตตัส'],['equip','อุปกรณ์'],['skill','สกิล']];
+      var rows = '<div class="pp-row"><span>HP</span><b>' + fmt(d.hp[0]) + ' / ' + fmt(d.hp[1]) + '</b></div>' +
+                 '<div class="pp-row"><span>MP</span><b>' + fmt(d.mp[0]) + ' / ' + fmt(d.mp[1]) + '</b></div>';
+      Object.keys(d.stats).forEach(function (k) { rows += '<div class="pp-row"><span>' + esc(k) + '</span><b>' + fmt(d.stats[k]) + '</b></div>'; });
+      return '<div class="pp-status"><div>' +
+        '<div class="pp-portrait">' + (d.portrait ? icon(d.portrait) : '🦊') + '</div>' +
+        '<div class="pp-menu">' + menu.map(function (m) { return '<button data-go="' + m[0] + '" class="' + (state.statusTab === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '</div>' +
+        '</div><div>' +
+        '<div class="pp-name">' + esc(d.name) + '</div><div>Lv. ' + d.level + '</div>' +
+        '<div class="pp-title">' + esc(d.title) + '</div>' +
+        '<div style="color:var(--pp-mute);font-size:.9em">กิลด์ : ' + esc(d.guild) + '</div>' +
+        '<div class="pp-bar xp"><i style="width:' + d.exp + '%"></i><b>EXP ' + d.exp + '%</b></div>' +
+        '<div class="pp-stats">' + rows + '</div>' +
+        '<div class="pp-pts"><span>แต้มสกิลที่เหลือ : ' + d.statPoints + '</span><button class="pp-btn" data-act="reset">รีเซ็ต</button></div>' +
+        '</div></div>';
+    },
+
+    equip: function (d) {
+      var e = d.equipment || {};
+      return '<div class="pp-tabs"><button data-tab="stat">ค่าสถานะ</button><button class="on">อุปกรณ์</button></div>' +
+        '<div class="pp-equip">' +
+          '<div class="pp-col">' + ['weapon','armor','legs','boots'].map(function (k) { return slot(k, e[k]); }).join('') + '</div>' +
+          '<div class="pp-char">' + (d.character ? icon(d.character) : '🦊') + '</div>' +
+          '<div class="pp-col">' + ['helm','gloves','cape','amulet'].map(function (k) { return slot(k, e[k]); }).join('') + '</div>' +
+        '</div>' +
+        '<div class="pp-bottom">' + ['bag','relic','ring'].map(function (k) { return slot(k, e[k]); }).join('') + '</div>';
+    },
+
+    skills: function (d) {
+      var out = '<div class="pp-tabs"><button class="on">สกิลทั่วไป</button><button data-tab="special">สกิลพิเศษ</button></div>';
+      (d.skills || []).forEach(function (s) {
+        out += '<div class="pp-skill"><div class="pp-slot r-rare">' + icon(s.icon) + '</div>' +
+          '<div><h4>' + esc(s.name) + '</h4><small>Lv. ' + s.lv + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
+          '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button></div>';
+      });
+      if ((d.passives || []).length) {
+        out += '<div class="pp-sub">สกิลติดตัว</div>';
+        d.passives.forEach(function (s) {
+          out += '<div class="pp-skill pp-passive"><div class="pp-slot r-epic">' + icon(s.icon) + '</div>' +
+            '<div><h4>' + esc(s.name) + '</h4><small>' + esc(s.desc) + '</small></div>' +
+            '<button class="pp-btn green" disabled>ติดตัว</button></div>';
+        });
+      }
+      return out;
+    }
+  };
+
+  var meta = {
+    status: { title: 'ตัวละคร', ico: '🦊' },
+    equip:  { title: 'อุปกรณ์', ico: '🎒' },
+    skills: { title: 'สกิล',   ico: '✨' }
+  };
+
+  // ---------- window management ----------
+  var wins = {};
+  function ensure(name) {
+    if (wins[name]) return wins[name];
+    var w = document.createElement('div');
+    w.className = 'pp-win';
+    w.innerHTML = '<div class="pp-head"><span class="pp-ico">' + meta[name].ico + '</span><h2>' + meta[name].title +
+                  '</h2><button class="pp-x" aria-label="ปิด">✕</button></div><div class="pp-body"></div>';
+    layer.appendChild(w);
+    w.querySelector('.pp-x').addEventListener('click', function () { api.close(name); });
+
+    w.addEventListener('click', function (ev) {
+      var t = ev.target.closest('[data-skill],[data-slot],[data-go],[data-tab]');
+      if (!t) return;
+      if (t.dataset.skill) window.dispatchEvent(new CustomEvent('pp:useSkill', { detail: { id: t.dataset.skill } }));
+      else if (t.dataset.slot) window.dispatchEvent(new CustomEvent('pp:slot', { detail: { slot: t.dataset.slot } }));
+      else if (t.dataset.go) { var go = t.dataset.go; state.statusTab = go;
+        if (go === 'equip') { api.close('status'); api.open('equip'); }
+        else if (go === 'skill') { api.close('status'); api.open('skills'); }
+        else render('status'); }
+      else if (t.dataset.tab === 'stat') { api.close('equip'); api.open('status'); }
+    });
+    // กัน touch ทะลุไปโดน canvas ของ Phaser
+    ['pointerdown','touchstart','touchmove','mousedown'].forEach(function (evn) {
+      w.addEventListener(evn, function (e) { e.stopPropagation(); }, { passive: true });
+    });
+    return (wins[name] = w);
+  }
+
+  function render(name) {
+    var w = ensure(name);
+    w.querySelector('.pp-body').innerHTML = views[name](getter());
+  }
+
+  var api = {
+    setData: function (fn) { getter = typeof fn === 'function' ? fn : function () { return fn; }; },
+    open: function (name) { render(name); wins[name].classList.add('open'); },
+    close: function (name) { if (wins[name]) wins[name].classList.remove('open'); },
+    toggle: function (name) { (wins[name] && wins[name].classList.contains('open')) ? api.close(name) : api.open(name); },
+    refresh: function () { Object.keys(wins).forEach(function (n) { if (wins[n].classList.contains('open')) render(n); }); }
+  };
+  window.PixelPanels = api;
+})();
