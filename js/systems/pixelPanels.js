@@ -3,9 +3,9 @@
  *   PixelPanels.addDataHook(d => d2);   // ดักแก้ข้อมูลก่อนวาด (ใช้ใน skillLevelPatch.js)
  *   PixelPanels.toggle('status' | 'equip' | 'skills');
  *   PixelPanels.closeAll();
- * events: window 'pp:useSkill' {id} | 'pp:upgradeSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
+ * events: window 'pp:useSkill' {id} | 'pp:upgradeSkill' {id} | 'pp:unequipSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
  * ฟิลด์เสริมของสกิล (ถ้ามี จะแสดงเลเวลและปุ่มอัป): lv, maxLv, books, need, maxed
- * ฟิลด์ equip: true = แสดงปุ่ม "ใส่สกิล" (สกิลที่ยังไม่ได้ใส่ช่องต่อสู้)
+ * ฟิลด์ equip: true = แสดงปุ่ม "ใส่สกิล" | unequip: true = แสดงปุ่ม "ถอดสกิล"
  */
 (function () {
   var layer = document.getElementById('ui-layer') || document.body;
@@ -69,6 +69,11 @@
       : s.off
         ? '<button class="pp-btn" disabled>ยังไม่ได้ใส่</button>'
         : '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button>';
+    // สกิลที่ใส่อยู่ในช่องต่อสู้: ปุ่ม "ใช้งาน" + "ถอดสกิล" อยู่แถวเดียวกัน
+    if (s.unequip) {
+      useBtn = '<div style="display:flex;flex-direction:row;gap:6px">' + useBtn +
+               '<button class="pp-btn" data-unq="' + esc(s.id) + '">ถอดสกิล</button></div>';
+    }
     var upBtn = '';
     if (hasLv) {
       upBtn = s.maxed
@@ -148,10 +153,11 @@
     w.querySelector('.pp-x').addEventListener('click', function () { api.close(name); });
 
     w.addEventListener('click', function (ev) {
-      var t = ev.target.closest('[data-skill],[data-upg],[data-slot],[data-go],[data-tab],[data-stab],[data-act]');
+      var t = ev.target.closest('[data-skill],[data-upg],[data-unq],[data-slot],[data-go],[data-tab],[data-stab],[data-act]');
       if (!t) return;
       if (t.dataset.skill) window.dispatchEvent(new CustomEvent('pp:useSkill', { detail: { id: t.dataset.skill } }));
       else if (t.dataset.upg) window.dispatchEvent(new CustomEvent('pp:upgradeSkill', { detail: { id: t.dataset.upg } }));
+      else if (t.dataset.unq) window.dispatchEvent(new CustomEvent('pp:unequipSkill', { detail: { id: t.dataset.unq } }));
       else if (t.dataset.slot) window.dispatchEvent(new CustomEvent('pp:slot', { detail: { slot: t.dataset.slot } }));
       else if (t.dataset.act === 'reset') window.dispatchEvent(new CustomEvent('pp:reset'));
       else if (t.dataset.stab) { state.skillTab = t.dataset.stab; render('skills'); }
