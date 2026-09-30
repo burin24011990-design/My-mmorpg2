@@ -45,8 +45,9 @@
   var state = { statusTab: 'basic', skillTab: 'general' };
 
   function skillRow(s) {
+    var sub = s.info ? esc(s.info) : 'Lv. ' + s.lv;
     return '<div class="pp-skill"><div class="pp-slot">' + icon(s.icon) + '</div>' +
-      '<div><h4>' + esc(s.name) + '</h4><small>Lv. ' + s.lv + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
+      '<div><h4>' + esc(s.name) + '</h4><small>' + sub + '<br><span class="mp">ใช้ MP ' + s.mp + '</span></small></div>' +
       '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button></div>';
   }
 
