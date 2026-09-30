@@ -1,4 +1,4 @@
-// เซิร์ฟเวอร์เกม ขั้นที่ 2: ผู้เล่นหลายคนเห็นกันและกัน
+// เซิร์ฟเวอร์เกม: ผู้เล่นหลายคนเห็นกันและกัน (รองรับโลก 2400x1800 และสกิลเวอร์ชันใหม่)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -8,14 +8,21 @@ app.get('/', (req, res) => res.send('MMORPG server OK'));
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } }); // ภายหลังควรจำกัดเฉพาะเว็บของเรา
 
+const WORLD_W = 2400, WORLD_H = 1800;
 const players = {};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const SKILLS = new Set(['atk', 's1', 's2']);
+const SKILLS = new Set([
+  'basic_sword', 'basic_mage', 'basic_archer',
+  'ulti_sword', 'ulti_mage', 'ulti_archer',
+  'sw_slash', 'sw_spin', 'sw_dash', 'sw_cross',
+  'mg_fire', 'mg_ice', 'mg_bolt', 'mg_nova',
+  'ar_shot', 'ar_rain', 'ar_pierce', 'ar_multi',
+]);
 
 io.on('connection', socket => {
   socket.on('join', name => {
     name = String(name || '').trim().slice(0, 12) || 'Player';
-    players[socket.id] = { id: socket.id, name, x: 800, y: 450 };
+    players[socket.id] = { id: socket.id, name, x: 400, y: 350 };
     socket.emit('init', { id: socket.id, players });
     socket.broadcast.emit('joined', players[socket.id]);
   });
@@ -23,8 +30,8 @@ io.on('connection', socket => {
   socket.on('move', d => {
     const p = players[socket.id];
     if (!p || !d || typeof d.x !== 'number' || typeof d.y !== 'number') return;
-    p.x = clamp(d.x, 0, 1600);
-    p.y = clamp(d.y, 0, 900);
+    p.x = clamp(d.x, 0, WORLD_W);
+    p.y = clamp(d.y, 0, WORLD_H);
   });
 
   socket.on('skill', d => {
