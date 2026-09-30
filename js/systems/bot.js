@@ -91,6 +91,12 @@ Object.assign(Main.prototype, {
     const dangers = this.botDangers(cfg);
     const say = t => { if (this.botStatusText) this.botStatusText.setText('🤖 ' + t); };
 
+    // 0) ติดก้อนหิน: เดินเลี้ยวข้างชั่วครู่
+    if (this.time.now < (this.botUnstickUntil || 0)) {
+      p.setVelocity(this.botUnstickVec.x * BOT_SPEED, this.botUnstickVec.y * BOT_SPEED);
+      return;
+    }
+
     // 1) หนีมินิบอส
     let nb = null, nd = Infinity;
     dangers.forEach(b => {
@@ -118,14 +124,15 @@ Object.assign(Main.prototype, {
     // 2) เก็บของก่อนโจมตีเสมอ (ทั้งแมพ ยกเว้นของที่อยู่ใกล้บอสที่ต้องหลบ)
     let loot = null, ld = Infinity;
     this.loot.getChildren().forEach(it => {
-      if (!it.active) return;
+      if (!it.active || it.getData('skip')) return;
       if (dangers.length && !this.botSafe(it.x, it.y, dangers, BOT_AVOID_DIST)) return;
       const d = Phaser.Math.Distance.Between(p.x, p.y, it.x, it.y);
       if (d < ld) { ld = d; loot = it; }
     });
     if (loot) {
       say('เก็บของ');
-      this.physics.moveTo(p, loot.x, loot.y, BOT_SPEED);
+      this.botTrackLoot(loot, ld);
+      this.botMove(loot.x, loot.y);
       return;
     }
 
@@ -137,9 +144,9 @@ Object.assign(Main.prototype, {
       const d = Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y);
       if (d > approach) {
         say('เดินเข้าหาเป้า');
-        this.physics.moveTo(p, t.x, t.y, BOT_SPEED);
+        this.botMove(t.x, t.y);
       } else {
-        say('โจมตี');
+        say('โจมตี'); this.botStuckRef = null;
         p.setVelocity(0, 0);
         this.useBasicAttack();
         this.slots.forEach((sid, i) => { if (sid && this.stats.mp >= SKILL_DEFS[sid].mp) this.useSkill(i); });
@@ -150,8 +157,31 @@ Object.assign(Main.prototype, {
 
     // 4) ไม่มีเป้าในระยะ: เดินไปหามอนที่ตีได้ใกล้สุด
     const far = this.nearestEnemy();
-    if (far) { say('เดินหามอน'); this.physics.moveTo(p, far.x, far.y, BOT_SPEED); }
-    else { say('ไม่มีเป้าหมายที่เลือกไว้'); p.setVelocity(0, 0); }
+    if (far) { say('เดินหามอน'); this.botMove(far.x, far.y); }
+    else { say('ไม่มีเป้าหมายที่เลือกไว้'); this.botStuckRef = null; p.setVelocity(0, 0); }
+  },
+
+  // เดินไปจุดหมาย พร้อมตรวจว่าติดสิ่งกีดขวางไหม (ขยับน้อยกว่า 25px ใน 0.7 วิ = ติด)
+  botMove(x, y) {
+    const p = this.player, now = this.time.now;
+    this.physics.moveTo(p, x, y, BOT_SPEED);
+    const ref = this.botStuckRef;
+    if (!ref || now - ref.t > 700) {
+      if (ref && Phaser.Math.Distance.Between(p.x, p.y, ref.x, ref.y) < 25) {
+        const ang = Math.atan2(y - p.y, x - p.x) + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
+        this.botUnstickVec = new Phaser.Math.Vector2(Math.cos(ang), Math.sin(ang));
+        this.botUnstickUntil = now + 600;
+      }
+      this.botStuckRef = { x: p.x, y: p.y, t: now };
+    }
+  },
+
+  // ของที่เดินเข้าไปไม่ได้ (ระยะไม่ลดลงใน 4 วิ) ให้ข้าม ไม่วนเก็บตลอดกาล
+  botTrackLoot(loot, d) {
+    const now = this.time.now, ref = this.botLootRef;
+    if (!ref || ref.it !== loot) { this.botLootRef = { it: loot, best: d, t: now }; return; }
+    if (d < ref.best - 40) { ref.best = d; ref.t = now; }
+    else if (now - ref.t > 4000) { loot.setData('skip', true); this.botLootRef = null; }
   },
 
   botToggle(key) {
