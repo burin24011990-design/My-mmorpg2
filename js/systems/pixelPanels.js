@@ -5,6 +5,7 @@
  *   PixelPanels.closeAll();
  * events: window 'pp:useSkill' {id} | 'pp:upgradeSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
  * ฟิลด์เสริมของสกิล (ถ้ามี จะแสดงเลเวลและปุ่มอัป): lv, maxLv, books, need, maxed
+ * ฟิลด์ equip: true = แสดงปุ่ม "ใส่สกิล" (สกิลที่ยังไม่ได้ใส่ช่องต่อสู้)
  */
 (function () {
   var layer = document.getElementById('ui-layer') || document.body;
@@ -63,9 +64,11 @@
     var bookLine = hasLv
       ? '<br><span style="color:#9fd0ff">📕 หนังสือ ' + s.books + (s.maxed ? '' : '/' + s.need) + ' เล่ม</span>'
       : '';
-    var useBtn = s.off
-      ? '<button class="pp-btn" disabled>ยังไม่ได้ใส่</button>'
-      : '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button>';
+    var useBtn = s.equip
+      ? '<button class="pp-btn green" data-skill="' + esc(s.id) + '">ใส่สกิล</button>'
+      : s.off
+        ? '<button class="pp-btn" disabled>ยังไม่ได้ใส่</button>'
+        : '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button>';
     var upBtn = '';
     if (hasLv) {
       upBtn = s.maxed
