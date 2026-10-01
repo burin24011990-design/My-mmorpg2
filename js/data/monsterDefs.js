@@ -5,7 +5,7 @@
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
 //   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
-const MONSTER_SHEETS_READY = ['z1', 'z2'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
 
 // ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
@@ -45,9 +45,9 @@ const _MONSTER_TABLE = [
   },
   { // ด่าน 3 หนองพิษ
     fx: 'bubble',
-    normal: { name: 'กบหนอง',         color: 0x9acd32, ability: 'poison_touch' },
-    ranged: { name: 'สไลม์พ่นกรด',    color: 0xd4e157, ability: 'acid_pool_shot' },
-    boss:   { name: 'จระเข้โคลน',     color: 0x6b5a2a, ability: 'line_charge' },
+    normal: { name: 'กบหนอง',         color: 0x9acd32, ability: 'poison_touch', sizeMul: 1.06 },
+    ranged: { name: 'สไลม์พ่นกรด',    color: 0xd4e157, ability: 'acid_pool_shot', sizeMul: 1.12 },
+    boss:   { name: 'จระเข้โคลน',     color: 0x6b5a2a, ability: 'line_charge', sizeMul: 1.22 },
   },
   { // ด่าน 4 ถ้ำหิน
     fx: 'rock',
@@ -101,7 +101,7 @@ const MONSTER_DEFS = _MONSTER_TABLE.map((zt, zi) => {
       fw: boss ? 64 : 48, fh: boss ? 64 : 48,
       kind: kind, zone: zi,
       frames: 12, hasSheet: false,
-      scale: (boss ? MONSTER_SIZE_BOSS : MONSTER_SIZE_NORMAL)[zi] || 1,
+      scale: ((boss ? MONSTER_SIZE_BOSS : MONSTER_SIZE_NORMAL)[zi] || 1) * (m.sizeMul || 1),
     };
   });
   return out;
