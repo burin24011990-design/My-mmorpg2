@@ -1,5 +1,7 @@
 // ===== พุ่มหญ้า + ก้อนหิน (สไตล์ ROV) =====
-// พุ่มหญ้า: ผู้เล่นเดินเข้าไปแล้วโปร่งใส มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น + กระสุนมอนจากไกลถูกบัง
+// พุ่มหญ้า: ใช้รูป grass1-3 (assets/) วางซ้อนกันเป็นแปลงรูปวงรี
+//           ผู้เล่นเดินเข้าไป -> หญ้าตรงนั้นจางลงให้เห็นตัวเอง, มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็นเรา
+//           มอนที่อยู่ในพุ่ม: ผู้เล่นมองไม่เห็นถ้าอยู่ไกล (เข้าใกล้ / มอนยิงกระสุน / อยู่พุ่มเดียวกัน = เห็น)
 //           โจมตีแล้วจะโผล่ชั่วคราว (BUSH_REVEAL_AFTER_ATTACK)
 // ก้อนหิน: ตันเดินผ่านไม่ได้ (ผู้เล่น+มอน) และบังกระสุนทุกชนิด (ของมอนและของผู้เล่น ตั้ง PLAYER_SHOTS_BLOCKED_BY_ROCKS=false ถ้าอยากให้กระสุนผู้เล่นบินข้าม)
 // มีระบบหาทางเดินอ้อมหิน (A*) และตรวจแนวยิง ให้บอทใช้ (findPath / segmentBlocked)
@@ -11,6 +13,14 @@ const BUSH_COUNT = 18;
 const ROCK_MAX = 30;
 const PLAYER_SHOTS_BLOCKED_BY_ROCKS = true;
 
+// ----- ตั้งค่าพุ่มหญ้า (ปรับตรงนี้) -----
+const GRASS_IMG_KEYS = ['grass1', 'grass2', 'grass3']; // รูปใน assets/ (โหลดโดย main.js)
+const BUSH_R_MIN = 90, BUSH_R_MAX = 140;               // ขนาดแปลงหญ้า (รัศมีฐาน)
+const BUSH_SPACING = 340;                              // ระยะห่างต่ำสุดระหว่างแปลง
+const BUSH_RX = 1.15, BUSH_RY = 0.8;                   // วงรีที่นับว่า "อยู่ในหญ้า" (x เท่าของรัศมี, y เท่าของรัศมี)
+const BUSH_ALPHA_INSIDE = 0.45;                        // ความทึบของหญ้าตอนเราอยู่ข้างใน (น้อย = จางมาก)
+const BUSH_PLAYER_HIDDEN_ALPHA = 0.7;                  // ความทึบของตัวเราตอนซ่อนในหญ้า
+
 function mulberry32(a) {
   return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -20,6 +30,12 @@ function mulberry32(a) {
   };
 }
 
+// จุด (x,y) อยู่ในวงรีของแปลงหญ้า b หรือไม่
+function bushContains(b, x, y) {
+  const dx = (x - b.x) / b.rx, dy = (y - b.y) / b.ry;
+  return dx * dx + dy * dy < 1;
+}
+
 // ตอนมอนตาย ถ้าของดรอปไปตกในก้อนหิน ให้ขยับออกมา (กันเก็บไม่ได้)
 (function () {
   const _dropLoot = Main.prototype.dropLoot;
@@ -27,6 +43,33 @@ function mulberry32(a) {
     const before = new Set(this.loot.getChildren());
     _dropLoot.apply(this, args);
     this.loot.getChildren().forEach(it => { if (!before.has(it)) this.nudgeOutOfRocks(it); });
+  };
+})();
+
+// มอนที่ยิงกระสุนจากในพุ่ม = โผล่ชั่วคราว / มอนที่ซ่อนอยู่ในพุ่มเลือกเป็นเป้าหมายไม่ได้
+(function () {
+  const _enemyShoot = Main.prototype.enemyShoot;
+  if (_enemyShoot) {
+    Main.prototype.enemyShoot = function (e) {
+      e.revealUntil = this.time.now + BUSH_REVEAL_AFTER_ATTACK;
+      return _enemyShoot.call(this, e);
+    };
+  }
+  const _updateTargeting = Main.prototype.updateTargeting;
+  if (_updateTargeting) {
+    Main.prototype.updateTargeting = function () {
+      if (this.manualTarget && this.manualTarget.hiddenInBush) this.manualTarget = null;
+      return _updateTargeting.call(this);
+    };
+  }
+  Main.prototype.nearestEnemy = function (maxDist) {
+    let best = null, bestD = maxDist === undefined ? Infinity : maxDist;
+    this.enemies.getChildren().forEach(e => {
+      if (e.hiddenInBush) return;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d < bestD) { bestD = d; best = e; }
+    });
+    return best;
   };
 })();
 
@@ -68,17 +111,17 @@ Object.assign(Main.prototype, {
     const farFrom = (x, y, list, d) => list.every(o => dist(x, y, o.x, o.y) > d);
     const awayFromSpawn = (x, y, d) => dist(x, y, z.x, z.y) > d;
 
-    // พุ่มหญ้า
+    // พุ่มหญ้า (ตำแหน่ง + ขนาด)
     const cols = [0x2f7d32, 0x3f9a3f, 0x58b358];
     for (let tries = 0; this.bushes.length < BUSH_COUNT && tries < 500; tries++) {
-      const r = rand(70, 115), x = rand(M, WORLD_W - M), y = rand(M, WORLD_H - M);
-      if (!awayFromSpawn(x, y, 300) || !farFrom(x, y, this.bushes, 280)) continue;
-      const blobs = [];
+      const r = rand(BUSH_R_MIN, BUSH_R_MAX), x = rand(M, WORLD_W - M), y = rand(M, WORLD_H - M);
+      if (!awayFromSpawn(x, y, 300) || !farFrom(x, y, this.bushes, BUSH_SPACING)) continue;
+      const blobs = [];                               // ใช้เฉพาะตอนไม่มีรูปหญ้า (วาดวงกลมแทน)
       for (let i = 0; i < 8; i++) {
         const a = rnd() * Math.PI * 2, d = rand(0.15, 0.7) * r;
         blobs.push({ dx: Math.cos(a) * d, dy: Math.sin(a) * d, r: rand(0.25, 0.4) * r, c: cols[Math.floor(rnd() * cols.length)] });
       }
-      this.bushes.push({ x, y, r, blobs });
+      this.bushes.push({ x, y, r, rx: r * BUSH_RX, ry: r * BUSH_RY, blobs, sprites: [] });
     }
 
     // ก้อนหิน
@@ -94,8 +137,8 @@ Object.assign(Main.prototype, {
       const n = rnd() < 0.5 ? 1 : 2;
       for (let i = 0; i < n; i++) {
         const sz = ROCK_SIZES[1 + Math.floor(rnd() * 2)];
-        const a = rnd() * Math.PI * 2, d = b.r + sz[1] / 2 + 6;
-        addRock(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d, sz);
+        const a = rnd() * Math.PI * 2, d = b.rx + sz[1] / 2 + 6;
+        addRock(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d * (b.ry / b.rx), sz);
       }
     });
     for (let tries = 0; this.rockRects.length < ROCK_MAX && tries < 300; tries++) {  // หินเดี่ยวกระจายทั่วแมพ
@@ -104,14 +147,34 @@ Object.assign(Main.prototype, {
 
     this.buildNavGrid();
 
-    // วาดพุ่มหญ้า (อยู่เหนือตัวละคร โปร่งแสงครึ่งหนึ่ง)
+    // วาดพุ่มหญ้า (อยู่เหนือตัวละคร) -- ใช้รูป grass1-3 วางซ้อนกันเป็นแปลง
+    const useImg = GRASS_IMG_KEYS.every(k => this.textures.exists(k));
     const g = this.add.graphics().setDepth(6);
-    this.bushes.forEach(b => {
-      g.fillStyle(0x2f7d32, 0.5).fillCircle(b.x, b.y, b.r);
-      b.blobs.forEach(o => { g.fillStyle(o.c, 0.55).fillCircle(b.x + o.dx, b.y + o.dy, o.r); });
-      g.lineStyle(3, 0x1f5a22, 0.7).strokeCircle(b.x, b.y, b.r);
-    });
     this.obstacleObjs.push(g);
+    this.bushes.forEach(b => {
+      if (!useImg) {                                  // สำรอง: ไม่มีรูปก็วาดวงกลมเขียวแบบเดิม
+        g.fillStyle(0x2f7d32, 0.5).fillCircle(b.x, b.y, b.r);
+        b.blobs.forEach(o => { g.fillStyle(o.c, 0.55).fillCircle(b.x + o.dx, b.y + o.dy, o.r); });
+        g.lineStyle(3, 0x1f5a22, 0.7).strokeCircle(b.x, b.y, b.r);
+        return;
+      }
+      const n = Math.max(4, Math.round(b.r / 20));
+      const items = [];
+      for (let i = 0; i < n; i++) {
+        const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 0.5;
+        items.push({ px: b.x + Math.cos(a) * d * b.r, py: b.y + Math.sin(a) * d * b.r * 0.8 });
+      }
+      items.sort((p, q) => p.py - q.py);               // กอล่างอยู่หน้ากอบน
+      items.forEach(it => {
+        const key = GRASS_IMG_KEYS[Math.floor(rnd() * GRASS_IMG_KEYS.length)];
+        const s = this.add.image(it.px, it.py, key);
+        s.setScale((b.r * (1.3 + rnd() * 0.4)) / s.width);
+        if (rnd() < 0.5) s.setFlipX(true);
+        s.setDepth(6 + (it.py / WORLD_H) * 0.5);
+        b.sprites.push(s);
+        this.obstacleObjs.push(s);
+      });
+    });
   },
 
   // ---------- เส้นทาง / แนวยิง ----------
@@ -242,13 +305,47 @@ Object.assign(Main.prototype, {
   },
 
   // คืน true ถ้าผู้เล่นซ่อนอยู่ในพุ่ม (และยังไม่ได้โจมตีเมื่อครู่)
+  // เรียกทุกเฟรมจาก updateEnemies: จัดการหญ้าจางตอนเราอยู่ข้างใน + ซ่อน/แสดงมอนที่อยู่ในพุ่ม
   updatePlayerHidden(time) {
     const p = this.player;
-    const inBush = (this.bushes || []).some(b => Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) < b.r);
-    const hidden = inBush && time >= (this.revealUntil || 0);
+    const bushes = this.bushes || [];
+    let inBush = null;
+    for (const b of bushes) { if (bushContains(b, p.x, p.y)) { inBush = b; break; } }
+    const hidden = !!inBush && time >= (this.revealUntil || 0);
     this.playerHidden = hidden;
-    if (!(time < (this.invulnUntil || 0))) p.setAlpha(hidden ? 0.5 : 1);
+    this.playerBush = inBush;
+    if (!(time < (this.invulnUntil || 0))) p.setAlpha(hidden ? BUSH_PLAYER_HIDDEN_ALPHA : 1);
+
+    // แปลงหญ้าที่เราอยู่ข้างใน -> จางลง / แปลงอื่น -> ทึบ
+    bushes.forEach(b => {
+      const to = (b === inBush) ? BUSH_ALPHA_INSIDE : 1;
+      (b.sprites || []).forEach(s => {
+        if (s.alpha === to) return;
+        s.alpha += (to - s.alpha) * 0.25;
+        if (Math.abs(to - s.alpha) < 0.01) s.alpha = to;
+      });
+    });
+
+    this.updateEnemyBushVisibility(time, inBush);
     return hidden;
+  },
+
+  // มอนที่อยู่ในพุ่ม: ผู้เล่นมองไม่เห็น ยกเว้นอยู่พุ่มเดียวกัน / เข้าใกล้ / เพิ่งยิงกระสุน
+  updateEnemyBushVisibility(time, playerBush) {
+    const p = this.player, bushes = this.bushes || [];
+    this.enemies.getChildren().forEach(e => {
+      let eb = null;
+      for (const b of bushes) { if (bushContains(b, e.x, e.y)) { eb = b; break; } }
+      let vis = true;
+      if (eb) {
+        vis = (eb === playerBush) ||
+          Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y) < BUSH_REVEAL_DIST ||
+          time < (e.revealUntil || 0);
+      }
+      e.hiddenInBush = !vis;
+      if (e.visible !== vis) e.setVisible(vis);
+      if (e.levelText && e.levelText.visible !== vis) e.levelText.setVisible(vis);
+    });
   },
 
   nudgeOutOfRocks(it) {
