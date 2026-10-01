@@ -5,7 +5,7 @@
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
 //   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
-const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3', 'z4', 'z5'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3', 'z4', 'z5', 'z6'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
 
 // ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
@@ -63,9 +63,9 @@ const _MONSTER_TABLE = [
   },
   { // ด่าน 6 ภูเขาไฟ
     fx: 'fire',
-    normal: { name: 'สไลม์ลาวา',      color: 0xff7a1a, ability: 'fire_patch_on_death' },
-    ranged: { name: 'ภูตเพลิง',       color: 0xffd23d, ability: 'exploding_fireball' },
-    boss:   { name: 'มังกรลาวา',      color: 0xc0301a, ability: 'flame_line_ring' },
+    normal: { name: 'สไลม์ลาวา',      color: 0xff7a1a, ability: 'fire_patch_on_death', sizeMul: 1.05 },
+    ranged: { name: 'ภูตเพลิง',       color: 0xffd23d, ability: 'exploding_fireball', sizeMul: 1.23 },
+    boss:   { name: 'มังกรลาวา',      color: 0xc0301a, ability: 'flame_line_ring', sizeMul: 1.02 },
   },
   { // ด่าน 7 ทุ่งน้ำแข็ง
     fx: 'ice',
