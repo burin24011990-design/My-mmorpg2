@@ -1,5 +1,9 @@
 // ===== อาชีพโจร (rogue) — แก้ความสามารถสกิลของโจรที่ไฟล์นี้ =====
 (function () {
+  // ต้องมี _shared.js โหลดก่อน (สร้าง window.Classes) ถ้าไม่มีให้ดู error แรกสุดที่ขึ้นบนจอ
+  const Classes = window.Classes;
+  if (!Classes) throw new Error('rogue.js: ไม่พบ window.Classes -> _shared.js ไม่ทำงาน/โหลดไม่ขึ้น (ดู error ก่อนหน้า)');
+
   const P = Main.prototype;
   const TEST_UNLOCK = true;   // true = ปลดล็อกสกิลโจรทันทีเพื่อทดสอบ (ทดสอบเสร็จเปลี่ยนเป็น false ให้ได้จากหนังสือสกิล)
   const RG_IDS = ['rg_dash', 'rg_vanish', 'rg_slow'];
