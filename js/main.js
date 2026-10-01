@@ -33,6 +33,17 @@ const GRASS_ALPHA_INSIDE = 0.4;   // ความโปร่งของหญ�
   target.preload = function () {
     if (origPreload) origPreload.apply(this, arguments);
     loadGrassImages(this);
+
+    // โหลด sprite sheet มอนสเตอร์ (ตามรายการ MONSTER_SHEETS_READY ใน js/data/monsterDefs.js)
+    // ไฟล์ไหนโหลดไม่ได้ เกมจะใช้วงกลมสีสำรองแทนเอง ไม่พัง
+    if (typeof preloadMonsterSprites === 'function') {
+      preloadMonsterSprites(this);
+      this.load.on('loaderror', function (file) {
+        if (file && file.key && String(file.key).indexOf('mon_') === 0) {
+          console.warn('โหลด sprite มอนไม่ได้ (ใช้วงกลมสีแทน):', file.src);
+        }
+      });
+    }
   };
 
   if (GRASS_TEST) {
