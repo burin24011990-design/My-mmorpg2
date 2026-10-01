@@ -9,6 +9,8 @@
 // โหลดต่อจาก monsters.js
 
 const ROCK_SIZES = [['rock_s', 56], ['rock_m', 84], ['rock_l', 116]];
+// รูปหินใน assets/ (โหลดโดย main.js) ถ้าโหลดไม่ได้จะใช้รูปที่วาดด้วยโค้ดแทน
+const ROCK_IMG = { rock_s: 'rock1', rock_m: 'rock2', rock_l: 'rock3' };
 const BUSH_COUNT = 18;
 const ROCK_MAX = 30;
 const PLAYER_SHOTS_BLOCKED_BY_ROCKS = true;
@@ -129,7 +131,13 @@ Object.assign(Main.prototype, {
       const [key, s] = sz;
       if (x < 80 || y < 80 || x > WORLD_W - 80 || y > WORLD_H - 80) return false;
       if (!awayFromSpawn(x, y, 220) || !farFrom(x, y, this.rockRects, 130)) return false;
-      this.rocks.create(x, y, key).setDepth(1);
+      const imgKey = ROCK_IMG[key];
+      if (imgKey && this.textures.exists(imgKey)) {
+        // ใช้รูปหินจริง: ย่อ/ขยายให้เป็นสี่เหลี่ยม s x s (hitbox เท่ากับขนาดที่แสดง)
+        this.rocks.create(x, y, imgKey).setDisplaySize(s, s).setDepth(1).refreshBody();
+      } else {
+        this.rocks.create(x, y, key).setDepth(1);
+      }
       this.rockRects.push({ x, y, w: s, h: s });
       return true;
     };
