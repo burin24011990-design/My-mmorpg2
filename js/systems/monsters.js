@@ -83,7 +83,8 @@ Object.assign(Main.prototype, {
     e.level = lv;
     e.hp = 30 + lv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(lv * 1.5);
     e.aggro = ranged ? 350 : 130; e.lose = ranged ? 480 : 320; e.leash = 450;
-    e.speed = 70; e.hitRange = 26; e.nextShot = 0;
+    e.speed = 70; e.hitRange = 26 * def.scale; e.nextShot = 0;
+    e.setScale(def.scale);
     this.initEnemyCommon(e, zi, pt, ranged ? '#ffb070' : '#ffe066', def.name + ' Lv.' + lv, '10px');
     return e;
   },
@@ -99,7 +100,8 @@ Object.assign(Main.prototype, {
     e.level = lv;
     e.hp = (30 + lv * 8) * BOSS_MULT; e.maxHp = e.hp; e.dmg = (5 + Math.floor(lv * 1.5)) * BOSS_MULT;
     e.aggro = 220; e.lose = 520; e.leash = 700;
-    e.speed = 85; e.hitRange = 40; e.nextShot = 0;
+    e.speed = 85; e.hitRange = 40 * def.scale; e.nextShot = 0;
+    e.setScale(def.scale);
     this.initEnemyCommon(e, zi, pt, '#ff8888', '👑 ' + def.name + ' Lv.' + lv, '12px');
     return e;
   },
@@ -113,7 +115,7 @@ Object.assign(Main.prototype, {
     e.wanderX = pt.x; e.wanderY = pt.y; e.nextWander = 0;
     e.atkUntil = 0; e.animState = '';
     if (e.def && e.def.hasSheet) e.play(e.def.key + '_idle');
-    e.levelText = this.add.text(pt.x, pt.y - 22, label, { fontSize, color, fontStyle: e.isBoss ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(40);
+    e.levelText = this.add.text(pt.x, pt.y - 22 * ((e.def && e.def.scale) || 1), label, { fontSize, color, fontStyle: e.isBoss ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(40);
     e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
   },
 
@@ -201,7 +203,7 @@ Object.assign(Main.prototype, {
         this.hurtPlayer(e.dmg || 8);
       }
       this.updateEnemyAnim(e, time);
-      if (e.levelText) e.levelText.setPosition(e.x, e.y - (e.isBoss ? 40 : 22));
+      if (e.levelText) e.levelText.setPosition(e.x, e.y - (e.isBoss ? 40 : 22) * ((e.def && e.def.scale) || 1));
     });
   },
 
