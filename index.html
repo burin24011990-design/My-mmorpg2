@@ -10,6 +10,9 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>My MMORPG</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600;700&display=swap">
 <style>
   html, body { margin:0; height:100%; background:#111; overflow:hidden; touch-action:none; overscroll-behavior:none; }
   canvas { display:block; }
@@ -23,19 +26,19 @@
     canvas { display:none; }
   }
 
-  /* หน้าจอเริ่มเกม: แตะ 1 ครั้งเพื่อเข้าเต็มจอ + ล็อกแนวนอน */
+  /* ปุ่มแตะเพื่อกลับเข้าเต็มจอ (โผล่เฉพาะตอนเล่นแล้วหลุดจากเต็มจอ) */
   #start-overlay {
-    position:fixed; inset:0; z-index:10000; background:#111; color:#fff;
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    font-family:sans-serif; cursor:pointer; -webkit-tap-highlight-color:transparent;
+    position:fixed; inset:0; z-index:10000; background:rgba(10,4,6,.92); color:#fff;
+    display:none; align-items:center; justify-content:center; text-align:center;
+    font-family:'Mitr',sans-serif; cursor:pointer; -webkit-tap-highlight-color:transparent;
   }
-  #start-overlay .title { font-size:28px; font-weight:bold; color:#ffe066; margin-bottom:16px; }
   #start-overlay .btn {
-    display:inline-block; padding:14px 28px; border:2px solid #ffe066; border-radius:12px;
-    font-size:20px; background:#1c1f24;
+    display:inline-block; padding:14px 28px; border:2px solid #ffd45c; border-radius:12px;
+    font-size:20px; background:#26090f; color:#ffe28a;
   }
-  #start-overlay .sub { margin-top:14px; font-size:13px; color:#999; }
+  #start-overlay .sub { margin-top:14px; font-size:13px; color:#aaa; }
 </style>
+<link rel="stylesheet" href="css/start.css?v=21">
 </head>
 <body>
 <script>
@@ -60,21 +63,67 @@ window.addEventListener('error', function (e) {
 </script>
 <div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
 
+<!-- ===== หน้าเริ่มเกม / ล็อกอิน ===== -->
+<div id="login-screen">
+  <div id="embers"></div>
+  <div class="ls-card">
+    <div class="ls-hero"><div class="ls-glow"></div><div class="ls-sprite"></div></div>
+    <div class="ls-main">
+      <h1 class="ls-title">My MMORPG</h1>
+      <p class="ls-sub">ผจญภัย ล่ามอนสเตอร์ สะสมไอเทม</p>
+
+      <div id="v-loading" class="ls-view">
+        <div class="spin"></div>
+        <div class="ls-center">กำลังตรวจสอบบัญชี...</div>
+      </div>
+
+      <div id="v-login" class="ls-view" hidden>
+        <button id="btn-google" class="btn btn-google">
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          เข้าสู่ระบบด้วย Google
+        </button>
+        <div class="ls-or"><span>หรือ</span></div>
+        <button id="btn-guest" class="btn btn-ghost">เล่นแบบผู้เยี่ยม</button>
+        <p id="login-note" class="ls-note">ล็อกอินเพื่อเก็บความคืบหน้าไว้บนคลาวด์ เปลี่ยนเครื่องหรือล้างเบราว์เซอร์ก็ไม่หาย</p>
+      </div>
+
+      <div id="v-ready" class="ls-view" hidden>
+        <div id="u-card" class="ls-user">
+          <img id="u-photo" alt="" referrerpolicy="no-referrer">
+          <div><b id="u-name"></b><small id="u-mail"></small></div>
+        </div>
+        <label class="ls-label" for="in-name">ชื่อตัวละคร (ใช้ตอนสร้างตัวละครใหม่)</label>
+        <input id="in-name" type="text" maxlength="12" placeholder="ไม่เกิน 12 ตัวอักษร" autocomplete="off">
+        <button id="btn-start" class="btn btn-gold">▶ เริ่มเล่น</button>
+        <p id="cloud-state" class="ls-cloud"></p>
+        <div class="ls-links"><a id="lnk-out"></a></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="cloud-toast"></div>
+
+<!-- ปุ่มกลับเข้าเต็มจอ -->
 <div id="start-overlay">
   <div>
-    <div class="title">My MMORPG</div>
-    <div class="btn">แตะเพื่อเริ่มเล่นเต็มจอ</div>
+    <div class="btn">แตะเพื่อกลับเข้าเต็มจอ</div>
     <div class="sub">เกมจะหมุนเป็นแนวนอนและซ่อนแถบเบราว์เซอร์อัตโนมัติ</div>
   </div>
 </div>
 
 <script>
 // ===== บังคับเต็มจอ + แนวนอน =====
-// เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงต้องแตะ 1 ครั้งตอนเปิดเกม
-// ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอแนวนอนทันทีโดยไม่ต้องแตะ
+// เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงเรียกจากปุ่ม "เริ่มเล่น"
+// ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอแนวนอนทันที
 (function () {
   var ov = document.getElementById('start-overlay');
   var de = document.documentElement;
+  var started = false;
 
   function isFS() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
   function isInstalled() {
@@ -92,29 +141,29 @@ window.addEventListener('error', function (e) {
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 800);
   }
   function hideOverlay() { ov.style.display = 'none'; }
-  function showOverlay() { if (!isInstalled()) ov.style.display = 'flex'; }
+  function showOverlay() { if (started && !isInstalled()) ov.style.display = 'flex'; }
 
-  function goFull() {
+  function enter() {
+    if (isInstalled()) { lockLandscape(); hideOverlay(); return; }
     var req = de.requestFullscreen || de.webkitRequestFullscreen || de.msRequestFullscreen;
-    if (!req) { hideOverlay(); return; }          // เช่น iPhone: ไม่รองรับเต็มจอ ให้เข้าเกมเลย
+    if (!req) { hideOverlay(); return; }          // เช่น iPhone: ไม่รองรับเต็มจอ
     var p;
     try { p = req.call(de, { navigationUI: 'hide' }); } catch (e) { hideOverlay(); return; }
     Promise.resolve(p).then(function () {
       lockLandscape(); hideOverlay(); nudgeResize();
     }).catch(function () { hideOverlay(); });
   }
+  window.GameFS = { enter: enter, setStarted: function () { started = true; } };
 
-  ov.addEventListener('click', goFull);
-
+  ov.addEventListener('click', enter);
   function onFsChange() {
     if (isFS()) { lockLandscape(); hideOverlay(); }
-    else showOverlay();                            // ออกจากเต็มจอ -> ขึ้นหน้าแตะเพื่อกลับเข้าเต็มจอ
+    else showOverlay();                            // หลุดเต็มจอ -> ขึ้นปุ่มกลับเข้าเต็มจอ
     nudgeResize();
   }
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
-
-  if (isInstalled()) { hideOverlay(); lockLandscape(); }
+  if (isInstalled()) lockLandscape();
 })();
 
 // ลงทะเบียน service worker เพื่อให้ติดตั้งลงหน้าจอโฮมแบบเต็มจอได้ (ไม่แคชไฟล์เกม)
@@ -129,48 +178,56 @@ if ('serviceWorker' in navigator) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.80.1/phaser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 
+<!-- Firebase (ล็อกอิน Google + เซฟคลาวด์) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="js/firebaseConfig.js?v=21"></script>
+<!-- ต้องโหลดก่อนไฟล์เกมทั้งหมด (หน่วงการสร้างเกมไว้จนกดเริ่มเล่น) -->
+<script src="js/startScreen.js?v=21"></script>
+
 <!-- ลำดับสำคัญ: config -> data -> scene -> systems -> main -->
 <!-- เลข ?v= ใช้บังคับมือถือโหลดไฟล์ใหม่ ถ้าแก้ไฟล์แล้วไม่เปลี่ยน ให้เพิ่มเลขนี้ทุกตัว -->
-<link rel="stylesheet" href="css/ui.css?v=9">
+<link rel="stylesheet" href="css/ui.css?v=21">
 <div id="ui-layer"></div>
-  <link rel="stylesheet" href="css/pixel-panels.css?v=9">
-  <script src="js/config.js?v=9"></script>
-<script src="js/data/zones.js?v=9"></script>
-<script src="js/data/skills.js?v=9"></script>
-<script src="js/data/items.js?v=9"></script>
-<script src="js/data/textures.js?v=9"></script>
-  <script src="js/data/monsterDefs.js?v=10"></script>
-<script src="js/scenes/Main.js?v=17"></script>
-<script src="js/systems/player.js?v=9"></script>
-<script src="js/systems/monsters.js?v=10"></script>
-<script src="js/systems/inventory.js?v=9"></script>
-<script src="js/systems/equipment.js?v=9"></script>
-<script src="js/systems/skills.js?v=9"></script>
-<script src="js/systems/input.js?v=9"></script>
-<script src="js/systems/ui.js?v=9"></script>
-<script src="js/systems/panels.js?v=9"></script>
-<script src="js/systems/inventoryPanel.js?v=14"></script>
-<script src="js/systems/network.js?v=9"></script>
-  <script src="js/systems/hudLayout.js?v=9"></script>
-<script src="js/systems/obstacles.js?v=14"></script>
-  <script src="js/systems/bot.js?v=9"></script>
-<script src="js/systems/save.js?v=9"></script>
-  <script src="js/systems/bagWindow.js?v=9"></script>
-<script src="js/systems/fixes.js?v=9"></script>
-  <script src="js/systems/pixelPanels.js?v=11"></script>
-  <script src="js/systems/panelFix.js?v=9"></script>
-  <script src="js/systems/pixelBridge.js?v=9"></script>
-  <script src="js/systems/skillLevelPatch.js?v=11"></script>
-  <script src="js/systems/aimDash.js?v=17"></script>
-  <script src="js/classes/shared.js?v=17"></script>
-  <script src="js/classes/sword.js?v=17"></script>
-  <script src="js/classes/mage.js?v=18"></script>
-  <script src="js/classes/archer.js?v=17"></script>
-  <script src="js/classes/priest.js?v=16"></script>
-  <script src="js/classes/rogue.js?v=18"></script>
-  <script src="js/systems/stats.js?v=16"></script>
-  <script src="js/systems/heroAnims.js?v=3"></script>
-<script src="js/systems/heroPatch.js?v=3"></script>
-<script src="js/main.js?v=9"></script>
+  <link rel="stylesheet" href="css/pixel-panels.css?v=21">
+  <script src="js/config.js?v=21"></script>
+<script src="js/data/zones.js?v=21"></script>
+<script src="js/data/skills.js?v=21"></script>
+<script src="js/data/items.js?v=21"></script>
+<script src="js/data/textures.js?v=21"></script>
+  <script src="js/data/monsterDefs.js?v=21"></script>
+<script src="js/scenes/Main.js?v=21"></script>
+<script src="js/systems/player.js?v=21"></script>
+<script src="js/systems/monsters.js?v=21"></script>
+<script src="js/systems/inventory.js?v=21"></script>
+<script src="js/systems/equipment.js?v=21"></script>
+<script src="js/systems/skills.js?v=21"></script>
+<script src="js/systems/input.js?v=21"></script>
+<script src="js/systems/ui.js?v=21"></script>
+<script src="js/systems/panels.js?v=21"></script>
+<script src="js/systems/inventoryPanel.js?v=21"></script>
+<script src="js/systems/network.js?v=21"></script>
+  <script src="js/systems/hudLayout.js?v=21"></script>
+<script src="js/systems/obstacles.js?v=21"></script>
+  <script src="js/systems/bot.js?v=21"></script>
+<script src="js/systems/save.js?v=21"></script>
+  <script src="js/systems/bagWindow.js?v=21"></script>
+<script src="js/systems/fixes.js?v=21"></script>
+  <script src="js/systems/pixelPanels.js?v=21"></script>
+  <script src="js/systems/panelFix.js?v=21"></script>
+  <script src="js/systems/pixelBridge.js?v=21"></script>
+  <script src="js/systems/skillLevelPatch.js?v=21"></script>
+  <script src="js/systems/aimDash.js?v=21"></script>
+  <script src="js/classes/shared.js?v=21"></script>
+  <script src="js/classes/sword.js?v=21"></script>
+  <script src="js/classes/mage.js?v=21"></script>
+  <script src="js/classes/archer.js?v=21"></script>
+  <script src="js/classes/priest.js?v=21"></script>
+  <script src="js/classes/rogue.js?v=21"></script>
+  <script src="js/systems/stats.js?v=21"></script>
+  <script src="js/systems/heroAnims.js?v=21"></script>
+  <script src="js/systems/heroPatch.js?v=21"></script>
+<script src="js/main.js?v=21"></script>
 </body>
 </html>
