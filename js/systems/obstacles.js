@@ -35,6 +35,11 @@ const DECO_DEFS = [
   { key: 'deco_stump',    w: 56,  count: 8,  depth: -7.5 },
 ];
 
+// ----- บ่อน้ำ (เดินไม่ได้ / กระสุนบินข้ามได้ / บอทเดินอ้อม) -----
+const POND_COUNT = 4;                    // จำนวนบ่อต่อด่าน
+const POND_W = 320, POND_H = 200;        // ขนาดรูปในเกม (px) -- สุ่มขยาย/ย่อ 0.85-1.2 เท่า
+const POND_HIT_W = 0.74, POND_HIT_H = 0.58;  // ส่วนที่เดินไม่ได้ (สัดส่วนของรูป) ให้เหลือริมฝั่งเดินได้
+
 function mulberry32(a) {
   return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -109,14 +114,18 @@ Object.assign(Main.prototype, {
       this.rocks = this.physics.add.staticGroup();
       this.physics.add.collider(this.player, this.rocks);
       this.physics.add.collider(this.enemies, this.rocks);
+      this.ponds = this.physics.add.staticGroup();
+      this.physics.add.collider(this.player, this.ponds);
+      this.physics.add.collider(this.enemies, this.ponds);
       this.physics.add.overlap(this.enemyShots, this.rocks, sh => sh.destroy());
       if (PLAYER_SHOTS_BLOCKED_BY_ROCKS) {
         this.physics.add.overlap(this.projectiles, this.rocks, pr => { this.flash(pr.x, pr.y, 10, 0xaaaaaa); pr.destroy(); });
       }
     }
     this.rocks.clear(true, true);
+    if (this.ponds) this.ponds.clear(true, true);
     (this.obstacleObjs || []).forEach(o => o.destroy());
-    this.obstacleObjs = []; this.rockRects = []; this.bushes = [];
+    this.obstacleObjs = []; this.rockRects = []; this.pondRects = []; this.bushes = [];
 
     const rnd = mulberry32(1000 + z.id * 7919);
     const rand = (a, b) => a + rnd() * (b - a);
@@ -125,11 +134,27 @@ Object.assign(Main.prototype, {
     const farFrom = (x, y, list, d) => list.every(o => dist(x, y, o.x, o.y) > d);
     const awayFromSpawn = (x, y, d) => dist(x, y, z.x, z.y) > d;
 
+    // บ่อน้ำ
+    const pondKey = this.makePondTexture();
+    const prnd = mulberry32(9000 + z.id * 6151);
+    for (let tries = 0; this.pondRects.length < POND_COUNT && tries < 300; tries++) {
+      const sc = 0.85 + prnd() * 0.35;
+      const x = 220 + prnd() * (WORLD_W - 440), y = 180 + prnd() * (WORLD_H - 360);
+      if (!awayFromSpawn(x, y, 380) || !this.pondRects.every(p => dist(x, y, p.x, p.y) > 520)) continue;
+      const img = this.add.image(x, y, pondKey).setDepth(-7);
+      img.setScale((POND_W * sc) / img.width);
+      const vw = img.displayWidth, vh = img.displayHeight;
+      const cw = vw * POND_HIT_W, ch = vh * POND_HIT_H;
+      this.obstacleObjs.push(img);
+      this.ponds.add(this.add.rectangle(x, y, cw, ch, 0x000000, 0));   // กล่องชน (มองไม่เห็น)
+      this.pondRects.push({ x, y, w: cw, h: ch, vw, vh });
+    }
+
     // พุ่มหญ้า (ตำแหน่ง + ขนาด)
     const cols = [0x2f7d32, 0x3f9a3f, 0x58b358];
     for (let tries = 0; this.bushes.length < BUSH_COUNT && tries < 500; tries++) {
       const r = rand(BUSH_R_MIN, BUSH_R_MAX), x = rand(M, WORLD_W - M), y = rand(M, WORLD_H - M);
-      if (!awayFromSpawn(x, y, 300) || !farFrom(x, y, this.bushes, BUSH_SPACING)) continue;
+      if (!awayFromSpawn(x, y, 300) || !farFrom(x, y, this.bushes, BUSH_SPACING) || this.nearPond(x, y, r * BUSH_RX + 20)) continue;
       const blobs = [];                               // ใช้เฉพาะตอนไม่มีรูปหญ้า (วาดวงกลมแทน)
       for (let i = 0; i < 8; i++) {
         const a = rnd() * Math.PI * 2, d = rand(0.15, 0.7) * r;
@@ -142,7 +167,7 @@ Object.assign(Main.prototype, {
     const addRock = (x, y, sz) => {
       const [key, s] = sz;
       if (x < 80 || y < 80 || x > WORLD_W - 80 || y > WORLD_H - 80) return false;
-      if (!awayFromSpawn(x, y, 220) || !farFrom(x, y, this.rockRects, 130)) return false;
+      if (!awayFromSpawn(x, y, 220) || !farFrom(x, y, this.rockRects, 130) || this.nearPond(x, y, s / 2 + 10)) return false;
       const imgKey = ROCK_IMG[key];
       if (imgKey && this.textures.exists(imgKey)) {
         // ใช้รูปหินจริง: ย่อ/ขยายให้เป็นสี่เหลี่ยม s x s (hitbox เท่ากับขนาดที่แสดง)
@@ -212,7 +237,7 @@ Object.assign(Main.prototype, {
     const rnd = mulberry32(5000 + z.id * 104729);
     const bushes = this.bushes || [];
     const free = (x, y) => {
-      if (this.pointInRock(x, y, 30)) return false;
+      if (this.pointInRock(x, y, 30) || this.nearPond(x, y, 20)) return false;
       for (const b of bushes) {
         const dx = (x - b.x) / (b.rx * 1.1), dy = (y - b.y) / (b.ry * 1.1);
         if (dx * dx + dy * dy < 1) return false;
@@ -241,7 +266,7 @@ Object.assign(Main.prototype, {
   buildNavGrid() {
     const cell = 40, cols = Math.ceil(WORLD_W / cell), rows = Math.ceil(WORLD_H / cell), m = 20;
     const blocked = new Uint8Array(cols * rows);
-    (this.rockRects || []).forEach(r => {
+    (this.rockRects || []).concat(this.pondRects || []).forEach(r => {
       const c0 = Math.max(0, Math.floor((r.x - r.w / 2 - m) / cell)), c1 = Math.min(cols - 1, Math.floor((r.x + r.w / 2 + m) / cell));
       const r0 = Math.max(0, Math.floor((r.y - r.h / 2 - m) / cell)), r1 = Math.min(rows - 1, Math.floor((r.y + r.h / 2 + m) / cell));
       for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) blocked[rr * cols + cc] = 1;
@@ -250,10 +275,13 @@ Object.assign(Main.prototype, {
   },
 
   // เส้นตรงจาก (x1,y1) ไป (x2,y2) ชนหินตรงไหนก่อน: คืนสัดส่วน 0..1 หรือ null ถ้าไม่ชน (margin = ขยายขอบหิน)
-  rayHitRock(x1, y1, x2, y2, margin) {
+  // (บ่อน้ำไม่บังกระสุน จึงไม่รวมในนี้)
+  rayHitRock(x1, y1, x2, y2, margin) { return this._rayHitRects(this.rockRects, x1, y1, x2, y2, margin); },
+
+  _rayHitRects(rects, x1, y1, x2, y2, margin) {
     const m = margin || 0, dx = x2 - x1, dy = y2 - y1;
     let best = null;
-    for (const r of (this.rockRects || [])) {
+    for (const r of (rects || [])) {
       const mins = [r.x - r.w / 2 - m, r.y - r.h / 2 - m], maxs = [r.x + r.w / 2 + m, r.y + r.h / 2 + m];
       const ps = [x1, y1], ds = [dx, dy];
       let t0 = 0, t1 = 1, ok = true;
@@ -271,7 +299,11 @@ Object.assign(Main.prototype, {
     return best;
   },
 
-  segmentBlocked(x1, y1, x2, y2, margin) { return this.rayHitRock(x1, y1, x2, y2, margin) !== null; },
+  // เส้นทางเดินถูกขวางหรือไม่ (หิน + บ่อน้ำ)
+  segmentBlocked(x1, y1, x2, y2, margin) {
+    return this.rayHitRock(x1, y1, x2, y2, margin) !== null ||
+           this._rayHitRects(this.pondRects, x1, y1, x2, y2, margin) !== null;
+  },
 
   // A* หาทางเดินอ้อมหิน คืนรายการจุด [{x,y}...] (ปลายทางคือจุดเป้าหมายจริง) หรือ null ถ้าหาไม่เจอ
   findPath(sx, sy, gx, gy) {
@@ -360,7 +392,7 @@ Object.assign(Main.prototype, {
 
   pointInRock(x, y, margin) {
     const m = margin || 0;
-    return (this.rockRects || []).some(r => Math.abs(x - r.x) < r.w / 2 + m && Math.abs(y - r.y) < r.h / 2 + m);
+    return (this.rockRects || []).concat(this.pondRects || []).some(r => Math.abs(x - r.x) < r.w / 2 + m && Math.abs(y - r.y) < r.h / 2 + m);
   },
 
   // คืน true ถ้าผู้เล่นซ่อนอยู่ในพุ่ม (และยังไม่ได้โจมตีเมื่อครู่)
@@ -407,11 +439,32 @@ Object.assign(Main.prototype, {
     });
   },
 
+  // จุด (x,y) อยู่ใกล้/ในบ่อน้ำหรือไม่ (ใช้ขนาดรูปเต็ม + ระยะ m)
+  nearPond(x, y, m) {
+    return (this.pondRects || []).some(p => Math.abs(x - p.x) < p.vw / 2 + m && Math.abs(y - p.y) < p.vh / 2 + m);
+  },
+
+  // รูปบ่อน้ำ: ใช้ assets/pond1.png ถ้าไม่มีจะวาดบ่อด้วยโค้ดแทน
+  makePondTexture() {
+    if (this.textures.exists('pond1')) return 'pond1';
+    if (!this.textures.exists('pond_gen')) {
+      const g = this.make.graphics({ add: false });
+      g.fillStyle(0xd9c58a, 1).fillEllipse(160, 100, 316, 196);
+      g.fillStyle(0x4aa3d9, 1).fillEllipse(160, 100, 270, 160);
+      g.fillStyle(0x2f7fb8, 1).fillEllipse(160, 106, 200, 110);
+      g.fillStyle(0xffffff, 0.5).fillEllipse(110, 70, 50, 14);
+      g.lineStyle(3, 0x2a5f86, 1).strokeEllipse(160, 100, 270, 160);
+      g.generateTexture('pond_gen', 320, 200);
+      g.destroy();
+    }
+    return 'pond_gen';
+  },
+
   nudgeOutOfRocks(it) {
     let moved = false;
     for (let pass = 0; pass < 3; pass++) {
       let hit = false;
-      for (const r of (this.rockRects || [])) {
+      for (const r of (this.rockRects || []).concat(this.pondRects || [])) {
         const hx = r.w / 2 + 14, hy = r.h / 2 + 14;
         const dx = it.x - r.x, dy = it.y - r.y;
         if (Math.abs(dx) < hx && Math.abs(dy) < hy) {
