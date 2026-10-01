@@ -8,3 +8,4 @@ Classes.skill('ar_pierce', { name: 'ธนูเจาะเกราะ', class
 Classes.skill('ar_multi', { name: 'ยิงกระจาย', class: 'archer', dmg: 13, range: 300, cd: 2200, mp: 14, type: 'proj' }, { scale: { patk: 1 } });
 
 Classes.ulti('archer', { name: 'สายฝนมรณะ', dmg: 75, range: 200, cd: ULTI_CD, mp: 50, type: 'aoe' }, { scale: { patk: 1 }, ground: { cast: 380 } });
+Classes.testUnlock(['ar_shot', 'ar_rain', 'ar_pierce', 'ar_multi']);
