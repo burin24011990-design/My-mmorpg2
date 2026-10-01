@@ -54,7 +54,7 @@
   const DEFAULT_SCALE = { sword: { patk: 1 }, archer: { patk: 1 }, mage: { ap: 1 }, priest: { ap: 1 } };
   const SKILL_SCALE = {
   };
-  const scaleOf = (cls, id) => SKILL_SCALE[id] || DEFAULT_SCALE[cls] || { patk: 1 };
+  const scaleOf = (cls, id) => (window.Classes && window.Classes.scale[id]) || SKILL_SCALE[id] || DEFAULT_SCALE[cls] || { patk: 1 };
 
   // ---------- ตัวช่วยจัดรูปแบบ ----------
   function fmtStat(k, v) {
@@ -256,7 +256,7 @@
     else if (this._hitCtx) type = this._hitCtx.type;
 
     const S = this.getStats();
-    const mobDef = (e.level || 1) * MOB_DEF_PER_LV * (e.isBoss ? BOSS_DEF_MULT : 1);
+    const mobDef = (e.level || 1) * MOB_DEF_PER_LV * (e.isBoss ? BOSS_DEF_MULT : 1) * (window.enemyDefMul ? window.enemyDefMul(e) : 1);
     const pen = Math.min(type === 'magic' ? S.mpen : S.ppen, 100);
     const effDef = mobDef * (1 - pen / 100);
     const red = effDef / (effDef + DEF_K_BASE + DEF_K_PER_LV * this.stats.level);
@@ -323,7 +323,7 @@
   // ---------- หน้าต่างสเตตัส + คำอธิบายสกิล ----------
   function skillInfo(sid, lv, S) {
     const def = SKILL_DEFS[sid];
-    if (!def || def.type === 'haste') return null;
+    if (!def || def.type === 'haste' || def.noInfo) return null;
     const sc = scaleOf(def.class, sid);
     const base = Math.round(def.dmg * skillLvMul(lv));
     let stat = 0; const parts = [];
