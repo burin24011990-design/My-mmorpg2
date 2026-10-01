@@ -72,9 +72,15 @@
     if (!document.getElementById('bag-qty-style')) {
       const st = document.createElement('style');
       st.id = 'bag-qty-style';
-      st.textContent = '#bag-win .qty-row{align-items:center;justify-content:center;gap:8px}'
-        + '#bag-win .qty-row button{min-width:34px}'
-        + '#bag-win .qty-n{min-width:34px;text-align:center;color:#ffe066;font-size:15px}';
+      st.textContent =
+        '#bag-win .bag-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px}'
+        + '#bag-win .bag-tools button{min-height:28px;padding:3px 7px;font-size:11px;white-space:nowrap;border:1px solid #3a4150;background:#1c2230;color:var(--text);border-radius:6px}'
+        + '#bag-win .bag-tools button:active{background:#2a3550}'
+        + '#bag-win .bag-tools .qty{display:flex;align-items:center;gap:2px;padding:0 3px;border:1px solid #2a3142;border-radius:6px;background:#10151e}'
+        + '#bag-win .bag-tools .qty button{border:0;background:transparent;padding:3px 6px}'
+        + '#bag-win .bag-tools .qty b{min-width:26px;text-align:center;color:var(--gold);font-size:13px}'
+        + '#bag-win .cell .pl{position:absolute;top:0;left:1px;font-size:7px;line-height:1;color:#ff9a3c;font-weight:700;text-shadow:0 0 2px #000,0 0 2px #000}'
+        + '#bag-win .cell .st{position:absolute;top:0;right:1px;font-size:6px;line-height:1;color:#8fd0ff;text-shadow:0 0 2px #000,0 0 2px #000}';
       document.head.appendChild(st);
     }
   }
@@ -96,10 +102,9 @@
   function clampQty() { state.qty = Math.max(1, Math.min(state.qty, maxQty())); }
 
   function toolbarHTML() {
-    return '<div class="pager qty-row"><span>จำนวน</span>'
-      + '<button data-act="qty" data-id="-1">−</button><b class="qty-n">' + state.qty + '</b>'
-      + '<button data-act="qty" data-id="1">+</button><button data-act="qty" data-id="max">MAX</button></div>'
-      + '<div class="pager">'
+    return '<div class="bag-tools">'
+      + '<span class="qty"><button data-act="qty" data-id="-1">−</button><b>' + state.qty + '</b>'
+      + '<button data-act="qty" data-id="1">+</button><button data-act="qty" data-id="max">MAX</button></span>'
       + '<button data-act="merge-all">🔗 รวมทั้งหมด</button>'
       + '<button data-act="merge-sel">🔗 รวมที่เลือก ×' + state.qty + '</button>'
       + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>'
@@ -109,11 +114,15 @@
   // ---------- ส่วนแสดงผล ----------
   function cellHTML(it, act, id, selected) {
     if (!it) return '<button class="cell"></button>';
-    const lv = it.kind === 'equip' ? 'Lv' + it.level + (it.plus > 0 ? ' +' + it.plus : '') + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
+    const lv = it.kind === 'equip' ? 'Lv' + it.level : '';
+    const pl = it.kind === 'equip' && it.plus > 0 ? '+' + it.plus : '';
+    const st = it.kind === 'equip' && it.star > 0 ? it.star + '★' : '';
     const stackable = it.kind === 'box' || it.kind === 'stone' || isBook(it);
     const cnt = stackable && it.count > 1 ? 'x' + it.count : '';
     return '<button class="cell has' + (selected ? ' sel' : '') + '" style="--c:' + hex(itemColor(it)) + '" data-act="' + act + '" data-id="' + id + '">'
       + '<img src="' + iconSrc(itemIcon(it)) + '" alt="">'
+      + (pl ? '<span class="pl">' + pl + '</span>' : '')
+      + (st ? '<span class="st">' + st + '</span>' : '')
       + (lv ? '<span class="lv">' + lv + '</span>' : '')
       + (cnt ? '<span class="cnt">' + cnt + '</span>' : '')
       + '</button>';
