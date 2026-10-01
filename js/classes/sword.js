@@ -1,4 +1,5 @@
 // ===== อาชีพดาบ (sword) — แก้ความสามารถสกิลของดาบที่ไฟล์นี้ =====
+// ฟันตรง (sw_slash)          | สกิลเริ่มต้น ดาเมจแรงขึ้น + เพิ่มพลังโจมตีชั่วคราวทุกครั้งที่ฟัน
 // สกิล 1 พุ่งทะยาน (sw_dash)  | ลากเลือกทิศได้
 // สกิล 2 ฟันสตั้น   (sw_cross) | ฟันตรงด้านหน้าเป็นแนวกว้าง สตั้นมอน | ลากเลือกทิศได้
 // สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง + เพิ่มเกราะให้ตัวเอง
@@ -15,11 +16,22 @@
   const BOSS_STUN_MUL = 0.5;  // บอสโดนสตั้นสั้นลงครึ่งหนึ่ง (ตั้ง 1 = เท่ามอนทั่วไป)
   const ARMOR_STAT = null;    // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติจาก pdef/def/armor/defense)
   const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
+  const ATK_STAT = 'patk';    // ชื่อสเตตัสพลังโจมตีที่ใช้บัพของฟันตรง
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('sword', { name: 'โจมตี', dmg: 10, range: 60, cd: 650, type: 'melee', class: 'sword' });
 
-  Classes.skill('sw_slash', { name: 'ฟันตรง', class: 'sword', dmg: 12, range: 60, cd: 650, mp: 8, type: 'melee' }, { scale: { patk: 1 } });
+  // ฟันตรง: ดาเมจเดิม 12 -> 20 | ทุกครั้งที่ฟัน เพิ่มพลังโจมตี atkBuff นาน atkBuffMs มิลลิวินาที (ฟันซ้ำ = ต่อเวลา)
+  Classes.skill('sw_slash', {
+    name: 'ฟันตรง', class: 'sword', type: 'melee',
+    dmg: 20, range: 60, cd: 4000, mp: 8,
+    atkBuff: 12, atkBuffMs: 3000,
+  }, {
+    scale: { patk: 1 },
+    noInfo: true,
+    info: (def, lv, S) => 'ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+      ' • ฟันแล้วเพิ่มพลังโจมตี +' + def.atkBuff + ' นาน ' + (def.atkBuffMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+  });
 
   // สกิล 1: พุ่งทะยาน (เหมือนเดิม)
   Classes.skill('sw_dash', { name: 'พุ่งทะยาน', class: 'sword', dmg: 16, range: 150, cd: 3600, mp: 14, type: 'dash' }, { scale: { patk: 1 } });
@@ -99,24 +111,44 @@
     if (list.length) scene.popText(p.x, p.y - 40, 'สตั้น!', '#ffe066');
   }
 
-  // เพิ่มเกราะให้ตัวเอง (ผ่านระบบบัพสเตตัสของ stats.js)
+  // บัพสเตตัสตัวเอง (ผ่านระบบบัพของ stats.js) คืน true ถ้าสำเร็จ
+  function statBuff(scene, id, key, value, ms) {
+    try {
+      if (key && scene.addStatBuff) {
+        const o = {}; o[key] = value;
+        scene.addStatBuff(id, o, ms);
+        return true;
+      }
+    } catch (e) { console.error('statBuff', id, e); }
+    return false;
+  }
+  function warnOnce(scene, text) {
+    if (scene.time.now > (scene._swWarnAt || 0)) {
+      scene._swWarnAt = scene.time.now + 4000;
+      console.warn('sword.js: ' + text);
+      scene.toastMsg('⚠ ' + text);
+    }
+  }
+
+  // เพิ่มเกราะให้ตัวเอง
   function armorBuff(scene, def) {
-    let ok = false;
+    let key = ARMOR_STAT;
     try {
       const S = scene.getStats ? scene.getStats() : null;
-      const key = ARMOR_STAT || ARMOR_KEYS.find(k => S && (k in S));
-      if (key && scene.addStatBuff) {
-        const o = {}; o[key] = def.armor;
-        scene.addStatBuff('sw_armor', o, def.armorMs);
-        ok = true;
-      }
+      if (!key) key = ARMOR_KEYS.find(k => S && (k in S));
     } catch (e) { console.error('armorBuff', e); }
-    if (ok) scene.toastMsg('🛡 เกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) + ' วิ');
-    else if (scene.time.now > (scene._swArmorWarnAt || 0)) {
-      scene._swArmorWarnAt = scene.time.now + 4000;
-      console.warn('sword.js: เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ดูชื่อสเตตัสใน stats.js แล้วใส่ที่ ARMOR_STAT');
-      scene.toastMsg('⚠ เพิ่มเกราะไม่ได้ (ดู console)');
-    }
+    if (statBuff(scene, 'sw_armor', key, def.armor, def.armorMs)) {
+      scene.toastMsg('🛡 เกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) + ' วิ');
+    } else warnOnce(scene, 'เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ใส่ชื่อที่ ARMOR_STAT');
+  }
+
+  // เพิ่มพลังโจมตีชั่วคราวจากฟันตรง (แสดงข้อความตอนบัพเริ่ม ไม่เด้งซ้ำทุกครั้งที่ฟันต่อ)
+  function atkBuff(scene, def) {
+    const now = scene.time.now;
+    if (statBuff(scene, 'sw_atk', ATK_STAT, def.atkBuff, def.atkBuffMs)) {
+      if (now >= (scene._swAtkUntil || 0)) scene.popText(scene.player.x, scene.player.y - 40, '⚔ ATK +' + def.atkBuff, '#ffb36b');
+      scene._swAtkUntil = now + def.atkBuffMs;
+    } else warnOnce(scene, 'เพิ่มพลังโจมตีไม่ได้ (ไม่พบ addStatBuff) ดู stats.js');
   }
 
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
@@ -136,7 +168,7 @@
     slashBox(this, def, dmg, fx, fy, 0xff6b5e);
   };
 
-  // ---------- ตั้งทิศก่อนใช้สกิล (ลากเลือก / หันหามอน / ทิศที่หันอยู่) ----------
+  // ---------- ใช้สกิล: ตั้งทิศ (ฟันสตั้น) + บัพโจมตี (ฟันตรง) ----------
   const _useSkill = P.useSkill;
   P.useSkill = function (idx, gp) {
     const sid = this.slots && this.slots[idx];
@@ -145,6 +177,12 @@
         this.time.now >= (this.cdEnd['slot' + idx] || 0) && this.stats.mp >= def.mp) {
       const d = aimDir(this, gp);
       this.facing.set(d.x, d.y);
+    }
+    if (def && sid === 'sw_slash' && !this.panel) {
+      const key = 'slot' + idx, before = this.cdEnd[key];
+      const r = _useSkill.call(this, idx, gp);
+      if (this.cdEnd[key] !== before) atkBuff(this, def);   // ฟันสำเร็จจริงเท่านั้นถึงได้บัพ
+      return r;
     }
     return _useSkill.call(this, idx, gp);
   };
