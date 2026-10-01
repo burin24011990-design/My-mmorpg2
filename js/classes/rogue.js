@@ -6,7 +6,7 @@
 
   const P = Main.prototype;
   const TEST_UNLOCK = true;   // true = ปลดล็อกสกิลโจรทันทีเพื่อทดสอบ (ทดสอบเสร็จเปลี่ยนเป็น false ให้ได้จากหนังสือสกิล)
-  const RG_IDS = ['rg_dash', 'rg_vanish', 'rg_slow'];
+  const RG_IDS = ['rg_dash', 'rg_vanish', 'rg_slow', 'rg_drain'];
   const clamp = Phaser.Math.Clamp;
 
   Classes.defineClass('rogue', { color: 0x9b6bff, name: 'โจร', label: 'โจร' });
@@ -47,6 +47,16 @@
       '% นาน ' + (def.slowMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
+  // 4) ฟันดูดเลือด: ฟันตรงเป็นแนวยาว range กว้าง halfW*2 ไปทางที่เลือก | ดูดเลือด vamp ของดาเมจต่อเป้า (นับสูงสุด 5 เป้า)
+  Classes.skill('rg_drain', {
+    name: 'ฟันดูดเลือด', class: 'rogue', type: 'rdrain', noInfo: true,
+    dmg: 24, range: 220, halfW: 45, cd: 5000, mp: 16, vamp: 0.5,
+  }, {
+    scale: { patk: 1 },
+    info: (def, lv, S) => 'ฟันตรงเป็นแนว ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' ดูดเลือด ' + Math.round(def.vamp * 100) +
+      '% ของดาเมจต่อเป้า • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+  });
+
   // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้
   Classes.ulti('rogue', {
     name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_CD, mp: 50, type: 'rult',
@@ -54,6 +64,9 @@
   }, { scale: { patk: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(RG_IDS);
+
+  // ลงทะเบียนลากเลือกทิศกับ aimDash.js (len = ความยาวลูกศร, w = ครึ่งความกว้างแถบ)
+  if (window.DIR_CFG) window.DIR_CFG.rg_drain = { len: SKILL_DEFS.rg_drain.range, w: SKILL_DEFS.rg_drain.halfW };
 
   // ---------- ตัวช่วย ----------
   // ฟัน 1 ครั้ง: ถ้ากำลังหายตัวอยู่ ครั้งแรกจะแรงขึ้น + ลดเกราะเป้าหมาย แล้วออกจากการหายตัว
@@ -80,6 +93,21 @@
       if (e.active && d < bd) { bd = d; best = e; }
     });
     return best;
+  }
+
+  // ทิศที่จะฟันแนวตรง: ลากเลือก (gp.dir) > หันไปหามอนที่ล็อกอยู่ > ทิศที่หันอยู่
+  function aimDir(scene, gp) {
+    if (gp && gp.dir) {
+      const v = new Phaser.Math.Vector2(gp.x, gp.y);
+      if (v.length() > 0.001) return v.normalize();
+    }
+    const p = scene.player, t = scene.target && scene.target.active ? scene.target : null;
+    if (t) {
+      const v = new Phaser.Math.Vector2(t.x - p.x, t.y - p.y);
+      if (v.length() > 1) return v.normalize();
+    }
+    const f = new Phaser.Math.Vector2(scene.facing.x, scene.facing.y);
+    return f.length() > 0.001 ? f.normalize() : new Phaser.Math.Vector2(1, 0);
   }
 
   // ---------- เงาพุ่งฟัน ----------
@@ -147,6 +175,11 @@
       if (this.cdEnd[key] === before) this._dashAim = null;   // ใช้ไม่สำเร็จ (คูลดาวน์/MP) ล้างทิศที่ค้าง
       return res;
     }
+    if (def && def.type === 'rdrain' && !this.panel &&
+        this.time.now >= (this.cdEnd['slot' + idx] || 0) && this.stats.mp >= def.mp) {
+      const d = aimDir(this, gp);
+      this.facing.set(d.x, d.y);   // ตั้งทิศก่อนใช้ ให้ handler อ่านจาก facing
+    }
     if (def && def.type === 'rvanish' && this.autoMode) {
       if (this.rogueStealth || !(this.target && this.target.active)) return;
     }
@@ -196,6 +229,28 @@
     });
   };
 
+  // ---------- ฟันดูดเลือด ----------
+  Classes.handlers.rdrain = function (def, x, y, dmg, fx, fy) {
+    const scene = this, p = scene.player;
+    let ux = fx, uy = fy;
+    const l = Math.hypot(ux, uy);
+    if (l < 0.001) { ux = 1; uy = 0; } else { ux /= l; uy /= l; }
+    const len = def.range, hw = def.halfW;
+
+    const r = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, 0xff4d7a, 0.4)
+      .setRotation(Math.atan2(uy, ux)).setDepth(60);
+    scene.tweens.add({ targets: r, alpha: 0, duration: 280, onComplete: () => r.destroy() });
+
+    const list = scene.enemies.getChildren().filter(e => {
+      if (!e.active) return false;
+      const rx = e.x - p.x, ry = e.y - p.y;
+      const along = rx * ux + ry * uy, perp = Math.abs(-rx * uy + ry * ux);
+      return along >= -15 && along <= len + 12 && perp <= hw + 12;
+    });
+    list.forEach(e => rogueHit(scene, e, dmg));
+    if (list.length) scene.healPlayer(Math.round(dmg * Math.min(list.length, 5) * def.vamp));
+  };
+
   // ---------- อัลติ พายุใบมีด ----------
   Classes.handlers.rult = function (def, x, y, dmg) {
     const scene = this, per = Math.round(dmg * def.hitMul);
@@ -211,7 +266,7 @@
   };
 
   // ---------- ไอคอน + ปุ่มพุ่งต่อ ----------
-  const ICON_OF = { rdash: 'ic_dash', rvanish: 'ic_vanish', rslow: 'ic_melee', rult: 'ic_melee' };
+  const ICON_OF = { rdash: 'ic_dash', rvanish: 'ic_vanish', rslow: 'ic_melee', rdrain: 'ic_melee', rult: 'ic_melee' };
   const _sik = skillIconKey;
   skillIconKey = function (type) { return ICON_OF[type] || _sik(type); };
 
