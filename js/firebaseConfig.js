@@ -7,4 +7,15 @@ const firebaseConfig = {
   appId: "1:737392014141:web:fdaee4c497acba37308b54"
 };
 
-firebase.initializeApp(firebaseConfig);
+window.firebaseConfig = firebaseConfig;
+window.FIREBASE_CONFIG = firebaseConfig;
+
+if (typeof firebase === "undefined") {
+  console.error("Firebase SDK ยังไม่ถูกโหลด: เช็กลำดับ script ใน index.html");
+} else {
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  window.auth = firebase.auth();
+  window.firebaseReady = true;
+}
