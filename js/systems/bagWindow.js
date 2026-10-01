@@ -2,6 +2,7 @@
 // แทนที่ openInventory เดิม แต่ใช้ข้อมูลและฟังก์ชันเดิมทั้งหมด
 // (this.bag, this.equipment, equipItem, unequipSlot, mergeSingleItem, mergeAllInBag ...)
 // รองรับไอเทม "หนังสือสกิล" (kind: 'skillbook') ซ้อนได้ กดใช้เพื่อเรียนรู้/อัปสกิล
+// รองรับ "หินตีบวก" (kind: 'stone'), ตีบวก และย่อยอุปกรณ์ (ดู enhance.js)
 // ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
@@ -75,8 +76,8 @@
   // ---------- ส่วนแสดงผล ----------
   function cellHTML(it, act, id, selected) {
     if (!it) return '<button class="cell"></button>';
-    const lv = it.kind === 'equip' ? 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
-    const stackable = it.kind === 'box' || isBook(it);
+    const lv = it.kind === 'equip' ? 'Lv' + it.level + (it.plus > 0 ? ' +' + it.plus : '') + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
+    const stackable = it.kind === 'box' || it.kind === 'stone' || isBook(it);
     const cnt = stackable && it.count > 1 ? 'x' + it.count : '';
     return '<button class="cell has' + (selected ? ' sel' : '') + '" style="--c:' + hex(itemColor(it)) + '" data-act="' + act + '" data-id="' + id + '">'
       + '<img src="' + iconSrc(itemIcon(it)) + '" alt="">'
@@ -110,7 +111,7 @@
       const it = s.equipment[key];
       const name = SLOT_LABELS[baseSlotOf(key)] + (key === 'ring1' ? ' (ซ้าย)' : key === 'ring2' ? ' (ขวา)' : '');
       const sel = state.sel && state.sel.src === 'equip' && state.sel.id === key;
-      const lv = it ? 'Lv' + it.level + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
+      const lv = it ? 'Lv' + it.level + (it.plus > 0 ? ' +' + it.plus : '') + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
       h += '<button class="cell' + (it ? ' has' : '') + (sel ? ' sel' : '') + '"'
         + (it ? ' style="--c:' + hex(itemColor(it)) + '"' : '') + ' data-act="sel-equip" data-id="' + key + '">'
         + '<span class="slot-name">' + name + '</span>'
@@ -155,6 +156,14 @@
     return h;
   }
 
+  // รายละเอียดหินตีบวก
+  function stoneDetailHTML(it) {
+    return '<div class="d-top" style="--c:#6fc3ff"><div class="d-icon"><img src="' + iconSrc('icon_stone') + '" alt=""></div>'
+      + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">วัสดุตีบวก</div></div></div>'
+      + '<div class="d-note">ได้จากการย่อยอุปกรณ์ ใช้ตีบวก (เลือกอุปกรณ์แล้วกด 🔨 ตีบวก)</div>'
+      + '<div class="d-row"><span>รวมในกระเป๋า</span><span>' + scene.countStones() + ' ก้อน</span></div>';
+  }
+
   function detailHTML() {
     const s = scene;
     const sel = state.sel;
@@ -163,10 +172,11 @@
     if (!it) return '<div class="d-empty">ช่องนี้ยังว่างอยู่</div>';
 
     if (isBook(it)) return bookDetailHTML(it);
+    if (it.kind === 'stone') return stoneDetailHTML(it);
 
     const color = hex(itemColor(it));
     const typeLabel = it.kind === 'box' ? 'กล่องอุปกรณ์'
-      : (it.baseSlot === 'weapon' ? 'อาวุธ (' + CLASSES[it.class].label + ')' : SLOT_LABELS[it.baseSlot]);
+      : (it.baseSlot === 'weapon' ? 'อาวุธ (' + weaponClassLabel(it.class) + ')' : SLOT_LABELS[it.baseSlot]);
 
     let h = '<div class="d-top" style="--c:' + color + '">'
       + '<div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
@@ -176,11 +186,12 @@
       const st = computeItemStats(it);
       const keys = Object.keys(st);
       h += keys.length
-        ? '<div class="d-stats">' + keys.map((k) => '<div><span>' + k.toUpperCase() + '</span><span>+' + st[k] + '</span></div>').join('') + '</div>'
+        ? '<div class="d-stats">' + keys.map((k) => '<div><span>' + (STAT_DEFS[k] ? STAT_DEFS[k].short : k) + '</span><span>+' + fmtStat(k, st[k]) + '</span></div>').join('') + '</div>'
         : '<div class="d-note">ไม่มีค่าพลังพิเศษ</div>';
       h += '<div class="d-row"><span>ระดับ</span><span>Lv.' + it.level + '</span></div>'
         + '<div class="d-row"><span>ระดับดาว</span><span>' + (it.star > 0 ? it.star + ' ★ / ' + MAX_STAR : '- (ยังไม่อัพดาว)') + '</span></div>'
         + '<div class="d-row"><span>อัพดาว</span><span>รวมของเหมือนกัน 2 ชิ้น</span></div>';
+      h += window.enhanceInfoHTML(s, it);
     } else {
       h += '<div class="d-note">เปิดแล้วจะได้อุปกรณ์สุ่ม 1 ชิ้น (เลเวล ' + it.level + ')</div>'
         + '<div class="d-row"><span>เลเวลกล่อง</span><span>Lv.' + it.level + '</span></div>'
@@ -199,6 +210,10 @@
     } else {
       h += '<button class="btn ok" data-act="wear" data-id="' + it.baseSlot + '">สวมใส่</button>'
         + '<button class="btn info" data-act="merge">🔗 รวมดาว</button>';
+    }
+    if (it.kind === 'equip') {
+      h += '<button class="btn info" data-act="enhance">🔨 ตีบวก</button>'
+        + (sel.src === 'bag' ? '<button class="btn danger" data-act="dismantle">♻ ย่อย</button>' : '');
     }
     return h + '</div>';
   }
@@ -263,6 +278,8 @@
       s.useSkillBook(sel.id);
       if (!s.bag[sel.id]) state.sel = null;   // หนังสือหมดกอง -> ยกเลิกการเลือก
     }
+    else if (act === 'enhance' && sel) { s.enhanceItem(sel.src, sel.id); }
+    else if (act === 'dismantle' && sel && sel.src === 'bag') { if (s.dismantleBagItem(sel.id)) state.sel = null; }
     else if (act === 'unequip' && sel && sel.src === 'equip') {
       s.unequipSlot(sel.id);
       state.sel = null;
