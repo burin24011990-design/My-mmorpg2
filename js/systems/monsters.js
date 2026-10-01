@@ -3,6 +3,7 @@
 // ผู้เล่นอยู่ในพุ่มหญ้า: มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น (ดู obstacles.js)
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
 // หมายเหตุ: หนังสือสกิลดรอปจากมินิบอสเท่านั้น (5%) เป็นไอเทมบนพื้น -> เก็บเข้ากระเป๋า (ดู pickup ใน inventory.js)
+// หมายเหตุ: ชื่อ/สี/แอนิเมชันของมอนอยู่ใน js/data/monsterDefs.js
 const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
@@ -16,6 +17,7 @@ Object.assign(Main.prototype, {
     const z = ZONES[idx];
     this.stageIdx = idx;
     this.stageToken = (this.stageToken || 0) + 1;
+    ensureMonsterTextures(this);   // texture สำรอง + anim ของมอนทุกตัว (ทำครั้งเดียว)
 
     if (!this.bossState) this.bossState = ZONES.map(() => Array.from({ length: BOSS_COUNT }, () => ({ alive: false, at: 0 })));
     this.bossState.forEach(st => st.forEach(s => { s.alive = false; }));
@@ -71,30 +73,34 @@ Object.assign(Main.prototype, {
   spawnEnemyInZone(zi, kind) {
     kind = kind || 'normal';
     const z = ZONES[zi];
+    const def = getMonsterDef(zi, kind);
     const pt = this.randomSpawnPoint();
     const lv = Phaser.Math.Between(z.minLv, z.maxLv);
     const ranged = kind === 'ranged';
-    const e = this.enemies.create(pt.x, pt.y, ranged ? 'shooter' : 'slime');
+    const e = this.enemies.create(pt.x, pt.y, def.key);
+    e.def = def;
     e.kind = kind; e.ranged = ranged; e.isBoss = false;
     e.level = lv;
     e.hp = 30 + lv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(lv * 1.5);
     e.aggro = ranged ? 350 : 130; e.lose = ranged ? 480 : 320; e.leash = 450;
     e.speed = 70; e.hitRange = 26; e.nextShot = 0;
-    this.initEnemyCommon(e, zi, pt, ranged ? '#ffb070' : '#ffe066', 'Lv.' + lv, '10px');
+    this.initEnemyCommon(e, zi, pt, ranged ? '#ffb070' : '#ffe066', def.name + ' Lv.' + lv, '10px');
     return e;
   },
 
   spawnBoss(zi, slot) {
     const z = ZONES[zi];
+    const def = getMonsterDef(zi, 'boss');
     const pt = this.randomSpawnPoint(400);
     const lv = z.maxLv;
-    const e = this.enemies.create(pt.x, pt.y, 'boss');
+    const e = this.enemies.create(pt.x, pt.y, def.key);
+    e.def = def;
     e.kind = 'boss'; e.ranged = false; e.isBoss = true; e.bossSlot = slot;
     e.level = lv;
     e.hp = (30 + lv * 8) * BOSS_MULT; e.maxHp = e.hp; e.dmg = (5 + Math.floor(lv * 1.5)) * BOSS_MULT;
     e.aggro = 220; e.lose = 520; e.leash = 700;
     e.speed = 85; e.hitRange = 40; e.nextShot = 0;
-    this.initEnemyCommon(e, zi, pt, '#ff8888', '👑 มินิบอส Lv.' + lv, '12px');
+    this.initEnemyCommon(e, zi, pt, '#ff8888', '👑 ' + def.name + ' Lv.' + lv, '12px');
     return e;
   },
 
@@ -105,6 +111,8 @@ Object.assign(Main.prototype, {
     e.provoked = false;                                  // ด่าน 1-4 จะสู้กลับเมื่อโดนตี
     e.homeX = pt.x; e.homeY = pt.y;
     e.wanderX = pt.x; e.wanderY = pt.y; e.nextWander = 0;
+    e.atkUntil = 0; e.animState = '';
+    if (e.def && e.def.hasSheet) e.play(e.def.key + '_idle');
     e.levelText = this.add.text(pt.x, pt.y - 22, label, { fontSize, color, fontStyle: e.isBoss ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(40);
     e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
   },
@@ -128,10 +136,21 @@ Object.assign(Main.prototype, {
     const v = new Phaser.Math.Vector2(p.x - e.x, p.y - e.y);
     if (v.length() < 1) return;
     v.normalize();
+    e.atkUntil = this.time.now + 400;                    // เล่นท่าโจมตี
     const sh = this.enemyShots.create(e.x, e.y, 'eshot');
     sh.setData('dmg', e.dmg); sh.setData('ox', e.x); sh.setData('oy', e.y);
     sh.setVelocity(v.x * 240, v.y * 240);
     this.time.delayedCall(1800, () => sh.active && sh.destroy());
+  },
+
+  // เลือกแอนิเมชัน idle / walk / attack ตามการเคลื่อนไหว (ทำงานเฉพาะตัวที่มี sprite sheet)
+  updateEnemyAnim(e, time) {
+    const d = e.def;
+    if (!d || !d.hasSheet || !e.body) return;
+    const vx = e.body.velocity.x, vy = e.body.velocity.y;
+    const st = time < e.atkUntil ? 'attack' : ((vx * vx + vy * vy) > 100 ? 'walk' : 'idle');
+    if (e.animState !== st) { e.animState = st; e.play(d.key + '_' + st, true); }
+    if (Math.abs(vx) > 5) e.setFlipX(vx < 0);
   },
 
   updateEnemies(time) {
@@ -178,8 +197,10 @@ Object.assign(Main.prototype, {
       // ชนตัวทำดาเมจเฉพาะตอนไล่ตี (มอนที่ยังไม่โกรธเดินชนไม่เจ็บ)
       if (e.state === 'chase' && time > this.hitCd && distPlayer < e.hitRange) {
         this.hitCd = time + 600;
+        e.atkUntil = time + 400;                         // เล่นท่าโจมตี
         this.hurtPlayer(e.dmg || 8);
       }
+      this.updateEnemyAnim(e, time);
       if (e.levelText) e.levelText.setPosition(e.x, e.y - (e.isBoss ? 40 : 22));
     });
   },
@@ -192,12 +213,14 @@ Object.assign(Main.prototype, {
     this.revealUntil = this.time.now + BUSH_REVEAL_AFTER_ATTACK; // โจมตีแล้วโผล่จากพุ่มชั่วคราว
     const t = this.add.text(e.x, e.y - 20, String(dmg), { fontSize: '16px', color: '#ffe066' }).setOrigin(0.5);
     this.tweens.add({ targets: t, y: t.y - 30, alpha: 0, duration: 600, onComplete: () => t.destroy() });
+    if (e.hp > 0) monsterHitFx(this, e);                 // กะพริบขาว + บีบตัว
     if (e.hp <= 0) {
       const x = e.x, y = e.y, zi = e.zoneIdx, z = ZONES[zi], lv = e.level;
       const kind = e.kind, isBoss = !!e.isBoss, slot = e.bossSlot;
       if (this.target === e) this.target = null;
       if (this.manualTarget === e) this.manualTarget = null;
       if (e.levelText) e.levelText.destroy();
+      playMonsterDeath(this, e);                         // ท่าตาย + อนุภาคตามธีมด่าน (ต้องเรียกก่อน destroy)
       e.destroy(); this.kills++;
       this.gainExp((5 + lv * 3) * (isBoss ? BOSS_MULT : 1));
       this.dropLoot(x, y, lv, z.boxLevel, isBoss);
@@ -254,7 +277,7 @@ Object.assign(Main.prototype, {
     }
     if (this.target) {
       const t = this.target;
-      const name = t.isBoss ? 'มินิบอส' : (t.ranged ? 'สไลม์ยิงไกล' : 'สไลม์');
+      const name = t.def ? t.def.name : (t.isBoss ? 'มินิบอส' : (t.ranged ? 'สไลม์ยิงไกล' : 'สไลม์'));
       this.targetRing.setVisible(true).setPosition(t.x, t.y);
       this.targetNameText.setText('เป้าหมาย: ' + name + ' Lv.' + t.level + '  HP ' + Math.max(0, t.hp) + '/' + t.maxHp);
       const dir = new Phaser.Math.Vector2(t.x - this.player.x, t.y - this.player.y);
