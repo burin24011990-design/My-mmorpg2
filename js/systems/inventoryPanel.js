@@ -16,7 +16,7 @@ Object.assign(Main.prototype, {
     let y = topY + 116;
     if (item.kind === 'equip') {
       const s = computeItemStats(item);
-      const parts = Object.keys(s).map(k => k.toUpperCase() + ' +' + s[k]);
+      const parts = Object.keys(s).map(k => statLine(k, s[k]));
       const statStr = parts.length ? parts.join('   ·   ') : 'ไม่มีค่าพลังพิเศษ';
       items.push(this.roundRect(251, cx, y, 340, 40, 0x18314e, 0.9, 8));
       items.push(this.add.text(cx, y, statStr, { fontSize: '12px', color: '#bfe3ff', wordWrap: { width: 320 } }).setOrigin(0.5).setScrollFactor(0).setDepth(252));
