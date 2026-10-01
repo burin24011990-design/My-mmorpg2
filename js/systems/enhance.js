@@ -3,6 +3,24 @@
 (function () {
   const P = Main.prototype;
 
+  // ---------- สวมใส่ / ถอดอุปกรณ์ (ย้ายมาจาก items.js เพราะ items.js โหลดก่อน Main) ----------
+  P.equipItem = function (slotKey, item) {
+    const old = this.equipment[slotKey];
+    this.equipment[slotKey] = item;
+    if (old) this.addItemToBag(old);
+    this.computeAtk();
+  };
+
+  // ถ้ากระเป๋าเต็มจะไม่ถอด (กันของหายแลกเป็นทอง)
+  P.unequipSlot = function (slotKey) {
+    const it = this.equipment[slotKey];
+    if (!it) return;
+    if (this.findEmptyBagSlot() === -1) { this.toastMsg('กระเป๋าเต็ม ถอดไม่ได้'); return; }
+    this.equipment[slotKey] = null;
+    this.addItemToBag(it);
+    this.computeAtk();
+  };
+
   // ---------- ค่าที่ปรับได้ ----------
   const MAX_PLUS = 99;
   // แต่ละขั้นเพิ่มแบบเส้นตรง: ค่าใช้จ่าย = ค่าตั้งต้น x (1 + ขั้นที่ผ่านมา x STEP)
