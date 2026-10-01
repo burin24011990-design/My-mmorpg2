@@ -1,8 +1,13 @@
 // ===== ตัวช่วยกลางของไฟล์อาชีพ (js/classes/) =====
 // โหลดหลัง aimDash.js ก่อนไฟล์อาชีพทุกไฟล์ และก่อน stats.js
 (function () {
+  // สร้าง Classes เป็นอย่างแรกสุด เพื่อให้ไฟล์อาชีพหาเจอเสมอ (แม้โค้ดข้างล่างจะ error)
+  const Classes = window.Classes = window.Classes || {};
+  Classes.scale = Classes.scale || {};
+  Classes.handlers = Classes.handlers || {};
+  Classes.info = Classes.info || {};
+
   const P = Main.prototype;
-  const Classes = window.Classes = { scale: {}, handlers: {}, info: {} };
 
   // ---------- ลงทะเบียน ----------
   // อาชีพใหม่ (ซ่อนจากการวนลูป CLASSES กันระบบเดิมสุ่มอาวุธของอาชีพนี้)
