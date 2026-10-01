@@ -13,6 +13,7 @@
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   // 1) เงาพุ่งฟัน: พุ่งไปฟัน hits ครั้ง ครั้งละ hitMul ของดาเมจ | ฟันโดนแล้วพุ่งต่อได้ recasts ครั้งภายใน recastMs
+  //    กดค้างแล้วลากเพื่อเลือกทิศพุ่งได้ (ตั้งค่าที่ DIR_CFG ใน aimDash.js) | แตะเฉยๆ = พุ่งหาเป้า/ทิศที่หันอยู่
   Classes.skill('rg_dash', {
     name: 'เงาพุ่งฟัน', class: 'rogue', type: 'rdash', noInfo: true,
     dmg: 14, range: 170, cd: 6000, mp: 14,
@@ -82,14 +83,17 @@
   }
 
   // ---------- เงาพุ่งฟัน ----------
-  function doDash(scene, def, dmg, towards, left) {
+  // towards = มอนที่พุ่งเข้าหา | dir = {x,y} ทิศที่ผู้เล่นลากเลือก (ถ้ามี dir จะพุ่งตามทิศนี้เต็มระยะ)
+  function doDash(scene, def, dmg, towards, left, dir) {
     const p = scene.player;
-    let dx = towards ? towards.x - p.x : scene.facing.x;
-    let dy = towards ? towards.y - p.y : scene.facing.y;
+    const chase = towards && !dir;
+    let dx, dy;
+    if (dir) { dx = dir.x; dy = dir.y; }
+    else { dx = towards ? towards.x - p.x : scene.facing.x; dy = towards ? towards.y - p.y : scene.facing.y; }
     let len = Math.hypot(dx, dy);
     if (len < 0.001) { dx = 1; dy = 0; len = 1; }
     const ux = dx / len, uy = dy / len;
-    let d = towards ? Math.min(def.range, Math.max(0, len - 35)) : def.range;
+    let d = chase ? Math.min(def.range, Math.max(0, len - 35)) : def.range;
     if (scene.segmentBlocked) {
       while (d > 0 && scene.segmentBlocked(p.x, p.y, p.x + ux * d, p.y + uy * d, 14)) d -= 15;
     }
@@ -113,25 +117,35 @@
     }
   }
   Classes.handlers.rdash = function (def, x, y, dmg) {
-    doDash(this, def, dmg, pickTarget(this, def.range + 90), def.recasts);
+    const a = this._dashAim;   // ทิศที่ลากเลือก (ตั้งไว้ใน useSkill ด้านล่าง)
+    this._dashAim = null;
+    if (a && this.time.now - a.t < 1500) doDash(this, def, dmg, null, def.recasts, a);
+    else doDash(this, def, dmg, pickTarget(this, def.range + 90), def.recasts);
   };
 
   // กดสกิลพุ่งซ้ำระหว่างช่วงพุ่งต่อ = พุ่งอีกครั้งโดยไม่เสีย MP/คูลดาวน์ | บอท: หายตัวเฉพาะตอนมีเป้า และไม่หายตัวซ้อน
+  // gp = {dir:true, x, y} เมื่อผู้เล่นลากเลือกทิศจากปุ่มสกิล (aimDash.js)
   const _useSkill = P.useSkill;
   P.useSkill = function (idx, gp) {
     const sid = this.slots && this.slots[idx];
     const def = sid && SKILL_DEFS[sid];
+    const dirA = gp && gp.dir ? { x: gp.x, y: gp.y, t: this.time.now } : null;
     if (def && def.type === 'rdash') {
       const r = this.rogueRecast, now = this.time.now;
       if (r && r.sid === sid && now < r.until && r.left > 0 && !this.panel) {
-        const t = pickTarget(this, def.recastRange);
-        if (t) {
+        const t = dirA ? null : pickTarget(this, def.recastRange);
+        if (dirA || t) {
           this.rogueRecast = null;
           const dmg = Math.round(def.dmg * skillLvMul(this.skillLv && this.skillLv[sid]) + this.atk);
-          doDash(this, def, dmg, t, r.left - 1);
+          doDash(this, def, dmg, t, r.left - 1, dirA);
           return;
         }
       }
+      const key = 'slot' + idx, before = this.cdEnd[key];
+      this._dashAim = dirA;
+      const res = _useSkill.call(this, idx, gp);
+      if (this.cdEnd[key] === before) this._dashAim = null;   // ใช้ไม่สำเร็จ (คูลดาวน์/MP) ล้างทิศที่ค้าง
+      return res;
     }
     if (def && def.type === 'rvanish' && this.autoMode) {
       if (this.rogueStealth || !(this.target && this.target.active)) return;
