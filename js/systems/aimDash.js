@@ -1,4 +1,4 @@
-// ===== ลากเล็งสกิลหมู่ระยะไกล (สไตล์ RoV) + ปุ่มยกเลิก ✕ + ปุ่มแดช + บอทล็อกเป้ายิงสกิลหมู่ =====
+// ===== ลากเล็งสกิลหมู่ระยะไกล + ลากเลือกทิศสกิลพุ่ง/แดช (สไตล์ RoV) + ปุ่มยกเลิก ✕ + บอทล็อกเป้ายิงสกิลหมู่ =====
 // โหลดหลัง skillLevelPatch.js และก่อน main.js
 (function () {
   const P = Main.prototype;
@@ -14,7 +14,14 @@
     mage:   { cast: 360 },
     archer: { cast: 380 },
   };
+  // สกิลพุ่ง: กดค้างแล้วลากเพื่อเลือกทิศ ปล่อยแล้วพุ่ง (แตะเฉยๆ = พุ่งแบบเดิม) | len = ความยาวลูกศรที่โชว์
+  // เพิ่มสกิลพุ่งใหม่: ใส่ id สกิลตรงนี้ได้เลย
+  const DIR_CFG = {
+    sw_dash: { len: 150 },    // พุ่งทะยาน (ดาบ)
+    rg_dash: { len: 170 },    // เงาพุ่งฟัน (โจร)
+  };
   window.GROUND_CFG = GROUND_CFG; window.GROUND_ULTI = GROUND_ULTI;   // ให้ไฟล์สกิลพระลงทะเบียนสกิลลากเล็งได้
+  window.DIR_CFG = DIR_CFG;
   const AIM_DRAG_MIN = 14;    // ลากน้อยกว่านี้ถือว่าแตะ = ตกที่มอนที่ล็อก
   const AIM_DRAG_MAX = 110;   // ลากไกลเท่านี้ = ระยะสูงสุด
   const CANCEL_DX = -110;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี
@@ -25,6 +32,7 @@
   const DASH_MS = 160;
 
   const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
+  const isDirOnly = sid => !!(sid && DIR_CFG[sid] && !GROUND_CFG[sid]);
 
   function clampTo(p, pt, max) {
     const d = dist(p, pt);
@@ -52,6 +60,7 @@
   };
 
   // useSkill(idx, gp) / useUlti(gp): gp = {x,y} จุดที่ลากเล็ง (ไม่ใส่ = ตกที่มอนที่ล็อก)
+  // สกิลพุ่งส่ง gp = {dir:true, x, y} โดย x,y คือเวกเตอร์ทิศ (ไฟล์อาชีพที่ต้องใช้ทิศเองอ่านจาก gp นี้)
   const _useSkill = P.useSkill;
   P.useSkill = function (idx, gp) {
     const sid = this.slots && this.slots[idx];
@@ -117,6 +126,19 @@
       this.cancelTxt.setVisible(false);
       if (this.panel) return;
       if (a.dragged && a.cancel) return;
+
+      // ปุ่มแดช: ลาก = พุ่งตามทิศที่ลาก | แตะ = ทิศเดิม (จอยสติ๊ก/ทิศที่หันอยู่)
+      if (a.kind === 'dash') { this.useDash(a.dragged ? { x: a.dx, y: a.dy } : null); return; }
+
+      // สกิลพุ่ง: ลาก = พุ่งตามทิศที่ลาก | แตะ = พุ่งแบบเดิม (ไปหาเป้า/ทิศที่หันอยู่)
+      if (a.dir) {
+        if (a.dragged) {
+          this.facing.set(a.dx, a.dy);   // สกิลพุ่งพื้นฐานอ่านทิศจาก facing ตอนกด
+          this.useSkill(a.idx, { dir: true, x: a.dx, y: a.dy });
+        } else this.useSkill(a.idx);
+        return;
+      }
+
       let gp = null;
       if (a.dragged) {
         const pl = this.player;
@@ -130,21 +152,37 @@
     if (this.input.keyboard) this.input.keyboard.on('keydown-E', () => this.useDash());
   };
 
+  // kind: 'slot' | 'ulti' | 'dash'
   P.beginAim = function (kind, idx, btn, pointer) {
     this.initAim();
     if (this.aim) return;
-    const isUlti = kind === 'ulti';
-    let def, cfg, clsKey, key;
-    if (isUlti) {
-      clsKey = this.ultiClass; def = ULTI_DEFS[clsKey]; cfg = GROUND_ULTI[clsKey]; key = 'ulti';
+    const now = this.time.now;
+    const isUlti = kind === 'ulti', isDash = kind === 'dash';
+    let def, cfg, clsKey = null, key, sid = null, dir = false, color = null;
+
+    if (isDash) {
+      if (now < (this.cdEnd.dash || 0)) return;
+      def = { name: 'แดช', range: 0, mp: 0 }; cfg = { len: DASH_DIST }; key = 'dash'; dir = true; color = 0x9fd0ff;
     } else {
-      const sid = this.slots[idx]; def = SKILL_DEFS[sid]; cfg = GROUND_CFG[sid]; clsKey = def.class; key = 'slot' + idx;
+      if (isUlti) {
+        clsKey = this.ultiClass; def = ULTI_DEFS[clsKey]; cfg = GROUND_ULTI[clsKey]; key = 'ulti';
+      } else {
+        sid = this.slots[idx]; def = SKILL_DEFS[sid]; clsKey = def.class; key = 'slot' + idx;
+        if (isDirOnly(sid)) { dir = true; cfg = DIR_CFG[sid]; } else cfg = GROUND_CFG[sid];
+      }
+      // ช่วงพุ่งต่อของโจร: กดซ้ำได้โดยไม่เสียคูลดาวน์/MP จึงต้องเปิดให้ลากเล็งได้
+      const rc = this.rogueRecast;
+      const recast = !!(dir && sid && rc && rc.sid === sid && now < rc.until && rc.left > 0);
+      if (!recast) {
+        if (now < (this.cdEnd[key] || 0)) return;
+        if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอ'); return; }
+      }
     }
-    if (this.time.now < (this.cdEnd[key] || 0)) return;
-    if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอ'); return; }
+
     const base = (typeof ROV !== 'undefined') ? ROV : { ax: W - 96, ay: H - 92 };
     this.aim = {
-      isUlti: isUlti, idx: idx, def: def, cfg: cfg, clsKey: clsKey, pid: pointer.id,
+      kind: kind, isUlti: isUlti, dir: dir, color: color,
+      idx: idx, def: def, cfg: cfg, clsKey: clsKey, pid: pointer.id,
       sx: pointer.x, sy: pointer.y, bx: btn.c.x, by: btn.c.y, br: btn.c.radius,
       cx: base.ax + CANCEL_DX, cy: Math.max(40, base.ay + CANCEL_DY), cr: CANCEL_R,
       dragged: false, dx: 0, dy: 0, ratio: 0, cancel: false, overX: false,
@@ -159,16 +197,32 @@
     if (!a) { this.cancelTxt.setVisible(false); return; }
     if (this.panel) { this.aim = null; this.cancelTxt.setVisible(false); return; }
 
-    // วงเล็งบนแผนที่
     const p = this.player;
-    const pt = a.dragged
-      ? { x: p.x + a.dx * a.ratio * a.cfg.cast, y: p.y + a.dy * a.ratio * a.cfg.cast }
-      : this.groundDefault(a.cfg);
-    const col = a.cancel ? 0xff5555 : (CLASSES[a.clsKey] ? CLASSES[a.clsKey].color : 0xffffff);
-    g.lineStyle(2, 0xffffff, 0.3).strokeCircle(p.x, p.y, a.cfg.cast);      // ระยะร่ายสูงสุด
-    g.lineStyle(3, col, 0.8).lineBetween(p.x, p.y, pt.x, pt.y);
-    g.fillStyle(col, a.cancel ? 0.12 : 0.28).fillCircle(pt.x, pt.y, a.def.range);
-    g.lineStyle(3, col, 0.95).strokeCircle(pt.x, pt.y, a.def.range);       // วงที่สกิลจะตก
+    const baseCol = a.color || (a.clsKey && CLASSES[a.clsKey] ? CLASSES[a.clsKey].color : 0xffffff);
+    const col = a.cancel ? 0xff5555 : baseCol;
+
+    if (a.dir) {
+      // ลูกศรบอกทิศพุ่ง (โชว์เมื่อเริ่มลาก)
+      if (a.dragged) {
+        const len = a.cfg.len, ex = p.x + a.dx * len, ey = p.y + a.dy * len;
+        const nx = -a.dy, ny = a.dx, w = 16;
+        g.fillStyle(col, a.cancel ? 0.12 : 0.3);
+        g.fillTriangle(p.x + nx * w, p.y + ny * w, p.x - nx * w, p.y - ny * w, ex + nx * w, ey + ny * w);
+        g.fillTriangle(p.x - nx * w, p.y - ny * w, ex + nx * w, ey + ny * w, ex - nx * w, ey - ny * w);
+        g.fillStyle(col, a.cancel ? 0.25 : 0.8);
+        g.fillTriangle(ex + a.dx * 26 , ey + a.dy * 26, ex + nx * 26, ey + ny * 26, ex - nx * 26, ey - ny * 26);
+        g.lineStyle(3, col, 0.95).lineBetween(p.x, p.y, ex, ey);
+      }
+    } else {
+      // วงเล็งบนแผนที่
+      const pt = a.dragged
+        ? { x: p.x + a.dx * a.ratio * a.cfg.cast, y: p.y + a.dy * a.ratio * a.cfg.cast }
+        : this.groundDefault(a.cfg);
+      g.lineStyle(2, 0xffffff, 0.3).strokeCircle(p.x, p.y, a.cfg.cast);      // ระยะร่ายสูงสุด
+      g.lineStyle(3, col, 0.8).lineBetween(p.x, p.y, pt.x, pt.y);
+      g.fillStyle(col, a.cancel ? 0.12 : 0.28).fillCircle(pt.x, pt.y, a.def.range);
+      g.lineStyle(3, col, 0.95).strokeCircle(pt.x, pt.y, a.def.range);       // วงที่สกิลจะตก
+    }
 
     // ปุ่มกากะบาท ✕ (สว่างเป็นสีแดงเมื่อนิ้วอยู่บนปุ่ม)
     const hot = a.overX, k = a.cr * 0.42;
@@ -181,7 +235,7 @@
   };
 
   // ---------- ปุ่มสกิล ----------
-  // ช่องว่าง = เปิดหน้าต่างสกิล | สกิลหมู่ = กดแล้วลากเล็ง | สกิลอื่น = แตะใช้
+  // ช่องว่าง = เปิดหน้าต่างสกิล | สกิลหมู่/สกิลพุ่ง = กดแล้วลากเล็ง | สกิลอื่น = แตะใช้
   // ไม่มีการกดค้างถอดสกิล: เปลี่ยน/ถอดสกิลในช่องได้จากหน้าต่างสกิลเท่านั้น
   const _slot = P.makeSlotBtn;
   P.makeSlotBtn = function (x, y, r, idx) {
@@ -193,7 +247,7 @@
       if (this.panel) return;
       const sid = this.slots[idx];
       if (!sid) { this.openSkillBook(idx); return; }
-      if (GROUND_CFG[sid]) { mode = 'aim'; this.beginAim('slot', idx, b, pointer); return; }
+      if (GROUND_CFG[sid] || DIR_CFG[sid]) { mode = 'aim'; this.beginAim('slot', idx, b, pointer); return; }
       mode = 'press';
     });
     c.on('pointerup', () => {
@@ -218,7 +272,8 @@
   };
 
   // ---------- แดช ----------
-  P.useDash = function () {
+  // dir = {x,y} ทิศที่ลากเลือก (ไม่ใส่ = ใช้ทิศจากจอยสติ๊ก/คีย์บอร์ด/ทิศที่หันอยู่)
+  P.useDash = function (dir) {
     if (this.panel) return;
     const now = this.time.now;
     if (now < (this.cdEnd.dash || 0)) return;
@@ -230,7 +285,8 @@
       if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -1;
       if (this.cursors.down.isDown || this.wasd.S.isDown) vy = 1;
     }
-    if (Math.hypot(vx, vy) < 0.25) { vx = this.facing.x; vy = this.facing.y; }
+    if (dir && Math.hypot(dir.x, dir.y) > 0.001) { vx = dir.x; vy = dir.y; }
+    else if (Math.hypot(vx, vy) < 0.25) { vx = this.facing.x; vy = this.facing.y; }
     let len = Math.hypot(vx, vy);
     if (len < 0.001) { vx = 1; vy = 0; len = 1; }
     vx /= len; vy /= len;
@@ -261,7 +317,11 @@
       .setOrigin(0.5).setScrollFactor(0).setDepth(101);
     const cd = this.add.text(x, y, '', { fontSize: '16px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
       .setOrigin(0.5).setScrollFactor(0).setDepth(102);
-    c.on('pointerdown', () => this.useDash());
+    // กดค้างแล้วลากเลือกทิศ | แตะเฉยๆ = แดชแบบเดิม
+    c.on('pointerdown', pointer => {
+      if (this.panel) return;
+      this.beginAim('dash', 0, this.dashBtn, pointer);
+    });
     this.dashBtn = { c: c, icon: icon, t: t, cd: cd };
   };
 
