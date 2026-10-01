@@ -9,3 +9,4 @@ Classes.skill('mg_bolt', { name: 'สายฟ้า', class: 'mage', dmg: 20, r
 Classes.skill('mg_nova', { name: 'คลื่นเวท', class: 'mage', dmg: 16, range: 140, cd: 3200, mp: 16, type: 'aoe' }, { scale: { ap: 1 }, ground: { cast: 300 } });
 
 Classes.ulti('mage', { name: 'อุกกาบาต', dmg: 80, range: 170, cd: ULTI_CD, mp: 50, type: 'aoe' }, { scale: { ap: 1 }, ground: { cast: 360 } });
+Classes.testUnlock(['mg_fire', 'mg_ice', 'mg_bolt', 'mg_nova']);
