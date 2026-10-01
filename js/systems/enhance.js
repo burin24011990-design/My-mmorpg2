@@ -166,6 +166,115 @@
     return true;
   };
 
+  // ---------- กล่องอุปกรณ์: เปิดหลายใบ / ย่อยเป็นหินโดยไม่ต้องเปิด ----------
+  // หินต่อกล่อง 1 ใบ = เท่ากับย่อยอุปกรณ์ดาว 0 เลเวลเดียวกัน
+  window.boxStoneYield = function (level) { return baseYield({ level: level, star: 0 }); };
+
+  // เปิดกล่อง n ใบ: ได้อุปกรณ์แยกเป็นชิ้นๆ ไม่รวมดาวให้อัตโนมัติ | จำกัดตามช่องว่างในกระเป๋า
+  P.openBoxes = function (idx, n) {
+    const box = this.bag[idx];
+    if (!box || box.kind !== 'box') return 0;
+    const count = box.count || 1;
+    n = Math.max(1, Math.min(n || 1, count));
+    const free = this.bag.filter(s => !s).length;
+    let k = Math.min(n, free);
+    if (n === count && count <= free + 1) k = count;   // เปิดหมดกอง ช่องของกล่องว่างเพิ่ม 1
+    if (k <= 0) { this.toastMsg('กระเป๋าเต็ม เปิดกล่องไม่ได้'); return 0; }
+    box.count = count - k;
+    if (box.count <= 0) this.bag[idx] = null;
+    for (let i = 0; i < k; i++) this.bag[this.findEmptyBagSlot()] = randomEquipItem(box.level);
+    this.toastMsg('เปิดกล่อง ' + k + ' ใบ ได้อุปกรณ์ ' + k + ' ชิ้น' + (k < n ? ' (กระเป๋าเต็ม)' : ''));
+    return k;
+  };
+
+  // ย่อยกล่อง n ใบเป็นหินทันที
+  P.dismantleBoxes = function (idx, n) {
+    const box = this.bag[idx];
+    if (!box || box.kind !== 'box') return 0;
+    const count = box.count || 1;
+    n = Math.max(1, Math.min(n || 1, count));
+    const total = window.boxStoneYield(box.level) * n;
+    box.count = count - n;
+    if (box.count <= 0) this.bag[idx] = null;
+    if (this.stoneRoom() < total) {
+      if (!this.bag[idx]) this.bag[idx] = box;
+      box.count = count;
+      this.toastMsg('กระเป๋าเต็ม ใส่หินไม่พอ');
+      return 0;
+    }
+    this.addStonesToBag(total);
+    this.toastMsg('ย่อยกล่อง ' + n + ' ใบ ได้หิน ' + big(total) + ' ก้อน');
+    return n;
+  };
+
+  // ---------- รวมดาวเฉพาะจำนวนที่เลือก ----------
+  // จำนวนชิ้นในกระเป๋าที่รวมกับชิ้นนี้ได้ (นับรวมชิ้นนี้)
+  P.countMatches = function (idx) {
+    const it = this.bag[idx];
+    if (!it || it.kind !== 'equip') return 0;
+    let n = 0;
+    this.bag.forEach(s => { if (itemsMatch(s, it)) n++; });
+    return n;
+  };
+
+  // รวม n ครั้ง (ครั้งละ 2 ชิ้น -> 1 ชิ้นดาวเพิ่ม) คืนจำนวนครั้งที่รวมได้
+  P.mergeSelectedCount = function (idx, n) {
+    const it = this.bag[idx];
+    if (!it || it.kind !== 'equip') { this.toastMsg('เลือกอุปกรณ์ในกระเป๋าก่อน'); return 0; }
+    if ((it.star || 0) >= MAX_STAR) { this.toastMsg('ดาวสูงสุดแล้ว'); return 0; }
+    const k = Math.min(n || 1, Math.floor(this.countMatches(idx) / 2));
+    if (k <= 0) { this.toastMsg('ไม่พบไอเทมที่เหมือนกันสำหรับรวม'); return 0; }
+    const slots = [];
+    this.bag.forEach((s, i) => { if (itemsMatch(s, it)) slots.push(i); });
+    const used = slots.slice(0, k * 2);
+    const made = Object.assign({}, it, { star: Math.min(MAX_STAR, (it.star || 0) + 1) });
+    used.forEach((slot, i) => { this.bag[slot] = i < k ? Object.assign({}, made) : null; });
+    this.toastMsg('รวมสำเร็จ ' + k + ' ครั้ง ได้ ' + itemLabel(made) + ' x' + k);
+    return k;
+  };
+
+  // ---------- จัดกระเป๋า: รวมกองของที่ซ้อนได้ + เรียงตามชนิด ----------
+  P.sortBag = function () {
+    const stackMax = {
+      box: typeof MAX_BOX_STACK !== 'undefined' ? MAX_BOX_STACK : 99,
+      stone: MAX_STONE_STACK,
+      skillbook: typeof MAX_SKILLBOOK_STACK !== 'undefined' ? MAX_SKILLBOOK_STACK : 999,
+    };
+    const totals = {}, order = [], equips = [];
+    this.bag.forEach(s => {
+      if (!s) return;
+      if (s.kind === 'equip') { equips.push(s); return; }
+      const key = s.kind === 'box' ? 'box:' + s.level : s.kind === 'skillbook' ? 'skillbook:' + s.sid : s.kind;
+      if (!totals[key]) { totals[key] = { proto: s, count: 0 }; order.push(key); }
+      totals[key].count += (s.count || 1);
+    });
+    const kindRank = k => k.indexOf('box') === 0 ? 0 : k === 'stone' ? 1 : 2;
+    order.sort((a, b) => kindRank(a) - kindRank(b)
+      || (kindRank(a) === 0 ? totals[b].proto.level - totals[a].proto.level : a < b ? -1 : a > b ? 1 : 0));
+
+    const out = [];
+    order.forEach(key => {
+      const t = totals[key], max = stackMax[t.proto.kind] || 999;
+      let left = t.count;
+      while (left > 0) {
+        const add = Math.min(left, max);
+        out.push(Object.assign({}, t.proto, { count: add }));
+        left -= add;
+      }
+    });
+
+    const slotRank = ['weapon', 'helmet', 'armor', 'gloves', 'shoes', 'ring', 'necklace'];
+    equips.sort((a, b) =>
+      slotRank.indexOf(a.baseSlot) - slotRank.indexOf(b.baseSlot)
+      || String(a.class || '').localeCompare(String(b.class || ''))
+      || String(a.variant || '').localeCompare(String(b.variant || ''))
+      || b.level - a.level || (b.star || 0) - (a.star || 0) || (b.plus || 0) - (a.plus || 0));
+    equips.forEach(e => out.push(e));
+
+    for (let i = 0; i < this.bag.length; i++) this.bag[i] = out[i] || null;
+    this.toastMsg('จัดกระเป๋าเรียบร้อย');
+  };
+
   // ---------- ไอคอนหิน (วาดเองด้วยโค้ด ไม่ต้องมีไฟล์รูป) ----------
   function ensureStoneTexture(scene) {
     if (!scene.textures || scene.textures.exists('icon_stone')) return;
