@@ -10,7 +10,7 @@ function loadGrassImages(scene) {
 }
 
 // ใส่ true เพื่อวางหญ้าทดสอบ 3 กอ (ทดสอบเสร็จแล้วเปลี่ยนเป็น false)
-const GRASS_TEST = true;
+const GRASS_TEST = false;
 
 // ขนาดวงรีที่ถือว่า "อยู่ในหญ้า" (สัดส่วนของขนาดภาพ)
 const GRASS_RX = 0.40, GRASS_RY = 0.30;
