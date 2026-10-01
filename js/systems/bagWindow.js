@@ -10,7 +10,7 @@
   const ICON_FILES = {};
 
   const iconCache = {};
-  const state = { tab: 'bag', page: 0, sel: null, msg: '' };
+  const state = { tab: 'bag', page: 0, sel: null, msg: '', qty: 1 };
   let root = null;
   let scene = null;
 
@@ -69,9 +69,42 @@
     root.id = 'bag-win';
     layer.appendChild(root);
     root.addEventListener('click', onClick);
+    if (!document.getElementById('bag-qty-style')) {
+      const st = document.createElement('style');
+      st.id = 'bag-qty-style';
+      st.textContent = '#bag-win .qty-row{align-items:center;justify-content:center;gap:8px}'
+        + '#bag-win .qty-row button{min-width:34px}'
+        + '#bag-win .qty-n{min-width:34px;text-align:center;color:#ffe066;font-size:15px}';
+      document.head.appendChild(st);
+    }
   }
 
   function hide() { if (root) root.style.display = 'none'; state.sel = null; }
+
+  // ---------- จำนวนที่เลือก (ใช้กับ เปิดกล่อง / ย่อยกล่อง / รวมดาว) ----------
+  function selBagItem() {
+    const sel = state.sel;
+    return sel && sel.src === 'bag' ? scene.bag[sel.id] : null;
+  }
+  function maxQty() {
+    const it = selBagItem();
+    if (!it) return 1;
+    if (it.kind === 'box') return Math.max(1, it.count || 1);
+    if (it.kind === 'equip') return Math.max(1, Math.floor(scene.countMatches(state.sel.id) / 2));
+    return 1;
+  }
+  function clampQty() { state.qty = Math.max(1, Math.min(state.qty, maxQty())); }
+
+  function toolbarHTML() {
+    return '<div class="pager qty-row"><span>จำนวน</span>'
+      + '<button data-act="qty" data-id="-1">−</button><b class="qty-n">' + state.qty + '</b>'
+      + '<button data-act="qty" data-id="1">+</button><button data-act="qty" data-id="max">MAX</button></div>'
+      + '<div class="pager">'
+      + '<button data-act="merge-all">🔗 รวมทั้งหมด</button>'
+      + '<button data-act="merge-sel">🔗 รวมที่เลือก ×' + state.qty + '</button>'
+      + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>'
+      + '</div>';
+  }
 
   // ---------- ส่วนแสดงผล ----------
   function cellHTML(it, act, id, selected) {
@@ -95,6 +128,7 @@
       h += cellHTML(s.bag[idx], 'sel-bag', idx, sel);
     }
     h += '</div>';
+    h += toolbarHTML();
     h += '<div class="pager">'
       + '<button data-act="page" data-id="-1">◀ ก่อนหน้า</button>'
       + '<span class="page-no">หน้า ' + (state.page + 1) + ' / ' + PAGES + '</span>'
@@ -195,14 +229,17 @@
     } else {
       h += '<div class="d-note">เปิดแล้วจะได้อุปกรณ์สุ่ม 1 ชิ้น (เลเวล ' + it.level + ')</div>'
         + '<div class="d-row"><span>เลเวลกล่อง</span><span>Lv.' + it.level + '</span></div>'
-        + '<div class="d-row"><span>จำนวนคงเหลือ</span><span>x' + (it.count || 1) + '</span></div>';
+        + '<div class="d-row"><span>จำนวนคงเหลือ</span><span>x' + (it.count || 1) + '</span></div>'
+        + '<div class="d-row"><span>ย่อยกล่องได้หิน</span><span>' + window.boxStoneYield(it.level) + ' ก้อน/ใบ</span></div>';
     }
 
     h += '<div class="d-actions">';
     if (sel.src === 'equip') {
       h += '<button class="btn danger" data-act="unequip">ถอดอุปกรณ์</button>';
     } else if (it.kind === 'box') {
-      h += '<button class="btn ok" data-act="open-box">เปิดกล่อง</button>';
+      const q = Math.min(state.qty, it.count || 1);
+      h += '<button class="btn ok" data-act="open-box">เปิดกล่อง ×' + q + '</button>'
+        + '<button class="btn danger" data-act="dismantle-box">♻ ย่อยกล่อง ×' + q + '</button>';
     } else if (it.baseSlot === 'ring') {
       h += '<button class="btn ok" data-act="wear" data-id="ring1">ใส่แหวนซ้าย</button>'
         + '<button class="btn ok" data-act="wear" data-id="ring2">ใส่แหวนขวา</button>'
@@ -221,13 +258,13 @@
   function render() {
     const s = scene;
     const used = s.bag.filter(Boolean).length;
+    clampQty();
     root.innerHTML =
       '<div class="win-head"><span class="win-title">กระเป๋า</span><button class="win-x" data-act="close">✕</button></div>'
       + '<div class="win-tabs">'
       + '<button class="win-tab' + (state.tab === 'bag' ? ' on' : '') + '" data-act="tab" data-id="bag">กระเป๋า</button>'
       + '<button class="win-tab' + (state.tab === 'equip' ? ' on' : '') + '" data-act="tab" data-id="equip">อุปกรณ์</button>'
       + '<span class="spacer"></span>'
-      + (state.tab === 'bag' ? '<button class="win-tab act" data-act="merge-all">🔗 รวมอุปกรณ์ทั้งหมด</button>' : '')
       + '</div>'
       + '<div class="win-body">'
       + '<div class="win-left">' + (state.tab === 'bag' ? bagGridHTML() : equipGridHTML()) + '</div>'
@@ -248,10 +285,18 @@
     const sel = state.sel;
 
     if (act === 'close') { s.closePanel(); return; }
-    if (act === 'tab') { state.tab = id; state.sel = null; }
-    else if (act === 'page') { state.page = Math.max(0, Math.min(PAGES - 1, state.page + Number(id))); state.sel = null; }
-    else if (act === 'sel-bag') state.sel = { src: 'bag', id: Number(id) };
-    else if (act === 'sel-equip') state.sel = { src: 'equip', id: id };
+    if (act === 'tab') { state.tab = id; state.sel = null; state.qty = 1; }
+    else if (act === 'page') { state.page = Math.max(0, Math.min(PAGES - 1, state.page + Number(id))); state.sel = null; state.qty = 1; }
+    else if (act === 'sel-bag') { state.sel = { src: 'bag', id: Number(id) }; state.qty = 1; }
+    else if (act === 'sel-equip') { state.sel = { src: 'equip', id: id }; state.qty = 1; }
+    else if (act === 'qty') {
+      state.qty = id === 'max' ? maxQty() : state.qty + Number(id);
+    }
+    else if (act === 'merge-sel') {
+      if (sel && sel.src === 'bag') { if (s.mergeSelectedCount(sel.id, state.qty)) state.sel = null; }
+      else s.toastMsg('เลือกอุปกรณ์ในกระเป๋าก่อน');
+    }
+    else if (act === 'sort-bag') { s.sortBag(); state.sel = null; state.qty = 1; }
     else if (act === 'merge-all') {
       const n = s.mergeAllInBag();
       s.toastMsg(n > 0 ? 'รวมอุปกรณ์สำเร็จ ' + n + ' ครั้ง' : 'ไม่มีของที่รวมกันได้');
@@ -266,13 +311,14 @@
       if (s.mergeSingleItem(sel.id)) state.sel = null;
     }
     else if (act === 'open-box' && sel && sel.src === 'bag') {
-      const item = s.bag[sel.id];
-      if (item && item.kind === 'box') {
-        item.count -= 1;
-        if (item.count <= 0) s.bag[sel.id] = null;
-        s.addEquipItemToBag(randomEquipItem(item.level));
-      }
-      state.sel = null;
+      s.openBoxes(sel.id, state.qty);
+      const cur = s.bag[sel.id];
+      if (!cur || cur.kind !== 'box') state.sel = null;
+    }
+    else if (act === 'dismantle-box' && sel && sel.src === 'bag') {
+      s.dismantleBoxes(sel.id, state.qty);
+      const cur = s.bag[sel.id];
+      if (!cur || cur.kind !== 'box') state.sel = null;
     }
     else if (act === 'use-book' && sel && sel.src === 'bag') {
       s.useSkillBook(sel.id);
