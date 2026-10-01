@@ -42,7 +42,7 @@
       var m = document.createElement('div'); m.className = 'ls-modal';
       m.innerHTML = '<div class="box"><div></div><button class="btn btn-gold"></button><button class="btn btn-ghost"></button></div>';
       var b = m.querySelectorAll('button');
-      m.querySelector('div div').textContent = msg;
+      m.querySelector('.box > div').textContent = msg;
       b[0].textContent = okText; b[1].textContent = noText;
       b[0].onclick = function () { m.remove(); resolve(true); };
       b[1].onclick = function () { m.remove(); resolve(false); };
