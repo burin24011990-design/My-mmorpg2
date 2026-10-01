@@ -139,7 +139,15 @@ Object.assign(Main.prototype, {
     const prnd = mulberry32(9000 + z.id * 6151);
     for (let tries = 0; this.pondRects.length < POND_COUNT && tries < 300; tries++) {
       const sc = 0.85 + prnd() * 0.35;
-      const x = 220 + prnd() * (WORLD_W - 440), y = 180 + prnd() * (WORLD_H - 360);
+      let x, y;
+      if (this.pondRects.length === 0) {
+        // บ่อแรกอยู่ใกล้จุดเกิด (ซ้ายหรือขวา) ให้เห็นตั้งแต่เริ่มด่าน
+        const a = (prnd() < 0.5 ? 0 : Math.PI) + (prnd() - 0.5) * 0.8, d = 400 + prnd() * 120;
+        x = z.x + Math.cos(a) * d; y = z.y + Math.sin(a) * d;
+        if (x < 250 || x > WORLD_W - 250 || y < 200 || y > WORLD_H - 200) continue;
+      } else {
+        x = 220 + prnd() * (WORLD_W - 440); y = 180 + prnd() * (WORLD_H - 360);
+      }
       if (!awayFromSpawn(x, y, 380) || !this.pondRects.every(p => dist(x, y, p.x, p.y) > 520)) continue;
       const img = this.add.image(x, y, pondKey).setDepth(-7);
       img.setScale((POND_W * sc) / img.width);
