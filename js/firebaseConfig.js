@@ -6,12 +6,12 @@
 
   // Your web app's Firebase configuration
   const firebaseConfig = {
-    apiKey: "AIzaSyCdP9FB_UlXmsi53bjdQ0vaW4dqGpkvA7I",
-    authDomain: "my-mmorpg-1cdcb.firebaseapp.com",
-    projectId: "my-mmorpg-1cdcb",
-    storageBucket: "my-mmorpg-1cdcb.firebasestorage.app",
-    messagingSenderId: "776960204989",
-    appId: "1:776960204989:web:e99546a7f4938ad4f757d4"
+    apiKey: "AIzaSyBwG7JfdcapCtReWhjdQYESMSwcvj49Eas",
+    authDomain: "newworld-ae666.firebaseapp.com",
+    projectId: "newworld-ae666",
+    storageBucket: "newworld-ae666.firebasestorage.app",
+    messagingSenderId: "737392014141",
+    appId: "1:737392014141:web:fdaee4c497acba37308b54"
   };
 
   // Initialize Firebase
