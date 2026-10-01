@@ -5,7 +5,13 @@
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
 //   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
-const MONSTER_SHEETS_READY = ['z1'];   // ด่าน 1 พร้อมครบ 3 ตัว (normal, ranged, boss)
+const MONSTER_SHEETS_READY = ['z1', 'z2'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+
+// ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
+// ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
+// (hitbox และระยะตีจะขยายตามขนาดอัตโนมัติ)
+const MONSTER_SIZE_NORMAL = [1.0, 1.0, 1.0, 1.0, 1.25, 1.4, 1.55, 1.7, 1.85];  // ธรรมดา + ยิงไกล
+const MONSTER_SIZE_BOSS   = [1.5, 1.5, 1.5, 1.5, 1.9,  2.1, 2.3,  2.5, 2.8];   // มินิบอส
 
 const MONSTER_ANIM_RANGES = { idle: [0, 3], attack: [4, 7], walk: [8, 11] };
 const MONSTER_ANIM_FPS = { idle: 6, attack: 12, walk: 8 };
@@ -95,6 +101,7 @@ const MONSTER_DEFS = _MONSTER_TABLE.map((zt, zi) => {
       fw: boss ? 64 : 48, fh: boss ? 64 : 48,
       kind: kind, zone: zi,
       frames: 12, hasSheet: false,
+      scale: (boss ? MONSTER_SIZE_BOSS : MONSTER_SIZE_NORMAL)[zi] || 1,
     };
   });
   return out;
@@ -164,7 +171,8 @@ function monsterHitFx(scene, e) {
   e.setTintFill(0xffffff);
   scene.time.delayedCall(80, () => { if (e.active) e.clearTint(); });
   if (!e._hitTween || !e._hitTween.isPlaying()) {
-    e._hitTween = scene.tweens.add({ targets: e, scaleX: 1.15, scaleY: 0.85, duration: 60, yoyo: true });
+    const b = (e.def && e.def.scale) || 1;
+    e._hitTween = scene.tweens.add({ targets: e, scaleX: b * 1.15, scaleY: b * 0.85, duration: 60, yoyo: true });
   }
 }
 
