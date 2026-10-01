@@ -9,6 +9,7 @@ const MAP_IMAGES = {
   deco_flower: 'assets/deco_flower.png', deco_tuft: 'assets/deco_tuft.png',
   deco_pebble: 'assets/deco_pebble.png', deco_mushroom: 'assets/deco_mushroom.png',
   deco_stump: 'assets/deco_stump.png', deco_dirt: 'assets/deco_dirt.png',
+  pond1: 'assets/pond1.png',
 };
 
 function loadGrassImages(scene) {
