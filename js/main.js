@@ -1,13 +1,19 @@
 // ===== จุดเริ่มเกม (โหลดเป็นไฟล์สุดท้าย) =====
 
-// ----- โหลดรูปหญ้า (ครอบ preload ของ Main โดยไม่ต้องแก้ scenes/Main.js) -----
-const GRASS_KEYS = ['grass1', 'grass2', 'grass3'];
-
-const ROCK_IMG_KEYS = ['rock1', 'rock2', 'rock3'];
+// ----- โหลดรูปของแมพทั้งหมด (ครอบ preload ของ Main โดยไม่ต้องแก้ scenes/Main.js) -----
+// key -> ไฟล์ใน assets/   (ถ้าชื่อหรือนามสกุลไฟล์ของคุณต่างจากนี้ ให้แก้ตรงนี้)
+const MAP_IMAGES = {
+  grass1: 'assets/grass1.png', grass2: 'assets/grass2.png', grass3: 'assets/grass3.png',
+  rock1: 'assets/rock1.png', rock2: 'assets/rock2.png', rock3: 'assets/rock3.png',
+  floor_grass: 'assets/floor_grass.jpg',
+  deco_flower: 'assets/deco_flower.png', deco_tuft: 'assets/deco_tuft.png',
+  deco_pebble: 'assets/deco_pebble.png', deco_mushroom: 'assets/deco_mushroom.png',
+  deco_stump: 'assets/deco_stump.png', deco_dirt: 'assets/deco_dirt.png',
+};
 
 function loadGrassImages(scene) {
-  GRASS_KEYS.concat(ROCK_IMG_KEYS).forEach(function (k) {
-    if (!scene.textures.exists(k)) scene.load.image(k, 'assets/' + k + '.png');
+  Object.keys(MAP_IMAGES).forEach(function (k) {
+    if (!scene.textures.exists(k)) scene.load.image(k, MAP_IMAGES[k]);
   });
 }
 
