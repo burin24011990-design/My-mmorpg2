@@ -1,4 +1,4 @@
-// ===== ลากเล็งสกิลหมู่ระยะไกล + ลากเลือกทิศสกิลพุ่ง/แดช (สไตล์ RoV) + ปุ่มยกเลิก ✕ + บอทล็อกเป้ายิงสกิลหมู่ =====
+// ===== ลากเล็งสกิลหมู่ระยะไกล + ลากเลือกทิศสกิลพุ่ง/ฟันตรง/แดช (สไตล์ RoV) + ปุ่มยกเลิก ✕ + บอทล็อกเป้ายิงสกิลหมู่ =====
 // โหลดหลัง skillLevelPatch.js และก่อน main.js
 (function () {
   const P = Main.prototype;
@@ -14,14 +14,16 @@
     mage:   { cast: 360 },
     archer: { cast: 380 },
   };
-  // สกิลพุ่ง: กดค้างแล้วลากเพื่อเลือกทิศ ปล่อยแล้วพุ่ง (แตะเฉยๆ = พุ่งแบบเดิม) | len = ความยาวลูกศรที่โชว์
-  // เพิ่มสกิลพุ่งใหม่: ใส่ id สกิลตรงนี้ได้เลย
+  // สกิลที่ลากเลือก "ทิศ": กดค้างแล้วลาก ปล่อยแล้วใช้ (แตะเฉยๆ = ใช้แบบเดิม)
+  // len = ความยาวลูกศรที่โชว์ | w = ครึ่งความกว้างแถบที่โชว์ (ไม่ใส่ = 16)
+  // เพิ่มสกิลใหม่: ใส่ id สกิลตรงนี้ หรือให้ไฟล์อาชีพลงทะเบียนเองผ่าน window.DIR_CFG / window.DIR_ULTI
   const DIR_CFG = {
     sw_dash: { len: 150 },    // พุ่งทะยาน (ดาบ)
     rg_dash: { len: 170 },    // เงาพุ่งฟัน (โจร)
   };
-  window.GROUND_CFG = GROUND_CFG; window.GROUND_ULTI = GROUND_ULTI;   // ให้ไฟล์สกิลพระลงทะเบียนสกิลลากเล็งได้
-  window.DIR_CFG = DIR_CFG;
+  const DIR_ULTI = {};        // อัลติที่ลากเลือกทิศ (ดาบสังหารลงทะเบียนจาก sword.js)
+  window.GROUND_CFG = GROUND_CFG; window.GROUND_ULTI = GROUND_ULTI;   // ให้ไฟล์สกิลลงทะเบียนสกิลลากเล็งได้
+  window.DIR_CFG = DIR_CFG; window.DIR_ULTI = DIR_ULTI;
   const AIM_DRAG_MIN = 14;    // ลากน้อยกว่านี้ถือว่าแตะ = ตกที่มอนที่ล็อก
   const AIM_DRAG_MAX = 110;   // ลากไกลเท่านี้ = ระยะสูงสุด
   const CANCEL_DX = -110;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี
@@ -60,7 +62,7 @@
   };
 
   // useSkill(idx, gp) / useUlti(gp): gp = {x,y} จุดที่ลากเล็ง (ไม่ใส่ = ตกที่มอนที่ล็อก)
-  // สกิลพุ่งส่ง gp = {dir:true, x, y} โดย x,y คือเวกเตอร์ทิศ (ไฟล์อาชีพที่ต้องใช้ทิศเองอ่านจาก gp นี้)
+  // สกิล/อัลติแบบลากเลือกทิศส่ง gp = {dir:true, x, y} โดย x,y คือเวกเตอร์ทิศ (ไฟล์อาชีพอ่านทิศจาก gp นี้)
   const _useSkill = P.useSkill;
   P.useSkill = function (idx, gp) {
     const sid = this.slots && this.slots[idx];
@@ -130,12 +132,14 @@
       // ปุ่มแดช: ลาก = พุ่งตามทิศที่ลาก | แตะ = ทิศเดิม (จอยสติ๊ก/ทิศที่หันอยู่)
       if (a.kind === 'dash') { this.useDash(a.dragged ? { x: a.dx, y: a.dy } : null); return; }
 
-      // สกิลพุ่ง: ลาก = พุ่งตามทิศที่ลาก | แตะ = พุ่งแบบเดิม (ไปหาเป้า/ทิศที่หันอยู่)
+      // สกิล/อัลติแบบเลือกทิศ: ลาก = ใช้ตามทิศที่ลาก | แตะ = ใช้แบบเดิม (หาเป้า/ทิศที่หันอยู่)
       if (a.dir) {
+        let gp = null;
         if (a.dragged) {
-          this.facing.set(a.dx, a.dy);   // สกิลพุ่งพื้นฐานอ่านทิศจาก facing ตอนกด
-          this.useSkill(a.idx, { dir: true, x: a.dx, y: a.dy });
-        } else this.useSkill(a.idx);
+          this.facing.set(a.dx, a.dy);   // สกิลพื้นฐานอ่านทิศจาก facing ตอนกด
+          gp = { dir: true, x: a.dx, y: a.dy };
+        }
+        if (a.isUlti) this.useUlti(gp); else this.useSkill(a.idx, gp);
         return;
       }
 
@@ -165,7 +169,8 @@
       def = { name: 'แดช', range: 0, mp: 0 }; cfg = { len: DASH_DIST }; key = 'dash'; dir = true; color = 0x9fd0ff;
     } else {
       if (isUlti) {
-        clsKey = this.ultiClass; def = ULTI_DEFS[clsKey]; cfg = GROUND_ULTI[clsKey]; key = 'ulti';
+        clsKey = this.ultiClass; def = ULTI_DEFS[clsKey]; key = 'ulti';
+        if (!GROUND_ULTI[clsKey] && DIR_ULTI[clsKey]) { dir = true; cfg = DIR_ULTI[clsKey]; } else cfg = GROUND_ULTI[clsKey];
       } else {
         sid = this.slots[idx]; def = SKILL_DEFS[sid]; clsKey = def.class; key = 'slot' + idx;
         if (isDirOnly(sid)) { dir = true; cfg = DIR_CFG[sid]; } else cfg = GROUND_CFG[sid];
@@ -202,15 +207,16 @@
     const col = a.cancel ? 0xff5555 : baseCol;
 
     if (a.dir) {
-      // ลูกศรบอกทิศพุ่ง (โชว์เมื่อเริ่มลาก)
+      // แถบ/ลูกศรบอกทิศ (โชว์เมื่อเริ่มลาก) กว้างตาม cfg.w
       if (a.dragged) {
-        const len = a.cfg.len, ex = p.x + a.dx * len, ey = p.y + a.dy * len;
-        const nx = -a.dy, ny = a.dx, w = 16;
+        const len = a.cfg.len, w = a.cfg.w || 16, ah = Math.max(26, w + 8);
+        const ex = p.x + a.dx * len, ey = p.y + a.dy * len;
+        const nx = -a.dy, ny = a.dx;
         g.fillStyle(col, a.cancel ? 0.12 : 0.3);
         g.fillTriangle(p.x + nx * w, p.y + ny * w, p.x - nx * w, p.y - ny * w, ex + nx * w, ey + ny * w);
         g.fillTriangle(p.x - nx * w, p.y - ny * w, ex + nx * w, ey + ny * w, ex - nx * w, ey - ny * w);
         g.fillStyle(col, a.cancel ? 0.25 : 0.8);
-        g.fillTriangle(ex + a.dx * 26 , ey + a.dy * 26, ex + nx * 26, ey + ny * 26, ex - nx * 26, ey - ny * 26);
+        g.fillTriangle(ex + a.dx * ah, ey + a.dy * ah, ex + nx * ah, ey + ny * ah, ex - nx * ah, ey - ny * ah);
         g.lineStyle(3, col, 0.95).lineBetween(p.x, p.y, ex, ey);
       }
     } else {
@@ -235,7 +241,7 @@
   };
 
   // ---------- ปุ่มสกิล ----------
-  // ช่องว่าง = เปิดหน้าต่างสกิล | สกิลหมู่/สกิลพุ่ง = กดแล้วลากเล็ง | สกิลอื่น = แตะใช้
+  // ช่องว่าง = เปิดหน้าต่างสกิล | สกิลหมู่/สกิลเลือกทิศ = กดแล้วลากเล็ง | สกิลอื่น = แตะใช้
   // ไม่มีการกดค้างถอดสกิล: เปลี่ยน/ถอดสกิลในช่องได้จากหน้าต่างสกิลเท่านั้น
   const _slot = P.makeSlotBtn;
   P.makeSlotBtn = function (x, y, r, idx) {
@@ -265,7 +271,7 @@
     b.c.off('pointerdown');
     b.c.on('pointerdown', pointer => {
       if (this.panel || !this.ultiClass) return;
-      if (GROUND_ULTI[this.ultiClass]) this.beginAim('ulti', 0, b, pointer);
+      if (GROUND_ULTI[this.ultiClass] || DIR_ULTI[this.ultiClass]) this.beginAim('ulti', 0, b, pointer);
       else this.useUlti();
     });
     return b;
