@@ -39,13 +39,23 @@
 </head>
 <body>
 <script>
+// แสดง error ทั้งหมดเป็นรายการ (ไม่ทับกัน) -- ข้อ #1 คือต้นเหตุจริง | แตะกล่องเพื่อปิด
 window.addEventListener('error', function (e) {
   var t = e.target && (e.target.src || e.target.href);
   var msg = t ? 'โหลดไม่ได้: ' + t.split('/').slice(-3).join('/') : 'Error: ' + e.message + ' (' + String(e.filename || '').split('/').pop() + ':' + e.lineno + ')';
-  var d = document.createElement('div');
-  d.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99999;background:#400;color:#fff;font:14px monospace;padding:6px;white-space:pre-wrap';
-  d.textContent = msg;
-  document.body.appendChild(d);
+  var box = document.getElementById('err-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'err-box';
+    box.style.cssText = 'position:fixed;left:0;right:0;top:0;max-height:45%;overflow:auto;z-index:99999;background:#400;color:#fff;font:12px monospace;padding:6px;white-space:pre-wrap;touch-action:pan-y';
+    box.addEventListener('click', function () { box.style.display = 'none'; });
+    document.body.appendChild(box);
+  }
+  box.style.display = 'block';
+  var line = document.createElement('div');
+  line.style.cssText = 'border-bottom:1px solid #800;padding:2px 0';
+  line.textContent = '#' + (box.children.length + 1) + ' ' + msg;
+  box.appendChild(line);
 }, true);
 </script>
 <div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
@@ -120,7 +130,7 @@ if ('serviceWorker' in navigator) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
 
 <!-- ลำดับสำคัญ: config -> data -> scene -> systems -> main -->
-<!-- เลข ?v=9 ใช้บังคับมือถือโหลดไฟล์ใหม่ ถ้าแก้ไฟล์แล้วไม่เปลี่ยน ให้เพิ่มเลขนี้ทุกตัว -->
+<!-- เลข ?v= ใช้บังคับมือถือโหลดไฟล์ใหม่ ถ้าแก้ไฟล์แล้วไม่เปลี่ยน ให้เพิ่มเลขนี้ทุกตัว -->
 <link rel="stylesheet" href="css/ui.css?v=9">
 <div id="ui-layer"></div>
   <link rel="stylesheet" href="css/pixel-panels.css?v=9">
@@ -151,13 +161,13 @@ if ('serviceWorker' in navigator) {
   <script src="js/systems/pixelBridge.js?v=9"></script>
   <script src="js/systems/skillLevelPatch.js?v=11"></script>
   <script src="js/systems/aimDash.js?v=15"></script>
-  <script src="js/classes/_shared.js?v=15"></script>
-  <script src="js/classes/sword.js?v=15"></script>
-  <script src="js/classes/mage.js?v=15"></script>
-  <script src="js/classes/archer.js?v=15"></script>
-  <script src="js/classes/priest.js?v=15"></script>
-  <script src="js/classes/rogue.js?v=15"></script>
-  <script src="js/systems/stats.js?v=15"></script>
+  <script src="js/classes/_shared.js?v=16"></script>
+  <script src="js/classes/sword.js?v=16"></script>
+  <script src="js/classes/mage.js?v=16"></script>
+  <script src="js/classes/archer.js?v=16"></script>
+  <script src="js/classes/priest.js?v=16"></script>
+  <script src="js/classes/rogue.js?v=16"></script>
+  <script src="js/systems/stats.js?v=16"></script>
 <script src="js/main.js?v=9"></script>
 </body>
 </html>
