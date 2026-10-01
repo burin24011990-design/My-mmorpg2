@@ -45,8 +45,18 @@ const GRASS_ALPHA_INSIDE = 0.4;   // ความโปร่งของหญ�
       if (origUpdate) origUpdate.apply(this, arguments);
       try {
         const list = this._grassTest;
-        const pl = this.player && (this.player.sprite || this.player);
-        if (!list || !pl || typeof pl.x !== 'number') return;
+        if (!list) return;
+        // หาตัวละครของเรา: 1) เป้าหมายที่กล้องตาม 2) this.player 3) สไปรต์ที่ใช้รูป 'player'
+        let pl = this._plRef;
+        if (!pl || !pl.active) {
+          pl = this.cameras.main._follow;
+          if (!pl && this.player) pl = this.player.sprite || this.player;
+          if (!pl) pl = this.children.list.find(function (o) {
+            return o.texture && o.texture.key === 'player' && typeof o.x === 'number';
+          });
+          this._plRef = pl;
+        }
+        if (!pl || typeof pl.x !== 'number') return;
         list.forEach(function (g) {
           const dx = (pl.x - g.x) / (g.displayWidth * GRASS_RX);
           const dy = (pl.y - g.y) / (g.displayHeight * GRASS_RY);
