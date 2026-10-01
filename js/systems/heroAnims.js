@@ -55,5 +55,10 @@
       sprite.setFlipX(dir === 'left');
       sprite.play(KEY + '_' + action + '_' + useDir, true);
     }
-  };
+  };// เลือกท่าโจมตีตามอาวุธที่สวมใส่
+// ค่าที่ currentClass() คืนมา: 'sword' = ดาบ, 'mage' = คทา, 'archer' = ธนู
+// (ถ้าชื่อคลาสใน items.js ไม่ตรงกับนี้ ให้แก้ตารางด้านล่าง)
+Main.prototype.attackAnimName = function () {
+  var map = { sword: 'sword', mage: 'staff', archer: 'bow' };
+  return map[this.currentClass()] || 'sword';   // ไม่ถืออาวุธ -> ท่าดาบเ
 })();
