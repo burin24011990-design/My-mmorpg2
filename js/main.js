@@ -3,8 +3,10 @@
 // ----- โหลดรูปหญ้า (ครอบ preload ของ Main โดยไม่ต้องแก้ scenes/Main.js) -----
 const GRASS_KEYS = ['grass1', 'grass2', 'grass3'];
 
+const ROCK_IMG_KEYS = ['rock1', 'rock2', 'rock3'];
+
 function loadGrassImages(scene) {
-  GRASS_KEYS.forEach(function (k) {
+  GRASS_KEYS.concat(ROCK_IMG_KEYS).forEach(function (k) {
     if (!scene.textures.exists(k)) scene.load.image(k, 'assets/' + k + '.png');
   });
 }
