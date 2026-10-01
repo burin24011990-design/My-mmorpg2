@@ -5,7 +5,7 @@
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
 //   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
-const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3', 'z4'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3', 'z4', 'z5'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
 
 // ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
@@ -57,9 +57,9 @@ const _MONSTER_TABLE = [
   },
   { // ด่าน 5 ทะเลทราย
     fx: 'sand',
-    normal: { name: 'แมงป่องทราย',    color: 0xe6c27a, ability: 'tail_poison' },
-    ranged: { name: 'กระบองเพชรยิงหนาม', color: 0x4fae6f, ability: 'thorn_fan_3' },
-    boss:   { name: 'ฟาโรห์มัมมี่',   color: 0xc9b98a, ability: 'dash_sandstorm' },
+    normal: { name: 'แมงป่องทราย',    color: 0xe6c27a, ability: 'tail_poison', sizeMul: 1.34 },
+    ranged: { name: 'กระบองเพชรยิงหนาม', color: 0x4fae6f, ability: 'thorn_fan_3', sizeMul: 1.23 },
+    boss:   { name: 'ฟาโรห์มัมมี่',   color: 0xc9b98a, ability: 'dash_sandstorm', sizeMul: 1.02 },
   },
   { // ด่าน 6 ภูเขาไฟ
     fx: 'fire',
