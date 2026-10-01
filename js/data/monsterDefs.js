@@ -5,7 +5,7 @@
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
 //   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
-const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3', 'z4'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
 
 // ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
@@ -51,9 +51,9 @@ const _MONSTER_TABLE = [
   },
   { // ด่าน 4 ถ้ำหิน
     fx: 'rock',
-    normal: { name: 'ค้างคาวถ้ำ',     color: 0x6a4a5a, ability: 'fast_lifesteal' },
-    ranged: { name: 'ก๊อบลินขว้างหิน', color: 0x8a9a4a, ability: 'rock_throw_arc' },
-    boss:   { name: 'โกเลมหิน',       color: 0x8a7a6a, ability: 'ground_slam_wide' },
+    normal: { name: 'ค้างคาวถ้ำ',     color: 0x6a4a5a, ability: 'fast_lifesteal', sizeMul: 1.25 },
+    ranged: { name: 'ก๊อบลินขว้างหิน', color: 0x8a9a4a, ability: 'rock_throw_arc', sizeMul: 1.24 },
+    boss:   { name: 'โกเลมหิน',       color: 0x8a7a6a, ability: 'ground_slam_wide', sizeMul: 1.12 },
   },
   { // ด่าน 5 ทะเลทราย
     fx: 'sand',
