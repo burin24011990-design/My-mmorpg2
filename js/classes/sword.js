@@ -10,3 +10,4 @@ Classes.skill('sw_dash', { name: 'พุ่งทะยาน', class: 'sword', 
 Classes.skill('sw_cross', { name: 'ฟันไขว้', class: 'sword', dmg: 22, range: 70, cd: 2400, mp: 12, type: 'melee' }, { scale: { patk: 1 } });
 
 Classes.ulti('sword', { name: 'ดาบสังหาร', dmg: 70, range: 130, cd: ULTI_CD, mp: 50, type: 'aoe' }, { scale: { patk: 1 } });
+Classes.testUnlock(['sw_slash', 'sw_spin', 'sw_dash', 'sw_cross']);
