@@ -33,12 +33,14 @@
     mpregen:   { label: 'ฟื้น MP/วินาที',      short: 'ฟื้นMP',   fmt: 'dec', hideZero: true },
   };
 
-  // ---------- สเตตัสต่อชิ้นอุปกรณ์ (ค่าต่อ 1 เลเวลไอเทม x (1 + ★ x 0.08)) ----------
+  // ---------- สเตตัสต่อชิ้นอุปกรณ์ (ค่าต่อ 1 เลเวลไอเทม x (1 + ★ x 0.08 + บวก x 0.05)) ----------
   const ITEM_STATS = {
     weapon: {
       sword:  { patk: 4,   aspd: 0.15, ppen: 0.15 },
       archer: { patk: 3.6, aspd: 0.2,  crit: 0.2 },
       mage:   { ap: 4.5,   cdr: 0.1,   mpen: 0.15 },
+      priest: { ap: 4.2,   cdr: 0.1,   mpregen: 0.02 },
+      rogue:  { patk: 3.8, crit: 0.2,  critdmg: 0.35 },
     },
     helmet:   { hp: 8, mdef: 1.0 },
     armor:    { hp: 10, pdef: 1.2, hpregen: 0.03 },
@@ -47,6 +49,15 @@
     ring:     { patk: 1.5, ap: 1.5, crit: 0.15 },
     necklace: { mp: 6, hp: 4, cdr: 0.1 },
   };
+
+  // ชุดเกราะอ่อน (item.variant === 'light'): เน้นเกราะเวท/เดินเร็ว/พลังเวท ลดเลือดกับเกราะกายภาพ
+  const ITEM_STATS_LIGHT = {
+    helmet: { hp: 5, mdef: 1.6, cdr: 0.05 },
+    armor:  { hp: 7, pdef: 0.6, mdef: 1.2, mpregen: 0.03 },
+    gloves: { patk: 1.2, ap: 2.0, aspd: 0.1 },
+    shoes:  { hp: 3, mspd: 0.35 },
+  };
+  const PLUS_STAT_PER = 0.05;   // ค่าพลังเพิ่มต่อตีบวก +1
 
   // ---------- ตัวคูณสกิล (RoV: ดาเมจ = ค่าฐาน + ตัวคูณ x สเตตัส) ----------
   // ไม่ใส่ = ใช้ค่ามาตรฐานของสายนั้น (ดาบ/ธนู 100% โจมตีกายภาพ | คทา/พระ 100% พลังเวท)
@@ -74,10 +85,11 @@
 
   // ---------- สเตตัสของไอเทม ----------
   function rawItemStats(item) {
-    const g = item.baseSlot === 'weapon'
-      ? (ITEM_STATS.weapon[item.class] || ITEM_STATS.weapon.sword)
-      : (ITEM_STATS[item.baseSlot] || {});
-    const mult = 1 + (item.star || 0) * 0.08, out = {};
+    let g;
+    if (item.baseSlot === 'weapon') g = ITEM_STATS.weapon[item.class] || ITEM_STATS.weapon.sword;
+    else if (item.variant === 'light' && ITEM_STATS_LIGHT[item.baseSlot]) g = ITEM_STATS_LIGHT[item.baseSlot];
+    else g = ITEM_STATS[item.baseSlot] || {};
+    const mult = 1 + (item.star || 0) * 0.08 + (item.plus || 0) * PLUS_STAT_PER, out = {};
     Object.keys(g).forEach(k => {
       const v = g[k] * item.level * mult;
       const r = (STAT_DEFS[k] && STAT_DEFS[k].fmt === 'int') ? Math.round(v) : Math.round(v * 10) / 10;
