@@ -23,6 +23,18 @@ const BUSH_RX = 1.15, BUSH_RY = 0.8;                   // วงรีที่�
 const BUSH_ALPHA_INSIDE = 0.45;                        // ความทึบของหญ้าตอนเราอยู่ข้างใน (น้อย = จางมาก)
 const BUSH_PLAYER_HIDDEN_ALPHA = 0.7;                  // ความทึบของตัวเราตอนซ่อนในหญ้า
 
+// ----- พื้นแมพ + ของตกแต่ง (ปรับตรงนี้) -----
+const FLOOR_KEY = 'floor_grass';        // รูปพื้นที่ปูซ้ำ (ใช้ทุกด่าน; อยากแยกตามด่านให้ทำเป็น map ตาม z.id)
+// ของตกแต่ง: key, ความกว้างในเกม (px), จำนวนต่อด่าน, depth (ต่ำกว่าตัวละครเสมอ), หมุนสุ่มได้ไหม
+const DECO_DEFS = [
+  { key: 'deco_dirt',     w: 128, count: 10, depth: -9.5, rotate: true },
+  { key: 'deco_pebble',   w: 36,  count: 40, depth: -8 },
+  { key: 'deco_tuft',     w: 40,  count: 50, depth: -8 },
+  { key: 'deco_flower',   w: 32,  count: 40, depth: -8 },
+  { key: 'deco_mushroom', w: 28,  count: 20, depth: -8 },
+  { key: 'deco_stump',    w: 56,  count: 8,  depth: -7.5 },
+];
+
 function mulberry32(a) {
   return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -182,6 +194,45 @@ Object.assign(Main.prototype, {
         b.sprites.push(s);
         this.obstacleObjs.push(s);
       });
+    });
+
+    this.buildFloorAndDecor(z);
+  },
+
+  // ปูพื้นด้วยรูปแทนตารางเส้นเดิม + โรยของตกแต่ง (ไม่ชน ไม่ทับหิน/พุ่มหญ้า)
+  buildFloorAndDecor(z) {
+    // พื้น: แทนที่ grid เดิมที่ loadStage สร้างไว้ (stageObjs[0]) ด้วย tileSprite
+    if (this.textures.exists(FLOOR_KEY) && this.stageObjs) {
+      const old = this.stageObjs[0];
+      if (old && old.destroy) old.destroy();
+      this.stageObjs[0] = this.add.tileSprite(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, FLOOR_KEY).setDepth(-10);
+    }
+
+    // ของตกแต่ง
+    const rnd = mulberry32(5000 + z.id * 104729);
+    const bushes = this.bushes || [];
+    const free = (x, y) => {
+      if (this.pointInRock(x, y, 30)) return false;
+      for (const b of bushes) {
+        const dx = (x - b.x) / (b.rx * 1.1), dy = (y - b.y) / (b.ry * 1.1);
+        if (dx * dx + dy * dy < 1) return false;
+      }
+      return true;
+    };
+    DECO_DEFS.forEach(def => {
+      if (!this.textures.exists(def.key)) return;
+      let placed = 0;
+      for (let tries = 0; placed < def.count && tries < def.count * 8; tries++) {
+        const x = 60 + rnd() * (WORLD_W - 120), y = 60 + rnd() * (WORLD_H - 120);
+        if (!free(x, y)) continue;
+        const s = this.add.image(x, y, def.key);
+        s.setScale((def.w * (0.85 + rnd() * 0.3)) / s.width);
+        if (rnd() < 0.5) s.setFlipX(true);
+        if (def.rotate) s.setRotation((rnd() - 0.5) * 0.6);
+        s.setDepth(def.depth);
+        this.obstacleObjs.push(s);
+        placed++;
+      }
     });
   },
 
