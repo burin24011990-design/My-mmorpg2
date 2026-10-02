@@ -1,6 +1,6 @@
 // ===== หน้าเริ่มเกม + ล็อกอิน Google + เซฟคลาวด์ (Firebase) =====
 // ทำงานก่อนเกมโหลด: ล็อกอิน -> ดึงเซฟจากคลาวด์ลง localStorage -> ค่อยโหลดสคริปต์เกม
-// หลังเริ่มเกมจะอัปโหลดเซฟขึ้นคลาวด์อัตโนมัติ (ทุก 60 วิ / ตอนซ่อนแอป)
+// หลังเริ่มเกมจะอัปโหลดเซฟขึ้นคลาวด์อัตโนมัติ (ทุก 15 วิ / ตอนซ่อนแอป / เมื่อเกมเรียก CloudSave.soon())
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
@@ -92,17 +92,41 @@
     $('login-note').textContent = 'ล็อกอิน Google ยังไม่พร้อม (ยังไม่ได้ใส่ค่า Firebase ใน js/firebaseConfig.js) เล่นแบบผู้เยี่ยมไปก่อนได้';
   }
 
-  function pushNow(force) {
+  // ---------- อัปโหลดเซฟขึ้นคลาวด์ ----------
+  var pushing = false;      // กำลังเขียนอยู่ (กันเขียนซ้อนกัน)
+  var pushAgain = false;    // มีคำขอเข้ามาระหว่างเขียน -> เขียนอีกรอบหลังเสร็จ
+  var lastPush = 0;         // เวลาที่เริ่มเขียนรอบล่าสุด
+  var soonTimer = null;
+  var failShown = false;    // แจ้งเตือนเขียนไม่สำเร็จแค่ครั้งเดียวต่อช่วงที่ล้มเหลว
+
+  // เหตุการณ์สำคัญ: อัปโหลดเร็วขึ้น แต่ห่างกันอย่างน้อย ~8 วิ (กันเกินโควตา Firestore)
+  function pushSoon() {
+    if (soonTimer) return;
+    var wait = Math.max(1500, 8000 - (Date.now() - lastPush));
+    soonTimer = setTimeout(function () { soonTimer = null; pushNow(false, true); }, wait);
+  }
+
+  function pushNow(force, quiet) {
+    try { if (window.GameSaveNow) window.GameSaveNow(); } catch (e) {}   // เซฟลงเครื่องก่อนเสมอ
     if (!db || !user || !canPush) return Promise.resolve();
+    if (pushing) { pushAgain = true; return Promise.resolve(); }
     var s = snapshot(), h = hash(s);
     if (!force && h === LS.getItem('mmo_cloud_hash')) return Promise.resolve();
     if (s.length > 900000) { toast('ข้อมูลเซฟใหญ่เกินไปสำหรับคลาวด์'); return Promise.resolve(); }
+    pushing = true; lastPush = Date.now();
     return db.collection('saves').doc(user.uid).set({
       data: s, savedAtMs: Date.now(), name: user.displayName || '', email: user.email || '', charName: LS.getItem('mmo_cloud_lastname') || ''
     }).then(function () {
       LS.setItem('mmo_cloud_hash', h); LS.setItem('mmo_cloud_uid', user.uid);
-      toast('☁ บันทึกขึ้นคลาวด์แล้ว');
-    }).catch(function () { toast('⚠ บันทึกคลาวด์ไม่สำเร็จ'); });
+      failShown = false;
+      if (!quiet) toast('☁ บันทึกขึ้นคลาวด์แล้ว');
+    }).catch(function () {
+      if (!quiet || !failShown) toast('⚠ บันทึกคลาวด์ไม่สำเร็จ');
+      failShown = true;
+    }).then(function () {
+      pushing = false;
+      if (pushAgain) { pushAgain = false; pushSoon(); }
+    });
   }
 
   // ดึงเซฟจากคลาวด์ + จัดการกรณีข้อมูลชนกัน
@@ -207,11 +231,15 @@
   }
 
   // ---------- เริ่มเกม ----------
+  var autosaveOn = false;
   function startAutosave() {
-    if (!user) return;
-    setInterval(function () { pushNow(false); }, 60000);
-    document.addEventListener('visibilitychange', function () { if (document.hidden) pushNow(false); });
-    window.addEventListener('pagehide', function () { pushNow(false); });
+    if (!user || autosaveOn) return;
+    autosaveOn = true;
+    setInterval(function () { pushNow(false, true); }, 15000);                                   // ทุก 15 วิ (ถ้าข้อมูลเปลี่ยน)
+    document.addEventListener('visibilitychange', function () { if (document.hidden) pushNow(false, true); });
+    window.addEventListener('pagehide', function () { pushNow(false, true); });
+    // ให้เกมเรียกใช้: CloudSave.soon() = อัปโหลดเร็วขึ้น (ไม่เกินทุก ~8 วิ) | CloudSave.now() = อัปโหลดทันที
+    window.CloudSave = { now: function () { return pushNow(false, true); }, soon: pushSoon };
   }
 
   $('btn-start').onclick = function () {
