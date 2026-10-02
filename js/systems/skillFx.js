@@ -1,7 +1,7 @@
 // ===== เอฟเฟกต์สกิล (สไปรต์ชีต) — เพิ่มสกิลใหม่ที่ตาราง FX ด้านล่าง =====
 // ภาพทุกแผ่นวาดหันขวา (→) ระบบจะหมุนตามทิศที่ยิง
 // at: 'self' = ที่ตัว | 'front' = ข้างหน้าตัวในระยะ dist | 'ground' = จุดตกที่ลากเล็ง
-// scale = ขนาด | fit = ปรับขนาดตามรัศมีสกิล (def.range) | rotate = หมุนตามทิศ | add = สีสว่างขึ้น (ADD)
+// scale = ขนาด | fit = ปรับขนาดตามรัศมีสกิล (def.range) | fitMul = ตัวคูณปรับขนาดของ fit | rotate = หมุนตามทิศ | add = สีสว่างขึ้น (ADD)
 // delay = หน่วงก่อนเล่น (ms) | times = เล่นกี่รอบ (ชื่อฟิลด์ใน def เช่น 'ticks') | every = ระยะห่างรอบ (ชื่อฟิลด์ เช่น 'tickMs')
 //
 // สไปรต์ชีตแบบ rects: รูปที่แต่ละเฟรมกว้างไม่เท่ากัน (เช่น ไฟระเบิดที่ขยายใหญ่ขึ้น) ห้ามตัดเป็นช่องเท่าๆ กัน
@@ -32,7 +32,7 @@
       [1058, 268], [1330, 219], [1549, 175], [1735, 127], [1869, 98] ] },
     // --- นักธนู ---
     ar_root:   { file: 'img/fx/ar_root.png',   fw: 165, fh: 242, frames: 12, fps: 16 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน)
-    ar_rain:   { file: 'img/fx/ar_rain.png',   fw: 141, fh: 390, frames: 14, fps: 18 },   // ฝนลูกศร
+    ar_rain:   { file: 'img/fx/ar_rain.png',   fw: 141, fh: 390, frames: 14, fps: 20 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs เล่นต่อเนื่องพอดี)
     ar_pierce: { file: 'img/fx/ar_pierce.png', fw: 165, fh: 194, frames: 12, fps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
     ar_shot:   { file: 'img/fx/ar_shot.png',   fw: 152, fh: 234, frames: 13, fps: 24 },   // ยิงคู่ (กระสุน)
     ar_multi:  { file: 'img/fx/ar_multi.png',  fw: 165, fh: 162, frames: 12, fps: 24 },   // ธนูตรึงขา (กระสุน)
@@ -64,7 +64,8 @@
 
     // --- นักธนู ---
     // ฝนลูกศร: วางที่จุดลากเล็ง เล่นซ้ำตาม ticks | oy = จุดพื้นในภาพ (0-1 จากบน)
-    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, add: true, oy: 0.72, times: 'ticks', every: 'tickMs' },
+    // fitMul = ย่อขนาดลง (ใหญ่ไป -> ลดเลขนี้ เช่น 0.5 | เล็กไป -> เพิ่ม เช่น 0.8) | add:false = ไม่ให้สว่างจ้าเกินไป
+    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, fitMul: 0.6, add: false, oy: 0.72, times: 'ticks', every: 'tickMs' },
     // อัลติ: ภาพลำแสงยาวภาพเดียว ยิงหลังชาร์จเสร็จ (delayField = ชื่อฟิลด์ใน def ที่เป็นเวลาหน่วง)
     'ธนูทลวงฟ้า': { image: 'ar_ult', at: 'self', bolt: true, heightMul: 1.0, delayField: 'chargeMs', hold: 160 },
   };
@@ -86,7 +87,7 @@
       if (scene.textures.exists(k)) return;
       const d = SHEETS[k];
       if (d.rects) scene.load.image(k, d.file + '?v=5');          // แบบ rects โหลดเป็นภาพเดียว แล้วตัดเฟรมเอง
-      else scene.load.spritesheet(k, d.file + '?v=4', { frameWidth: d.fw, frameHeight: d.fh });
+      else scene.load.spritesheet(k, d.file + '?v=6', { frameWidth: d.fw, frameHeight: d.fh });   // v=6: บังคับโหลดภาพใหม่ ไม่ใช้แคชเก่า
       need = true;
     });
     Object.keys(IMAGES).forEach(k => {
@@ -129,7 +130,7 @@
     if (!scene.anims.exists(cfg.sheet)) return;
     const d = SHEETS[cfg.sheet];
     const base = d.rects ? d.maxW : d.fw * 0.8;                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
-    const sc = cfg.fit ? (def.range * 2) / base : (cfg.scale || 1);
+    const sc = cfg.fit ? (def.range * 2) / base * (cfg.fitMul || 1) : (cfg.scale || 1);
     const s = scene.add.sprite(x, y, cfg.sheet).setDepth(70).setScale(sc);
     if (cfg.oy) s.setOrigin(0.5, cfg.oy);
     if (cfg.rotate) s.setRotation(ang);
@@ -138,6 +139,9 @@
     s.once('animationcomplete', () => s.destroy());
     s.setAlpha(0.2);
     scene.tweens.add({ targets: s, alpha: 1, duration: 60 });
+    // เฟดออกช่วงท้าย ให้ต่อรอบถัดไปได้นุ่มนวล ไม่กระตุก
+    const life = (d.frames / d.fps) * 1000;
+    if (life > 300) scene.tweens.add({ targets: s, alpha: 0, delay: life - 150, duration: 150 });
   }
 
   // สายฟ้า: ภาพแถบเดียว ยืดให้ยาวเท่า range กว้างตาม halfW แล้วเฟดหาย
@@ -158,7 +162,7 @@
     scene.tweens.add({ targets: s, alpha: 0, delay: 130 + (cfg.hold || 0), duration: 260, onComplete: () => s.destroy() });
   }
 
-  // จุดตกที่ลากเล็ง (ดูเฉยๆ ไม่ดึงออกจากคิว เพราะ mage.js จะดึงเอง)
+  // จุดตกที่ลากเล็ง (ดูเฉยๆ ไม่ดึงออกจากคิว เพราะ mage.js / archer.js จะดึงเอง)
   function peekGround(scene, def, x, y) {
     const q = scene._groundQ;
     if (q && q.length) {
