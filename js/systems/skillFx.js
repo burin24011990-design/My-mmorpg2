@@ -12,11 +12,11 @@
   const PAD = 2;   // ขอบเผื่อรอบเฟรมแบบ rects (พิกเซล)
 
   const SHEETS = {
-    sw_slash: { file: 'img/fx/sw_slash.png', fw: 248, fh: 248, frames: 12, fps: 30 },
-    sw_dash:  { file: 'img/fx/sw_dash.png',  fw: 216, fh: 168, frames: 12, fps: 30 },
-    sw_cross: { file: 'img/fx/sw_cross.png', fw: 248, fh: 232, frames: 12, fps: 28 },
-    sw_spin:  { file: 'img/fx/sw_spin.png',  fw: 232, fh: 264, frames: 12, fps: 26 },
-    sw_ult:   { file: 'img/fx/sw_ult.png',   fw: 264, fh: 216, frames: 9,  fps: 18 },
+    sw_slash: { file: 'img/fx/sw_slash2.png', fw: 221, fh: 248, frames: 12, fps: 30, ox: 0.9367, oy: 0.5484, peakW: 203, peakH: 208 },
+    sw_dash:  { file: 'img/fx/sw_dash2.png',  fw: 200, fh: 168, frames: 12, fps: 30, ox: 0.95,   oy: 0.5655, peakW: 190, peakH: 119 },
+    sw_cross: { file: 'img/fx/sw_cross2.png', fw: 230, fh: 232, frames: 12, fps: 28, ox: 0.9652, oy: 0.542,  peakW: 218, peakH: 185 },
+    sw_spin:  { file: 'img/fx/sw_spin2.png',  fw: 240, fh: 240, frames: 12, fps: 26, ring: 216 },
+    sw_ult:   { file: 'img/fx/sw_ult2.png',   fw: 254, fh: 216, frames: 9,  fps: 18, ox: 0.9724, oy: 0.5347, peakW: 243, peakH: 177 },
     // --- เมจ (ตัดเฟรมตามขอบจริง) ---
     mg_fire:  { file: 'img/fx/mg_fire.png',  fh: 334, fps: 20, rects: [
       [20, 106], [155, 144], [320, 207], [536, 228], [774, 262],
@@ -49,11 +49,13 @@
 
   // key = id สกิล (เช่น sw_slash) หรือชื่อสกิลภาษาไทย (ใช้กับอัลติ)
   const FX = {
-    sw_slash:    { sheet: 'sw_slash', at: 'front', dist: 38, rotate: true, scale: 0.7, add: true },
-    sw_dash:     { sheet: 'sw_dash',  at: 'self',  rotate: true, scale: 0.9, add: true, back: 40 },
-    sw_cross:    { sheet: 'sw_cross', at: 'front', dist: 70, rotate: true, scale: 1.0, add: true },
-    sw_spin:     { sheet: 'sw_spin',  at: 'self',  fit: 150, add: true },
-    'ดาบสังหาร':{ sheet: 'sw_ult',   at: 'front', dist: 130, rotate: true, scale: 1.3, add: true },
+    // นักดาบ: ภาพถูกจัดให้ปลายคมอยู่จุดเดียวกันทุกเฟรม (origin = ปลายคม)
+    // distRange = ปลายคมอยู่ห่างตัว กี่เท่าของ range | byRange/byHalfW + mul = ปรับขนาดตามระยะ/ความกว้างสกิล (ใหญ่ไป ลด mul)
+    sw_slash:    { sheet: 'sw_slash', at: 'front', distRange: 1.0, rotate: true, byRange: true, mul: 1.9, add: true },
+    sw_dash:     { sheet: 'sw_dash',  at: 'front', dist: 30,        rotate: true, scale: 0.7, add: true },
+    sw_cross:    { sheet: 'sw_cross', at: 'front', distRange: 1.0, rotate: true, byHalfW: true, mul: 1.15, add: true },
+    sw_spin:     { sheet: 'sw_spin',  at: 'self',  fit: true, add: true },
+    'ดาบสังหาร':{ sheet: 'sw_ult',   at: 'front', distRange: 1.0, rotate: true, byHalfW: true, mul: 1.05, add: true },
 
     // --- เมจ ---
     mg_fire:     { sheet: 'mg_fire',  at: 'ground', fit: true, add: false, delay: 400 },                       // ระเบิดหลังเตือน 400ms
@@ -143,9 +145,12 @@
     if (!scene.anims.exists(cfg.sheet)) return;
     const d = SHEETS[cfg.sheet];
     const base = d.rects ? d.maxW : (d.ring || d.fw * 0.8);                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
-    const sc = cfg.fit ? (def.range * 2) / base * (cfg.fitMul || 1) : (cfg.scale || 1);
+    let sc = cfg.fit ? (def.range * 2) / base * (cfg.fitMul || 1) : (cfg.scale || 1);
+    if (cfg.byRange && d.peakW) sc = (def.range * 2 * (cfg.mul || 1)) / d.peakW;            // ขนาดตามระยะสกิล
+    if (cfg.byHalfW && d.peakH && def.halfW) sc = (def.halfW * 2 * (cfg.mul || 1)) / d.peakH; // ขนาดตามความกว้างแนวฟัน
     const s = scene.add.sprite(x, y, cfg.sheet).setDepth(70).setScale(sc);
-    if (cfg.oy) s.setOrigin(0.5, cfg.oy);
+    if (d.ox) s.setOrigin(d.ox, d.oy || 0.5);          // ชีตแบบยึดปลายคม
+    else if (cfg.oy) s.setOrigin(0.5, cfg.oy);
     if (cfg.rotate) s.setRotation(ang);
     if (cfg.add) s.setBlendMode(Phaser.BlendModes.ADD);
     s.play(cfg.sheet);
@@ -198,7 +203,7 @@
           playBolt(this, cfg, { x: p.x, y: p.y }, ang, def);
         } else {
           let px = p.x, py = p.y;
-          if (cfg.at === 'front') { px += ux * cfg.dist; py += uy * cfg.dist; }
+          if (cfg.at === 'front') { const dd = cfg.distRange ? def.range * cfg.distRange : (cfg.dist || 0); px += ux * dd; py += uy * dd; }
           else if (cfg.at === 'ground') { const g = peekGround(this, def, x, y); px = g.x; py = g.y; }
           else if (cfg.back) { px -= ux * cfg.back; py -= uy * cfg.back; }
           const n = cfg.times ? (def[cfg.times] || 1) : 1;
