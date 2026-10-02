@@ -7,6 +7,18 @@ const BOT_FLEE_DIST = 330;   // ระยะที่เริ่มหนีบ
 const BOT_AVOID_DIST = 300;  // ไม่เก็บของ/ไม่เลือกเป้าที่อยู่ใกล้บอสที่ต้องหลบ
 const BOT_SPEED = 190;
 
+// อาวุธ/คลาสใหม่ที่ยังไม่ได้ลงทะเบียนใน BASIC_ATTACKS จะไม่ทำให้บอทค้าง: ใช้ค่าของดาบแทนไปก่อน
+const _botWarned = {};
+function botAtk(cls) {
+  const tbl = (typeof BASIC_ATTACKS !== 'undefined') ? BASIC_ATTACKS : null;
+  if (tbl && tbl[cls]) return tbl[cls];
+  if (!_botWarned[cls]) {
+    _botWarned[cls] = true;
+    console.warn('[bot] คลาส/อาวุธ "' + cls + '" ยังไม่มีใน BASIC_ATTACKS (ใช้ค่าของดาบแทน) กรุณาเพิ่มให้ครบ');
+  }
+  return (tbl && tbl.sword) || { range: 70, type: 'melee' };
+}
+
 // ---- ต่อท้ายฟังก์ชันเดิม (ไม่ต้องแก้ไฟล์อื่น) ----
 (function () {
   const _setupButtons = Main.prototype.setupButtons;
@@ -77,12 +89,13 @@ Object.assign(Main.prototype, {
 
   botWantUlti(t) {
     if (!this.ultiClass) return false;
-    const def = ULTI_DEFS[this.ultiClass];
+    const def = (typeof ULTI_DEFS !== 'undefined') ? ULTI_DEFS[this.ultiClass] : null;
+    if (!def) return false;                       // อัลติของคลาสใหม่ยังไม่มีข้อมูล = ข้ามไป ไม่ error
     if (this.stats.mp < def.mp) return false;
     if (t && t.isBoss) return true;
-    const p = this.player;
+    const p = this.player, rng = def.range || 150;
     let n = 0;
-    this.enemies.getChildren().forEach(e => { if (Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) < def.range) n++; });
+    this.enemies.getChildren().forEach(e => { if (Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) < rng) n++; });
     return n >= 3;
   },
 
@@ -140,10 +153,11 @@ Object.assign(Main.prototype, {
     const t = this.target && this.target.active ? this.target : null;
     if (t) {
       const cls = this.currentClass();
-      const approach = Math.max(50, BASIC_ATTACKS[cls].range - 40);
+      const atk = botAtk(cls);                     // กันค้างเมื่อคลาส/อาวุธใหม่ยังไม่อยู่ใน BASIC_ATTACKS
+      const approach = Math.max(50, (atk.range || 70) - 40);
       const d = Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y);
       // สายยิง (คทา/ธนู) ต้องมีแนวยิงโล่ง ถ้ามีหินบังให้เดินอ้อมไปหามุมยิง
-      const noLine = BASIC_ATTACKS[cls].type === 'proj' && PLAYER_SHOTS_BLOCKED_BY_ROCKS &&
+      const noLine = atk.type === 'proj' && PLAYER_SHOTS_BLOCKED_BY_ROCKS &&
         this.segmentBlocked(p.x, p.y, t.x, t.y, 8);
       if (d > approach || noLine) {
         say(noLine ? 'หามุมยิงเลี่ยงหิน' : 'เดินเข้าหาเป้า');
@@ -152,7 +166,7 @@ Object.assign(Main.prototype, {
         say('โจมตี'); this.botStuckRef = null;
         p.setVelocity(0, 0);
         this.useBasicAttack();
-        this.slots.forEach((sid, i) => { if (sid && this.stats.mp >= SKILL_DEFS[sid].mp) this.useSkill(i); });
+        this.slots.forEach((sid, i) => { if (sid && SKILL_DEFS[sid] && this.stats.mp >= SKILL_DEFS[sid].mp) this.useSkill(i); });
         if (this.botWantUlti(t)) this.useUlti();
       }
       return;
