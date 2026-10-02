@@ -59,7 +59,7 @@
   // สกิล 4: ฝนลูกศร — วางโซนรัศมี range ที่จุดลากเล็ง ลงดาเมจ ticks ครั้ง ห่างกัน tickMs | ดาเมจต่อครั้ง = tickMul ของดาเมจ
   Classes.skill('ar_rain', {
     name: 'ฝนลูกศร', class: 'archer', type: 'arain', noInfo: true,
-    dmg: 14, range: 160, cd: 6500, mp: 20,
+    dmg: 14, range: 120, cd: 6500, mp: 20,
     ticks: 3, tickMs: 700, tickMul: 0.6,
   }, {
     scale: { patk: 1 }, ground: { cast: 340 },
@@ -189,8 +189,8 @@
     const scene = this, pt = takeGround(scene, def, x, y), col = archerColor();
     const per = Math.round(dmg * def.tickMul);
     const fancy = hasAnim(scene, 'ar_rain');
-    const zone = scene.add.circle(pt.x, pt.y, def.range, col, fancy ? 0.05 : 0.14)
-      .setStrokeStyle(2, col, fancy ? 0.35 : 0.7).setDepth(40);
+    const zone = scene.add.circle(pt.x, pt.y, def.range, col, fancy ? 0.0 : 0.14)
+      .setStrokeStyle(2, col, fancy ? 0.0 : 0.7).setDepth(40);
     for (let i = 0; i < def.ticks; i++) {
       scene.time.delayedCall(i * def.tickMs, () => {
         if (!fancy) {
