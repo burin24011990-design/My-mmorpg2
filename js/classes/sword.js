@@ -39,7 +39,7 @@
   // สกิล 2: ฟันสตั้น — ฟันตรงด้านหน้า ยาว range กว้าง halfW*2 | สตั้น stunMs มิลลิวินาที
   Classes.skill('sw_cross', {
     name: 'ฟันสตั้น', class: 'sword', type: 'sstun', noInfo: true,
-    dmg: 22, range: 120, halfW: 50, cd: 4000, mp: 14, stunMs: 1500,
+    dmg: 22, range: 200, halfW: 50, cd: 4000, mp: 14, stunMs: 1500,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ฟันตรงด้านหน้าเป็นแนวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
