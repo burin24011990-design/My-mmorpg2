@@ -32,7 +32,7 @@
       [1058, 268], [1330, 219], [1549, 175], [1735, 127], [1869, 98] ] },
     // --- นักธนู ---
     ar_root:   { file: 'img/fx/ar_root.png',   fw: 165, fh: 242, frames: 12, fps: 16 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน)
-    ar_rain:   { file: 'img/fx/ar_rain3.png',  fw: 170, fh: 390, frames: 14, fps: 20 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs เล่นต่อเนื่องพอดี)
+    ar_rain:   { file: 'img/fx/ar_rain4.png',  fw: 180, fh: 430, frames: 14, fps: 20, ring: 100 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs)
     ar_pierce: { file: 'img/fx/ar_pierce.png', fw: 165, fh: 194, frames: 12, fps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
     ar_shot:   { file: 'img/fx/ar_shot.png',   fw: 152, fh: 234, frames: 13, fps: 24 },   // ยิงคู่ (กระสุน)
     ar_multi:  { file: 'img/fx/ar_multi.png',  fw: 165, fh: 162, frames: 12, fps: 24 },   // ธนูตรึงขา (กระสุน)
@@ -63,9 +63,8 @@
     'ระเบิดมหาเวท': { sheet: 'mg_ult', at: 'self',  fit: true, add: true },
 
     // --- นักธนู ---
-    // ฝนลูกศร: วางที่จุดลากเล็ง เล่นซ้ำตาม ticks | oy = จุดพื้นในภาพ (0-1 จากบน)
-    // fitMul = ย่อขนาดลง (ใหญ่ไป -> ลดเลขนี้ เช่น 0.5 | เล็กไป -> เพิ่ม เช่น 0.8) | add:false = ไม่ให้สว่างจ้าเกินไป
-    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, fitMul: 0.96, add: false, oy: 0.72, times: 'ticks', every: 'tickMs' },
+    // ฝนลูกศร: วางที่จุดลากเล็ง เล่นซ้ำตาม ticks | oy = จุดกึ่งกลางวงเวทในภาพ | fitMul = ขนาด (ใหญ่ไป ลดเลขนี้)
+    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, fitMul: 0.8, add: false, oy: 0.856, times: 'ticks', every: 'tickMs' },
     // อัลติ: ภาพลำแสงยาวภาพเดียว ยิงหลังชาร์จเสร็จ (delayField = ชื่อฟิลด์ใน def ที่เป็นเวลาหน่วง)
     'ธนูทลวงฟ้า': { image: 'ar_ult', at: 'self', bolt: true, heightMul: 1.0, delayField: 'chargeMs', hold: 160 },
   };
@@ -137,7 +136,7 @@
   function play(scene, cfg, x, y, ang, def) {
     if (!scene.anims.exists(cfg.sheet)) return;
     const d = SHEETS[cfg.sheet];
-    const base = d.rects ? d.maxW : d.fw * 0.8;                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
+    const base = d.rects ? d.maxW : (d.ring || d.fw * 0.8);                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
     const sc = cfg.fit ? (def.range * 2) / base * (cfg.fitMul || 1) : (cfg.scale || 1);
     const s = scene.add.sprite(x, y, cfg.sheet).setDepth(70).setScale(sc);
     if (cfg.oy) s.setOrigin(0.5, cfg.oy);
