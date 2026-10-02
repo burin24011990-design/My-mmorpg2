@@ -61,7 +61,8 @@
   }
   // หินที่ได้จากย่อยชิ้นนี้: ฐาน (ตามเลเวล/ดาว) + คืนจากตีบวก 80%
   function baseYield(item) {
-    return Math.max(1, Math.round((1 + Math.floor(item.level / 10)) * (1 + (item.star || 0) * 0.5)));
+    const tm = (typeof tierMultOf === 'function') ? tierMultOf(item) : 1;   // สีสูง ย่อยได้หินมากกว่า
+    return Math.max(1, Math.round((1 + Math.floor(item.level / 10)) * (1 + (item.star || 0) * 0.5) * tm));
   }
   window.dismantleYield = function (item) {
     return baseYield(item) + Math.floor(stonesSpent(item) * REFUND);
@@ -168,7 +169,7 @@
 
   // ---------- กล่องอุปกรณ์: เปิดหลายใบ / ย่อยเป็นหินโดยไม่ต้องเปิด ----------
   // หินต่อกล่อง 1 ใบ = เท่ากับย่อยอุปกรณ์ดาว 0 เลเวลเดียวกัน
-  window.boxStoneYield = function (level) { return baseYield({ level: level, star: 0 }); };
+  window.boxStoneYield = function (level, tier) { return baseYield({ level: level, star: 0, tier: tier }); };
 
   // เปิดกล่อง n ใบ: ได้อุปกรณ์แยกเป็นชิ้นๆ ไม่รวมดาวให้อัตโนมัติ | จำกัดตามช่องว่างในกระเป๋า
   P.openBoxes = function (idx, n) {
@@ -182,7 +183,7 @@
     if (k <= 0) { this.toastMsg('กระเป๋าเต็ม เปิดกล่องไม่ได้'); return 0; }
     box.count = count - k;
     if (box.count <= 0) this.bag[idx] = null;
-    for (let i = 0; i < k; i++) this.bag[this.findEmptyBagSlot()] = randomEquipItem(box.level);
+    for (let i = 0; i < k; i++) this.bag[this.findEmptyBagSlot()] = randomEquipItem(box.level, box.tier);
     this.toastMsg('เปิดกล่อง ' + k + ' ใบ ได้อุปกรณ์ ' + k + ' ชิ้น' + (k < n ? ' (กระเป๋าเต็ม)' : ''));
     return k;
   };
@@ -193,7 +194,7 @@
     if (!box || box.kind !== 'box') return 0;
     const count = box.count || 1;
     n = Math.max(1, Math.min(n || 1, count));
-    const total = window.boxStoneYield(box.level) * n;
+    const total = window.boxStoneYield(box.level, box.tier) * n;
     box.count = count - n;
     if (box.count <= 0) this.bag[idx] = null;
     if (this.stoneRoom() < total) {
@@ -233,24 +234,61 @@
     return k;
   };
 
+  // ---------- รวมดาวจากรายการช่องที่ติ๊กไว้ (หลายชิ้น) ----------
+  // ชิ้นที่เหมือนกันในรายการจะจับคู่ครั้งละ 2 ชิ้น -> 1 ชิ้นดาวเพิ่ม | dryRun = แค่นับจำนวนครั้งที่รวมได้
+  P.mergeIndices = function (list, dryRun) {
+    const groups = [];
+    list.forEach(i => {
+      const it = this.bag[i];
+      if (!it || it.kind !== 'equip') return;
+      const g = groups.find(g => itemsMatch(this.bag[g[0]], it));
+      if (g) g.push(i); else groups.push([i]);
+    });
+    let made = 0;
+    groups.forEach(g => {
+      const first = this.bag[g[0]];
+      if ((first.star || 0) >= MAX_STAR) return;
+      const pairs = Math.floor(g.length / 2);
+      for (let p = 0; p < pairs; p++) {
+        made++;
+        if (dryRun) continue;
+        const a = g[p * 2], b = g[p * 2 + 1];
+        this.bag[a] = Object.assign({}, this.bag[a], { star: Math.min(MAX_STAR, (this.bag[a].star || 0) + 1) });
+        this.bag[b] = null;
+      }
+    });
+    if (!dryRun) this.toastMsg(made > 0 ? 'รวมสำเร็จ ' + made + ' ครั้ง' : 'ในที่ติ๊กไม่มีคู่ที่รวมกันได้');
+    return made;
+  };
+
   // ---------- จัดกระเป๋า: รวมกองของที่ซ้อนได้ + เรียงตามชนิด ----------
   P.sortBag = function () {
     const stackMax = {
       box: typeof MAX_BOX_STACK !== 'undefined' ? MAX_BOX_STACK : 99,
       stone: MAX_STONE_STACK,
+      optstone: MAX_STONE_STACK,
+      cleanstone: MAX_STONE_STACK,
       skillbook: typeof MAX_SKILLBOOK_STACK !== 'undefined' ? MAX_SKILLBOOK_STACK : 999,
     };
     const totals = {}, order = [], equips = [];
     this.bag.forEach(s => {
       if (!s) return;
       if (s.kind === 'equip') { equips.push(s); return; }
-      const key = s.kind === 'box' ? 'box:' + s.level : s.kind === 'skillbook' ? 'skillbook:' + s.sid : s.kind;
+      const key = s.kind === 'box' ? 'box:' + tierOf(s) + ':' + s.level
+        : s.kind === 'optstone' ? 'optstone:' + s.color + ':' + s.level
+        : s.kind === 'skillbook' ? 'skillbook:' + s.sid : s.kind;
       if (!totals[key]) { totals[key] = { proto: s, count: 0 }; order.push(key); }
       totals[key].count += (s.count || 1);
     });
-    const kindRank = k => k.indexOf('box') === 0 ? 0 : k === 'stone' ? 1 : 2;
-    order.sort((a, b) => kindRank(a) - kindRank(b)
-      || (kindRank(a) === 0 ? totals[b].proto.level - totals[a].proto.level : a < b ? -1 : a > b ? 1 : 0));
+    const kindRank = k => k.indexOf('box') === 0 ? 0 : k === 'stone' ? 1 : k.indexOf('optstone') === 0 ? 2 : k === 'cleanstone' ? 3 : 4;
+    order.sort((a, b) => {
+      const r = kindRank(a) - kindRank(b);
+      if (r) return r;
+      const pa = totals[a].proto, pb = totals[b].proto;
+      if (kindRank(a) === 0) return TIER_ORDER.indexOf(tierOf(pb)) - TIER_ORDER.indexOf(tierOf(pa)) || pb.level - pa.level;
+      if (kindRank(a) === 2) return OPT_COLOR_KEYS.indexOf(pa.color) - OPT_COLOR_KEYS.indexOf(pb.color) || pb.level - pa.level;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
 
     const out = [];
     order.forEach(key => {
