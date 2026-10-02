@@ -183,29 +183,82 @@
     });
   };
 
-  // สกิล 4: ฝนลูกศรวางพื้นที่ ดาเมจ ticks ครั้ง
-  // ถ้ามีสไปรต์ฝนลูกศร (skillFx.js) จะไม่วาดเอฟเฟกต์ซ้ำ เหลือแค่คิดดาเมจ
+  // สกิล 4: ฝนลูกศรวางพื้นที่ — วาดด้วยโค้ดทั้งหมด (ไม่ใช้สไปรต์ชีต) ลูกศรตกตรงจากฟ้าลงพื้น ไม่แกว่งซ้ายขวา
+  // ปรับได้: RAIN_PER_TICK = จำนวนลูกศรต่อรอบ | RAIN_FALL = เวลาตก (ms) | RAIN_SPAN = ช่วงที่ลูกศรทยอยตก (ms) | RAIN_HEIGHT = ความสูงที่ตกลงมา
+  const RAIN_HIT_MS = 400;   // ดาเมจเข้าหลังเริ่มแต่ละรอบกี่ ms (ตรงกับเฟรมลูกศรปักพื้นในภาพ)
+  const RAIN_PER_TICK = 12, RAIN_FALL = 280, RAIN_SPAN = 320, RAIN_HEIGHT = 300;
+
+  function ensureRainTex(scene) {
+    if (scene.textures.exists('ar_rain_arrow')) return;
+    const g = scene.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0xb8742a, 1); g.fillRect(8, 10, 4, 30);          // ก้านลูกศร
+    g.fillStyle(0xffe08a, 1); g.fillRect(9, 10, 2, 30);
+    g.fillStyle(0xfff3c4, 1); g.fillTriangle(10, 54, 3, 38, 17, 38);   // หัวลูกศร (ชี้ลง)
+    g.fillStyle(0xe0a23a, 1); g.fillTriangle(10, 54, 10, 38, 17, 38);
+    g.fillStyle(0xffffff, 0.95);                                 // ขนนก
+    g.fillTriangle(10, 12, 2, 0, 10, 6); g.fillTriangle(10, 12, 18, 0, 10, 6);
+    g.generateTexture('ar_rain_arrow', 20, 56);
+    g.destroy();
+  }
+
+  function rainArrow(scene, ax, ay) {
+    const arr = scene.add.image(ax, ay - RAIN_HEIGHT, 'ar_rain_arrow').setOrigin(0.5, 0.96).setDepth(62).setScale(1.1).setAlpha(0);
+    const trail = scene.add.rectangle(ax, ay - RAIN_HEIGHT, 5, 90, 0xffd35a, 0.35).setOrigin(0.5, 1).setDepth(61);
+    scene.tweens.add({
+      targets: arr, y: ay, alpha: 1, duration: RAIN_FALL, ease: 'Quad.easeIn',
+      onUpdate: () => { trail.setPosition(arr.x, arr.y - 50); trail.setAlpha(0.35 * arr.alpha); },
+      onComplete: () => {
+        trail.destroy();
+        const ring = scene.add.ellipse(ax, ay, 14, 8, 0xffe08a, 0.85).setDepth(41);
+        scene.tweens.add({ targets: ring, scaleX: 3.2, scaleY: 3.2, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
+        for (let s = 0; s < 3; s++) {
+          const sp = scene.add.circle(ax, ay, 2, 0xfff3c4, 1).setDepth(63);
+          const a = Math.random() * Math.PI * 2, d = 14 + Math.random() * 18;
+          scene.tweens.add({ targets: sp, x: ax + Math.cos(a) * d, y: ay + Math.sin(a) * d * 0.6 - 8, alpha: 0, duration: 300, onComplete: () => sp.destroy() });
+        }
+        scene.tweens.add({ targets: arr, alpha: 0, delay: 200, duration: 220, onComplete: () => arr.destroy() });
+      },
+    });
+  }
+
   Classes.handlers.arain = function (def, x, y, dmg) {
-    const scene = this, pt = takeGround(scene, def, x, y), col = archerColor();
-    const per = Math.round(dmg * def.tickMul);
-    const fancy = hasAnim(scene, 'ar_rain');
-    const zone = scene.add.circle(pt.x, pt.y, def.range, col, fancy ? 0.0 : 0.14)
-      .setStrokeStyle(2, col, fancy ? 0.0 : 0.7).setDepth(40);
+    const scene = this, pt = takeGround(scene, def, x, y);
+    const R = def.range, per = Math.round(dmg * def.tickMul), GOLD = 0xffc94a;
+
+    // มีภาพสไปรต์ฝนลูกศร (skillFx.js เล่นให้เอง) -> คิดแค่ดาเมจ
+    if (hasAnim(scene, 'ar_rain')) {
+      for (let i = 0; i < def.ticks; i++) {
+        scene.time.delayedCall(i * def.tickMs + RAIN_HIT_MS, () => {
+          Classes.enemiesIn(scene, pt.x, pt.y, R).forEach(e => scene.damage(e, per));
+        });
+      }
+      return;
+    }
+    // ไม่มีภาพ -> วาดด้วยโค้ดแทน (สำรอง)
+    ensureRainTex(scene);
+
+    // วงพื้นที่ (ตรงกับรัศมีดาเมจจริง)
+    const zone = scene.add.circle(pt.x, pt.y, R, GOLD, 0.10).setStrokeStyle(2, 0xffe08a, 0.8).setDepth(40).setScale(0.6);
+    const inner = scene.add.circle(pt.x, pt.y, R * 0.62, GOLD, 0).setStrokeStyle(1, 0xffe08a, 0.45).setDepth(40).setScale(0.6);
+    scene.tweens.add({ targets: [zone, inner], scale: 1, duration: 180, ease: 'Back.easeOut' });
+
     for (let i = 0; i < def.ticks; i++) {
       scene.time.delayedCall(i * def.tickMs, () => {
-        if (!fancy) {
-          scene.flash(pt.x, pt.y, def.range, col);
-          for (let k = 0; k < 7; k++) {   // ลูกศรตกลงมา (เอฟเฟกต์สำรอง)
-            const ang = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * def.range;
-            const ax = pt.x + Math.cos(ang) * r, ay = pt.y + Math.sin(ang) * r;
-            const arr = scene.add.rectangle(ax - 20, ay - 140, 3, 22, 0xffffff, 0.9).setRotation(0.15).setDepth(62);
-            scene.tweens.add({ targets: arr, x: ax, y: ay, alpha: 0.2, duration: 220, delay: k * 25, onComplete: () => arr.destroy() });
-          }
+        scene.tweens.add({ targets: zone, scale: 1.05, yoyo: true, duration: 120 });
+        const rot = Math.random() * Math.PI * 2;
+        for (let k = 0; k < RAIN_PER_TICK; k++) {           // กระจายตำแหน่งให้ทั่ววง (golden angle)
+          const r = Math.sqrt((k + 0.5) / RAIN_PER_TICK) * R * 0.9, th = rot + k * 2.39996;
+          const ax = pt.x + Math.cos(th) * r, ay = pt.y + Math.sin(th) * r;
+          scene.time.delayedCall(Math.random() * RAIN_SPAN, () => rainArrow(scene, ax, ay));
         }
-        Classes.enemiesIn(scene, pt.x, pt.y, def.range).forEach(e => scene.damage(e, per));
+        scene.time.delayedCall(RAIN_SPAN + RAIN_FALL, () => {   // ดาเมจเข้าตอนลูกศรลงถึงพื้น
+          Classes.enemiesIn(scene, pt.x, pt.y, R).forEach(e => scene.damage(e, per));
+        });
       });
     }
-    scene.time.delayedCall((def.ticks - 1) * def.tickMs + 350, () => zone.destroy());
+    scene.time.delayedCall((def.ticks - 1) * def.tickMs + RAIN_SPAN + RAIN_FALL + 150, () => {
+      scene.tweens.add({ targets: [zone, inner], alpha: 0, duration: 250, onComplete: () => { zone.destroy(); inner.destroy(); } });
+    });
   };
 
   // อัลติ: ชาร์จ แล้วยิงแนวกว้างทะลุทุกตัว
