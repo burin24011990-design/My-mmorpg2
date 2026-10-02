@@ -32,7 +32,7 @@
       [1058, 268], [1330, 219], [1549, 175], [1735, 127], [1869, 98] ] },
     // --- นักธนู ---
     ar_root:   { file: 'img/fx/ar_root.png',   fw: 165, fh: 242, frames: 12, fps: 16 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน)
-    ar_rain:   { file: 'img/fx/ar_rain.png',   fw: 141, fh: 390, frames: 14, fps: 20 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs เล่นต่อเนื่องพอดี)
+    ar_rain:   { file: 'img/fx/ar_rain2.png',  fw: 141, fh: 390, frames: 14, fps: 20 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs เล่นต่อเนื่องพอดี)
     ar_pierce: { file: 'img/fx/ar_pierce.png', fw: 165, fh: 194, frames: 12, fps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
     ar_shot:   { file: 'img/fx/ar_shot.png',   fw: 152, fh: 234, frames: 13, fps: 24 },   // ยิงคู่ (กระสุน)
     ar_multi:  { file: 'img/fx/ar_multi.png',  fw: 165, fh: 162, frames: 12, fps: 24 },   // ธนูตรึงขา (กระสุน)
@@ -65,7 +65,7 @@
     // --- นักธนู ---
     // ฝนลูกศร: วางที่จุดลากเล็ง เล่นซ้ำตาม ticks | oy = จุดพื้นในภาพ (0-1 จากบน)
     // fitMul = ย่อขนาดลง (ใหญ่ไป -> ลดเลขนี้ เช่น 0.5 | เล็กไป -> เพิ่ม เช่น 0.8) | add:false = ไม่ให้สว่างจ้าเกินไป
-    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, fitMul: 0.6, add: false, oy: 0.72, times: 'ticks', every: 'tickMs' },
+    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, fitMul: 1.15, add: false, oy: 0.72, times: 'ticks', every: 'tickMs' },
     // อัลติ: ภาพลำแสงยาวภาพเดียว ยิงหลังชาร์จเสร็จ (delayField = ชื่อฟิลด์ใน def ที่เป็นเวลาหน่วง)
     'ธนูทลวงฟ้า': { image: 'ar_ult', at: 'self', bolt: true, heightMul: 1.0, delayField: 'chargeMs', hold: 160 },
   };
@@ -95,6 +95,14 @@
       scene.load.image(k, IMAGES[k] + '?v=4');
       need = true;
     });
+    // ไฟล์ภาพไหนโหลดไม่ได้ จะขึ้นข้อความบนจอ (เช็กชื่อไฟล์/โฟลเดอร์ img/fx/ ในรีโป)
+    if (!scene._fxErrHook) {
+      scene._fxErrHook = true;
+      scene.load.on('loaderror', f => {
+        console.error('skillFx โหลดภาพไม่ได้', f && f.src);
+        if (scene.toastMsg) scene.toastMsg('โหลดภาพไม่ได้: ' + String((f && f.src) || '').split('?')[0]);
+      });
+    }
     const mk = () => {
       Object.keys(SHEETS).forEach(k => {
         const d = SHEETS[k];
@@ -207,7 +215,8 @@
   function arrow(scene, def, sx, sy, ux, uy, d, dur, big) {
     try {
       const c = def && ARROWS[def.id];
-      if (!c || !scene.anims.exists(c.sheet)) return null;
+      if (!c) return null;
+      if (!scene.anims.exists(c.sheet)) { if (!c._warned) { c._warned = true; console.warn('skillFx: ไม่มีอนิเมชัน', c.sheet); if (scene.toastMsg) scene.toastMsg('ไม่พบภาพ ' + c.sheet + '.png'); } return null; }
       const s = scene.add.sprite(sx, sy, c.sheet).setDepth(61).setScale(c.scale).setRotation(Math.atan2(uy, ux));
       if (c.add) s.setBlendMode(Phaser.BlendModes.ADD);
       s.play({ key: c.sheet, duration: Math.max(dur, 200) });
