@@ -100,6 +100,7 @@ Object.assign(Main.prototype, {
     this.bag[idx] = { ...item, star: Math.min(MAX_STAR, item.star + 1) };
     this.bag[j] = null;
     this.toastMsg('รวมดาวสำเร็จ! ได้ ' + itemLabel(this.bag[idx]));
+    if (this.saveSoon) this.saveSoon();
     return true;
   },
 
@@ -120,6 +121,7 @@ Object.assign(Main.prototype, {
         if (changed) break;
       }
     }
+    if (merges > 0 && this.saveSoon) this.saveSoon();
     return merges;
   },
 });
