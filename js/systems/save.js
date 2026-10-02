@@ -1,5 +1,6 @@
 // ===== ระบบเซฟ/โหลด (localStorage ในเบราว์เซอร์ของผู้เล่น) =====
-// เซฟทุก 10 วินาที + ตอนปิด/ซ่อนหน้าเว็บ | โหลดอัตโนมัติตอนเริ่มเกม
+// เซฟทุก 3 วินาที (เขียนเฉพาะตอนข้อมูลเปลี่ยน) + ตอนปิด/ซ่อนหน้าเว็บ | โหลดอัตโนมัติตอนเริ่มเกม
+// เหตุการณ์สำคัญ (เลเวลอัป/เปลี่ยนอุปกรณ์/เรียนสกิล/ตีบวก/รวมดาว ฯลฯ) จะสั่งอัปโหลดขึ้นคลาวด์เร็วขึ้นผ่าน CloudSave.soon()
 // ล้างเซฟ: เปิด Console แล้วพิมพ์ localStorage.removeItem('my_mmorpg_save_v1')
 
 const SAVE_KEY = 'my_mmorpg_save_v1';
@@ -25,7 +26,6 @@ Object.assign(Main.prototype, {
     try {
       const data = {
         v: 1,
-        savedAt: Date.now(),
         stats: this.stats,
         bag: this.bag,                      // หนังสือสกิลเก็บอยู่ในกระเป๋าเป็นไอเทม
         equipment: this.equipment,
@@ -37,14 +37,34 @@ Object.assign(Main.prototype, {
         botCfg: this.botCfg || {},
         bossAt: (this.bossState || []).map(zs => zs.map(s => s.at)),
       };
+      const str = JSON.stringify(data);
+      if (str === this._lastSaveStr) return;          // ไม่มีอะไรเปลี่ยน ไม่ต้องเขียนซ้ำ
+      this._lastSaveStr = str;
+      data.savedAt = Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+
+      // เหตุการณ์สำคัญ (เลเวล / อุปกรณ์ที่สวม / จำนวนสกิลที่เรียน เปลี่ยน) -> ขอให้คลาวด์อัปโหลดเร็วขึ้น
+      const key = this.stats.level + '|' + JSON.stringify(this.equipment) + '|' + this.learnedSkills.size;
+      if (this._lastKey && key !== this._lastKey && window.CloudSave) window.CloudSave.soon();
+      this._lastKey = key;
     } catch (e) { /* พื้นที่เต็ม/ถูกบล็อก: ข้าม */ }
   },
 
+  // เซฟเครื่องทันที + ขอให้คลาวด์อัปโหลดเร็วขึ้น (เรียกจากระบบอื่นหลังทำอะไรสำคัญ)
+  saveSoon() {
+    this.saveGame();
+    if (window.CloudSave) window.CloudSave.soon();
+  },
+
   startAutoSave() {
-    this.time.addEvent({ delay: 10000, loop: true, callback: () => this.saveGame() });
-    window.addEventListener('beforeunload', () => this.saveGame());
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.saveGame(); });
+    this._lastSaveStr = '';
+    this._lastKey = '';
+    this.time.addEvent({ delay: 3000, loop: true, callback: () => this.saveGame() });
+    const flush = () => this.saveGame();
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
+    window.GameSaveNow = flush;   // ให้ startScreen.js เรียกเซฟเครื่องก่อนอัปโหลดขึ้นคลาวด์เสมอ
   },
 
   // คืนค่า index ด่านที่จะเริ่ม หรือ null ถ้าไม่มีเซฟ
