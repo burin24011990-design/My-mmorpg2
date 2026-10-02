@@ -17,10 +17,16 @@
     mg_ice:   { file: 'img/fx/mg_ice.png',   fw: 180, fh: 326, frames: 11, fps: 14 },
     mg_nova:  { file: 'img/fx/mg_nova.png',  fw: 180, fh: 272, frames: 11, fps: 22 },
     mg_ult:   { file: 'img/fx/mg_ult.png',   fw: 198, fh: 402, frames: 10, fps: 16 },
+    // --- นักธนู ---
+    ar_root:   { file: 'img/fx/ar_root.png',   fw: 165, fh: 242, frames: 12, fps: 16 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน)
+    ar_rain:   { file: 'img/fx/ar_rain.png',   fw: 141, fh: 390, frames: 14, fps: 18 },   // ฝนลูกศร
+    ar_pierce: { file: 'img/fx/ar_pierce.png', fw: 165, fh: 194, frames: 12, fps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
+    ar_shot:   { file: 'img/fx/ar_shot.png',   fw: 152, fh: 234, frames: 13, fps: 24 },   // ยิงคู่ (กระสุน)
+    ar_multi:  { file: 'img/fx/ar_multi.png',  fw: 165, fh: 162, frames: 12, fps: 24 },   // ธนูตรึงขา (กระสุน)
   };
 
   // รูปเดี่ยว (ไม่ใช่สไปรต์ชีต) — สายฟ้าเป็นแถบยาวภาพเดียว ยืดตามระยะสกิล
-  const IMAGES = { mg_bolt: 'img/fx/mg_bolt.png' };
+  const IMAGES = { mg_bolt: 'img/fx/mg_bolt.png', ar_ult: 'img/fx/ar_ult.png' };
 
   // key = id สกิล (เช่น sw_slash) หรือชื่อสกิลภาษาไทย (ใช้กับอัลติ)
   const FX = {
@@ -36,6 +42,23 @@
     mg_nova:     { sheet: 'mg_nova',  at: 'self',   scale: 0.7, add: true, arrive: true },                      // เล่นที่จุดเริ่ม + จุดมาถึง
     mg_bolt:     { image: 'mg_bolt',  at: 'self',   bolt: true },
     'ระเบิดมหาเวท': { sheet: 'mg_ult', at: 'self',  fit: true, add: true },
+
+    // --- นักธนู ---
+    // ฝนลูกศร: วางที่จุดลากเล็ง เล่นซ้ำตาม ticks | oy = จุดพื้นในภาพ (0-1 จากบน)
+    ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, add: true, oy: 0.72, times: 'ticks', every: 'tickMs' },
+    // อัลติ: ภาพลำแสงยาวภาพเดียว ยิงหลังชาร์จเสร็จ (delayField = ชื่อฟิลด์ใน def ที่เป็นเวลาหน่วง)
+    'ธนูทลวงฟ้า': { image: 'ar_ult', at: 'self', bolt: true, heightMul: 1.0, delayField: 'chargeMs', hold: 160 },
+  };
+
+  // ลูกศรนักธนู (ใช้จาก archer.js: shootArrow) key = id สกิล
+  const ARROWS = {
+    ar_shot:   { sheet: 'ar_shot',   scale: 0.8, add: true },
+    ar_multi:  { sheet: 'ar_multi',  scale: 0.8, add: true },
+    ar_pierce: { sheet: 'ar_pierce', scale: 1.1, add: false },
+  };
+  // เอฟเฟกต์ตอนโดนมอน (เรียกจาก archer.js)
+  const HITS = {
+    ar_multi: { sheet: 'ar_root', scale: 0.55, oy: 0.68, add: false },   // เถาวัลย์ตรึงขา
   };
 
   function loadSheets(scene) {
@@ -43,12 +66,12 @@
     Object.keys(SHEETS).forEach(k => {
       if (scene.textures.exists(k)) return;
       const d = SHEETS[k];
-      scene.load.spritesheet(k, d.file + '?v=3', { frameWidth: d.fw, frameHeight: d.fh });
+      scene.load.spritesheet(k, d.file + '?v=4', { frameWidth: d.fw, frameHeight: d.fh });
       need = true;
     });
     Object.keys(IMAGES).forEach(k => {
       if (scene.textures.exists(k)) return;
-      scene.load.image(k, IMAGES[k] + '?v=3');
+      scene.load.image(k, IMAGES[k] + '?v=4');
       need = true;
     });
     const mk = () => {
@@ -75,6 +98,7 @@
     const d = SHEETS[cfg.sheet];
     const sc = cfg.fit ? (def.range * 2) / (d.fw * 0.8) : (cfg.scale || 1);
     const s = scene.add.sprite(x, y, cfg.sheet).setDepth(70).setScale(sc);
+    if (cfg.oy) s.setOrigin(0.5, cfg.oy);
     if (cfg.rotate) s.setRotation(ang);
     if (cfg.add) s.setBlendMode(Phaser.BlendModes.ADD);
     s.play(cfg.sheet);
@@ -86,14 +110,19 @@
   // สายฟ้า: ภาพแถบเดียว ยืดให้ยาวเท่า range กว้างตาม halfW แล้วเฟดหาย
   function playBolt(scene, cfg, p, ang, def) {
     if (!scene.textures.exists(cfg.image)) return;
+    const wait = cfg.delayField ? (def[cfg.delayField] || 0) : 0;
+    if (wait > 0 && !cfg._now) {
+      scene.time.delayedCall(wait, () => { const pl = scene.player || p; playBolt(scene, Object.assign({}, cfg, { _now: true }), { x: pl.x, y: pl.y }, ang, def); });
+      return;
+    }
     const src = scene.textures.get(cfg.image).getSourceImage();
-    const len = def.range + 20, hh = (def.halfW || 50) * 2 * 1.3;
+    const len = def.range + 20, hh = (def.halfW || 50) * 2 * (cfg.heightMul || 1.3);
     const s = scene.add.image(p.x, p.y, cfg.image).setOrigin(0, 0.5).setDepth(70)
       .setRotation(ang).setBlendMode(Phaser.BlendModes.ADD);
     const sx = len / src.width, sy = hh / src.height;
     s.setScale(sx * 0.15, sy);
     scene.tweens.add({ targets: s, scaleX: sx, duration: 90, ease: 'Quad.easeOut' });        // พุ่งออกไป
-    scene.tweens.add({ targets: s, alpha: 0, delay: 130, duration: 260, onComplete: () => s.destroy() });
+    scene.tweens.add({ targets: s, alpha: 0, delay: 130 + (cfg.hold || 0), duration: 260, onComplete: () => s.destroy() });
   }
 
   // จุดตกที่ลากเล็ง (ดูเฉยๆ ไม่ดึงออกจากคิว เพราะ mage.js จะดึงเอง)
@@ -137,5 +166,28 @@
     return _apply.apply(this, arguments);
   };
 
-  window.SkillFx = { FX, SHEETS, IMAGES };
+  // ลูกศร: คืน sprite ที่เล่นอนิเมชันตลอดเวลาบิน (archer.js จะ tween ตำแหน่งเอง) | ไม่มีภาพ -> คืน null (ใช้สี่เหลี่ยมเดิม)
+  function arrow(scene, def, sx, sy, ux, uy, d, dur, big) {
+    try {
+      const c = def && ARROWS[def.id];
+      if (!c || !scene.anims.exists(c.sheet)) return null;
+      const s = scene.add.sprite(sx, sy, c.sheet).setDepth(61).setScale(c.scale).setRotation(Math.atan2(uy, ux));
+      if (c.add) s.setBlendMode(Phaser.BlendModes.ADD);
+      s.play({ key: c.sheet, duration: Math.max(dur, 200) });
+      return s;
+    } catch (e) { console.error('skillFx.arrow', e); return null; }
+  }
+  // เอฟเฟกต์ตอนโดนมอน
+  function hit(scene, id, e, ms) {
+    try {
+      const c = HITS[id];
+      if (!c || !e || !scene.anims.exists(c.sheet)) return;
+      const s = scene.add.sprite(e.x, e.y + 14, c.sheet).setDepth(69).setScale(c.scale).setOrigin(0.5, c.oy || 0.5);
+      if (c.add) s.setBlendMode(Phaser.BlendModes.ADD);
+      s.play(ms ? { key: c.sheet, duration: ms } : c.sheet);   // ms = ให้เล่นยาวเท่าเวลาล็อกขา
+      s.once('animationcomplete', () => s.destroy());
+    } catch (err) { console.error('skillFx.hit', err); }
+  }
+
+  window.SkillFx = { FX, SHEETS, IMAGES, arrow: arrow, hit: hit };
 })();
