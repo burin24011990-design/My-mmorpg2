@@ -3,8 +3,13 @@
 // at: 'self' = ที่ตัว | 'front' = ข้างหน้าตัวในระยะ dist | 'ground' = จุดตกที่ลากเล็ง
 // scale = ขนาด | fit = ปรับขนาดตามรัศมีสกิล (def.range) | rotate = หมุนตามทิศ | add = สีสว่างขึ้น (ADD)
 // delay = หน่วงก่อนเล่น (ms) | times = เล่นกี่รอบ (ชื่อฟิลด์ใน def เช่น 'ticks') | every = ระยะห่างรอบ (ชื่อฟิลด์ เช่น 'tickMs')
+//
+// สไปรต์ชีตแบบ rects: รูปที่แต่ละเฟรมกว้างไม่เท่ากัน (เช่น ไฟระเบิดที่ขยายใหญ่ขึ้น) ห้ามตัดเป็นช่องเท่าๆ กัน
+//   rects = [[x, กว้าง], ...] ต่อ 1 เฟรม (วัดจากไฟล์ภาพจริง) | fh = ความสูงภาพ
+//   fit จะปรับให้เฟรมที่กว้างที่สุด = เส้นผ่านศูนย์กลางสกิล (range * 2)
 (function () {
   const P = Main.prototype;
+  const PAD = 2;   // ขอบเผื่อรอบเฟรมแบบ rects (พิกเซล)
 
   const SHEETS = {
     sw_slash: { file: 'img/fx/sw_slash.png', fw: 248, fh: 248, frames: 12, fps: 30 },
@@ -12,11 +17,19 @@
     sw_cross: { file: 'img/fx/sw_cross.png', fw: 248, fh: 232, frames: 12, fps: 28 },
     sw_spin:  { file: 'img/fx/sw_spin.png',  fw: 232, fh: 264, frames: 12, fps: 26 },
     sw_ult:   { file: 'img/fx/sw_ult.png',   fw: 264, fh: 216, frames: 9,  fps: 18 },
-    // --- เมจ ---
-    mg_fire:  { file: 'img/fx/mg_fire.png',  fw: 198, fh: 334, frames: 10, fps: 20 },
-    mg_ice:   { file: 'img/fx/mg_ice.png',   fw: 180, fh: 326, frames: 11, fps: 14 },
-    mg_nova:  { file: 'img/fx/mg_nova.png',  fw: 180, fh: 272, frames: 11, fps: 22 },
-    mg_ult:   { file: 'img/fx/mg_ult.png',   fw: 198, fh: 402, frames: 10, fps: 16 },
+    // --- เมจ (ตัดเฟรมตามขอบจริง) ---
+    mg_fire:  { file: 'img/fx/mg_fire.png',  fh: 334, fps: 20, rects: [
+      [20, 106], [155, 144], [320, 207], [536, 228], [774, 262],
+      [1045, 203], [1261, 204], [1477, 195], [1683, 154], [1857, 106] ] },
+    mg_ice:   { file: 'img/fx/mg_ice.png',   fh: 326, fps: 14, rects: [
+      [20, 120], [149, 135], [294, 161], [466, 179], [651, 189], [840, 218],
+      [1058, 223], [1281, 216], [1506, 198], [1723, 116], [1853, 110] ] },
+    mg_nova:  { file: 'img/fx/mg_nova.png',  fh: 272, fps: 22, rects: [
+      [23, 111], [154, 122], [300, 145], [461, 162], [636, 174], [823, 179],
+      [1010, 186], [1201, 183], [1391, 202], [1599, 171], [1785, 173] ] },
+    mg_ult:   { file: 'img/fx/mg_ult.png',   fh: 402, fps: 16, rects: [
+      [25, 127], [164, 159], [323, 207], [535, 243], [778, 280],
+      [1058, 268], [1330, 219], [1549, 175], [1735, 127], [1869, 98] ] },
     // --- นักธนู ---
     ar_root:   { file: 'img/fx/ar_root.png',   fw: 165, fh: 242, frames: 12, fps: 16 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน)
     ar_rain:   { file: 'img/fx/ar_rain.png',   fw: 141, fh: 390, frames: 14, fps: 18 },   // ฝนลูกศร
@@ -24,6 +37,12 @@
     ar_shot:   { file: 'img/fx/ar_shot.png',   fw: 152, fh: 234, frames: 13, fps: 24 },   // ยิงคู่ (กระสุน)
     ar_multi:  { file: 'img/fx/ar_multi.png',  fw: 165, fh: 162, frames: 12, fps: 24 },   // ธนูตรึงขา (กระสุน)
   };
+
+  // แบบ rects: คำนวณความกว้างสูงสุดไว้ใช้กับ fit
+  Object.keys(SHEETS).forEach(k => {
+    const d = SHEETS[k];
+    if (d.rects) { d.maxW = Math.max.apply(null, d.rects.map(r => r[1])); d.frames = d.rects.length; }
+  });
 
   // รูปเดี่ยว (ไม่ใช่สไปรต์ชีต) — สายฟ้าเป็นแถบยาวภาพเดียว ยืดตามระยะสกิล
   const IMAGES = { mg_bolt: 'img/fx/mg_bolt.png', ar_ult: 'img/fx/ar_ult.png' };
@@ -66,7 +85,8 @@
     Object.keys(SHEETS).forEach(k => {
       if (scene.textures.exists(k)) return;
       const d = SHEETS[k];
-      scene.load.spritesheet(k, d.file + '?v=4', { frameWidth: d.fw, frameHeight: d.fh });
+      if (d.rects) scene.load.image(k, d.file + '?v=5');          // แบบ rects โหลดเป็นภาพเดียว แล้วตัดเฟรมเอง
+      else scene.load.spritesheet(k, d.file + '?v=4', { frameWidth: d.fw, frameHeight: d.fh });
       need = true;
     });
     Object.keys(IMAGES).forEach(k => {
@@ -78,9 +98,21 @@
       Object.keys(SHEETS).forEach(k => {
         const d = SHEETS[k];
         if (scene.textures.exists(k) && !scene.anims.exists(k)) {
-          scene.textures.get(k).setFilter(Phaser.Textures.FilterMode.LINEAR);
-          scene.anims.create({ key: k, frameRate: d.fps, repeat: 0,
-            frames: scene.anims.generateFrameNumbers(k, { start: 0, end: d.frames - 1 }) });
+          const tex = scene.textures.get(k);
+          tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+          let frames;
+          if (d.rects) {
+            const tw = tex.getSourceImage().width;
+            d.rects.forEach((r, i) => {
+              const x = Math.max(0, r[0] - PAD);
+              const w = Math.min(tw - x, r[1] + PAD * 2);
+              if (!tex.has('f' + i)) tex.add('f' + i, 0, x, 0, w, d.fh);
+            });
+            frames = d.rects.map((r, i) => ({ key: k, frame: 'f' + i }));
+          } else {
+            frames = scene.anims.generateFrameNumbers(k, { start: 0, end: d.frames - 1 });
+          }
+          scene.anims.create({ key: k, frameRate: d.fps, repeat: 0, frames: frames });
         }
       });
       Object.keys(IMAGES).forEach(k => {
@@ -96,7 +128,8 @@
   function play(scene, cfg, x, y, ang, def) {
     if (!scene.anims.exists(cfg.sheet)) return;
     const d = SHEETS[cfg.sheet];
-    const sc = cfg.fit ? (def.range * 2) / (d.fw * 0.8) : (cfg.scale || 1);
+    const base = d.rects ? d.maxW : d.fw * 0.8;                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
+    const sc = cfg.fit ? (def.range * 2) / base : (cfg.scale || 1);
     const s = scene.add.sprite(x, y, cfg.sheet).setDepth(70).setScale(sc);
     if (cfg.oy) s.setOrigin(0.5, cfg.oy);
     if (cfg.rotate) s.setRotation(ang);
