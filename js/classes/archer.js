@@ -18,6 +18,10 @@
   const CHARGE_ROOTS_PLAYER = true;   // true = ขณะชาร์จอัลติ ตัวละครเดินไม่ได้
   const ATK_FIELDS = ['atk', 'dmg', 'attack'];   // ชื่อฟิลด์พลังโจมตีของมอน (ใช้กับสถานะ "ตีเบาลง" ดู monsters.js)
 
+  // คูลดาวน์อัลติ: ใช้ค่ากลางจาก _shared.js ถ้ามี ไม่มีก็ใช้ 60 วินาที (กันไฟล์พังทั้งไฟล์ถ้าไม่มีตัวแปร ULTI_CD)
+  const ULTI_COOLDOWN = (typeof window.ULTI_CD === 'number') ? window.ULTI_CD
+    : (typeof ULTI_CD === 'number' ? ULTI_CD : 60000);
+
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('archer', { name: 'โจมตี', dmg: 9, range: 360, cd: 650, type: 'proj', class: 'archer' });
 
@@ -65,7 +69,7 @@
 
   // อัลติ ธนูทลวงฟ้า — ชาร์จ chargeMs มิลลิวินาที แล้วยิงแนวยาว range กว้าง halfW*2 ทะลุทุกตัว
   Classes.ulti('archer', {
-    name: 'ธนูทลวงฟ้า', dmg: 120, range: 650, halfW: 95, cd: ULTI_CD, mp: 50, type: 'ault', chargeMs: 800,
+    name: 'ธนูทลวงฟ้า', dmg: 120, range: 650, halfW: 95, cd: ULTI_COOLDOWN, mp: 50, type: 'ault', chargeMs: 800,
   }, { scale: { patk: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(AR_IDS);
@@ -83,6 +87,10 @@
 
   // ---------- ตัวช่วย ----------
   const archerColor = () => (CLASSES.archer && CLASSES.archer.color) || 0xffffff;
+
+  // มีภาพเอฟเฟกต์สไปรต์ (skillFx.js) พร้อมใช้หรือยัง
+  const hasAnim = (scene, key) => !!(window.SkillFx && scene.anims && scene.anims.exists(key));
+  const hasTex = (scene, key) => !!(scene.textures && scene.textures.exists(key));
 
   // ทิศที่จะยิง: ลากเลือก (gp.dir) > หันไปหามอนที่ล็อกอยู่ > ทิศที่หันอยู่
   function aimDir(scene, gp) {
@@ -115,6 +123,7 @@
   }
 
   // ยิงลูกศร 1 ดอกไปตามทิศ: โดนศัตรูตัวแรกในแนวยิง (ระยะ def.range, กว้าง def.hw) | onHit(ศัตรู) ทำงานตอนลูกศรถึง
+  // ใช้ภาพสไปรต์จาก skillFx.js (SkillFx.arrow) ถ้าไม่มีภาพ จะใช้สี่เหลี่ยมแทน
   function shootArrow(scene, ux, uy, def, big, onHit) {
     const p = scene.player, sx = p.x, sy = p.y, hw = def.hw || 14;
     let best = null, bestAlong = Infinity;
@@ -127,8 +136,14 @@
     });
     const d = best ? bestAlong : def.range;
     const dur = Math.max(60, d / ARROW_SPEED * 1000);
-    const a = scene.add.rectangle(sx, sy, big ? 44 : 26, big ? 7 : 4, big ? 0xffe9a8 : archerColor())
-      .setRotation(Math.atan2(uy, ux)).setDepth(61);
+
+    let a = null;
+    try { a = window.SkillFx && window.SkillFx.arrow ? window.SkillFx.arrow(scene, def, sx, sy, ux, uy, d, dur, big) : null; }
+    catch (err) { console.error('archer.arrow', err); a = null; }
+    if (!a) {
+      a = scene.add.rectangle(sx, sy, big ? 44 : 26, big ? 7 : 4, big ? 0xffe9a8 : archerColor())
+        .setRotation(Math.atan2(uy, ux)).setDepth(61);
+    }
     scene.tweens.add({ targets: a, x: sx + ux * d, y: sy + uy * d, duration: dur, onComplete: () => a.destroy() });
     if (best) scene.time.delayedCall(dur, () => { if (best.active) onHit(best); });
   }
@@ -147,13 +162,15 @@
     }
   };
 
-  // สกิล 2: ยิง 1 ดอก ล็อกขา
+  // สกิล 2: ยิง 1 ดอก ล็อกขา (มีเถาวัลย์พันขาตลอดเวลาที่ล็อก)
   Classes.handlers.aroot = function (def, x, y, dmg, fx, fy) {
     const scene = this, u = unit(fx, fy);
     shootArrow(scene, u.x, u.y, def, false, e => {
-      Classes.status(scene, e, 'root', {}, e.isBoss ? def.rootMs * BOSS_ROOT_MUL : def.rootMs);
+      const ms = e.isBoss ? def.rootMs * BOSS_ROOT_MUL : def.rootMs;
+      Classes.status(scene, e, 'root', {}, ms);
       scene.damage(e, dmg);
       scene.popText(e.x, e.y - 30, 'ล็อกขา!', '#7dff9a');
+      if (window.SkillFx && window.SkillFx.hit) window.SkillFx.hit(scene, 'ar_multi', e, ms);
     });
   };
 
@@ -167,18 +184,23 @@
   };
 
   // สกิล 4: ฝนลูกศรวางพื้นที่ ดาเมจ ticks ครั้ง
+  // ถ้ามีสไปรต์ฝนลูกศร (skillFx.js) จะไม่วาดเอฟเฟกต์ซ้ำ เหลือแค่คิดดาเมจ
   Classes.handlers.arain = function (def, x, y, dmg) {
     const scene = this, pt = takeGround(scene, def, x, y), col = archerColor();
     const per = Math.round(dmg * def.tickMul);
-    const zone = scene.add.circle(pt.x, pt.y, def.range, col, 0.14).setStrokeStyle(2, col, 0.7).setDepth(40);
+    const fancy = hasAnim(scene, 'ar_rain');
+    const zone = scene.add.circle(pt.x, pt.y, def.range, col, fancy ? 0.05 : 0.14)
+      .setStrokeStyle(2, col, fancy ? 0.35 : 0.7).setDepth(40);
     for (let i = 0; i < def.ticks; i++) {
       scene.time.delayedCall(i * def.tickMs, () => {
-        scene.flash(pt.x, pt.y, def.range, col);
-        for (let k = 0; k < 7; k++) {   // ลูกศรตกลงมา (เอฟเฟกต์)
-          const ang = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * def.range;
-          const ax = pt.x + Math.cos(ang) * r, ay = pt.y + Math.sin(ang) * r;
-          const arr = scene.add.rectangle(ax - 20, ay - 140, 3, 22, 0xffffff, 0.9).setRotation(0.15).setDepth(62);
-          scene.tweens.add({ targets: arr, x: ax, y: ay, alpha: 0.2, duration: 220, delay: k * 25, onComplete: () => arr.destroy() });
+        if (!fancy) {
+          scene.flash(pt.x, pt.y, def.range, col);
+          for (let k = 0; k < 7; k++) {   // ลูกศรตกลงมา (เอฟเฟกต์สำรอง)
+            const ang = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * def.range;
+            const ax = pt.x + Math.cos(ang) * r, ay = pt.y + Math.sin(ang) * r;
+            const arr = scene.add.rectangle(ax - 20, ay - 140, 3, 22, 0xffffff, 0.9).setRotation(0.15).setDepth(62);
+            scene.tweens.add({ targets: arr, x: ax, y: ay, alpha: 0.2, duration: 220, delay: k * 25, onComplete: () => arr.destroy() });
+          }
         }
         Classes.enemiesIn(scene, pt.x, pt.y, def.range).forEach(e => scene.damage(e, per));
       });
@@ -187,6 +209,7 @@
   };
 
   // อัลติ: ชาร์จ แล้วยิงแนวกว้างทะลุทุกตัว
+  // ถ้ามีภาพลำแสง (ar_ult.png จาก skillFx.js) จะไม่วาดลำแสงสี่เหลี่ยมซ้ำ
   Classes.handlers.ault = function (def, x, y, dmg, fx, fy) {
     const scene = this, u = unit(fx, fy), col = archerColor();
     const len = def.range, hw = def.halfW, ang = Math.atan2(u.y, u.x);
@@ -205,11 +228,14 @@
       pulse.stop(); prev.destroy(); ring.destroy();
       scene._archerCharge = null;
       const p = scene.player;
-      const cx = p.x + u.x * len / 2, cy = p.y + u.y * len / 2;
-      const beam = scene.add.rectangle(cx, cy, len, hw * 2, col, 0.5).setRotation(ang).setDepth(60);
-      const core = scene.add.rectangle(cx, cy, len, hw * 0.45, 0xffffff, 0.9).setRotation(ang).setDepth(61);
-      scene.tweens.add({ targets: [beam, core], alpha: 0, duration: 380, onComplete: () => { beam.destroy(); core.destroy(); } });
+      if (!hasTex(scene, 'ar_ult')) {
+        const cx = p.x + u.x * len / 2, cy = p.y + u.y * len / 2;
+        const beam = scene.add.rectangle(cx, cy, len, hw * 2, col, 0.5).setRotation(ang).setDepth(60);
+        const core = scene.add.rectangle(cx, cy, len, hw * 0.45, 0xffffff, 0.9).setRotation(ang).setDepth(61);
+        scene.tweens.add({ targets: [beam, core], alpha: 0, duration: 380, onComplete: () => { beam.destroy(); core.destroy(); } });
+      }
       scene.flash(p.x, p.y, 60, 0xffffff);
+      if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(150, 0.004);
       scene.enemies.getChildren().slice().forEach(e => {
         if (!e.active) return;
         const rx = e.x - p.x, ry = e.y - p.y;
@@ -284,6 +310,7 @@
 
   const _ue = P.updateEnemies;
   P.updateEnemies = function (time) {
+    window.__mainScene = this;   // ให้ enemyAtkMul ใช้งานได้เสมอ
     _ue.call(this, time);
     this.enemies.getChildren().forEach(e => {
       const fx = e._fx;
@@ -314,10 +341,14 @@
   };
 
   // ---------- ไอคอน ----------
-  const _sik = skillIconKey;
-  skillIconKey = function (type) {
-    if (type === 'ashot2' || type === 'aroot' || type === 'aheavy') return _sik('proj');
-    if (type === 'arain' || type === 'ault') return _sik('aoe');
-    return _sik(type);
-  };
+  try {
+    if (typeof skillIconKey === 'function') {
+      const _sik = skillIconKey;
+      skillIconKey = function (type) {
+        if (type === 'ashot2' || type === 'aroot' || type === 'aheavy') return _sik('proj');
+        if (type === 'arain' || type === 'ault') return _sik('aoe');
+        return _sik(type);
+      };
+    }
+  } catch (err) { console.error('archer.js skillIconKey', err); }
 })();
