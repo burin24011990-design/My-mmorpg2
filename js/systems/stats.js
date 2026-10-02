@@ -31,6 +31,7 @@
     spellvamp: { label: 'ดูดเลือดเวท',        short: 'ดูดเวท',   fmt: 'pct', cap: 60, hideZero: true },
     hpregen:   { label: 'ฟื้น HP/วินาที',      short: 'ฟื้นHP',   fmt: 'dec', hideZero: true },
     mpregen:   { label: 'ฟื้น MP/วินาที',      short: 'ฟื้นMP',   fmt: 'dec', hideZero: true },
+    dodge:     { label: 'หลบหลีก',            short: 'หลบ',      fmt: 'pct', cap: 50, hideZero: true },
   };
 
   // ---------- สเตตัสต่อชิ้นอุปกรณ์ (ค่าต่อ 1 เลเวลไอเทม x (1 + ★ x 0.08 + บวก x 0.05)) ----------
@@ -89,12 +90,15 @@
     if (item.baseSlot === 'weapon') g = ITEM_STATS.weapon[item.class] || ITEM_STATS.weapon.sword;
     else if (item.variant === 'light' && ITEM_STATS_LIGHT[item.baseSlot]) g = ITEM_STATS_LIGHT[item.baseSlot];
     else g = ITEM_STATS[item.baseSlot] || {};
-    const mult = 1 + (item.star || 0) * 0.08 + (item.plus || 0) * PLUS_STAT_PER, out = {};
+    const tierMul = (typeof tierMultOf === 'function') ? tierMultOf(item) : 1;   // สีของอุปกรณ์ ขาว/ฟ้า/แดง/ทอง
+    const mult = (1 + (item.star || 0) * 0.08 + (item.plus || 0) * PLUS_STAT_PER) * tierMul, out = {};
     Object.keys(g).forEach(k => {
       const v = g[k] * item.level * mult;
       const r = (STAT_DEFS[k] && STAT_DEFS[k].fmt === 'int') ? Math.round(v) : Math.round(v * 10) / 10;
       if (r > 0) out[k] = r;
     });
+    // ออฟชั่นจากหินสุ่มออฟ (บวกตรงๆ ไม่คูณดาว/บวก/สี)
+    (item.opts || []).forEach(o => { if (o && o.k) out[o.k] = (out[o.k] || 0) + (Number(o.v) || 0); });
     return out;
   }
   // ทับของเดิม: คืนสเตตัสใหม่ (atk/def แบบเก่าเก็บไว้เป็นค่าซ่อน เผื่อไฟล์อื่นยังอ่านอยู่)
@@ -291,6 +295,10 @@
   P.hurtPlayer = function (raw) {
     const type = raw instanceof DmgPacket ? raw.dtype : 'physical';
     const S = this.getStats();
+    if (S.dodge > 0 && Math.random() * 100 < S.dodge) {   // หลบหลีก: ไม่โดนดาเมจ
+      if (this.player) this.statPop(this.player.x, this.player.y - 40, 'หลบ!', '#9be7ff');
+      return;
+    }
     const def = type === 'magic' ? S.mdef : S.pdef;
     const red = def / (def + DEF_K_BASE + DEF_K_PER_LV * this.stats.level);
     return _hurt.call(this, Math.max(1, Math.round(Number(raw) * (1 - red))));
