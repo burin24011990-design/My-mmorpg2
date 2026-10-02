@@ -5,7 +5,7 @@
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
 //   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
-const MONSTER_SHEETS_READY = ['z1', 'z2', 'z3', 'z4', 'z5', 'z6', 'z7'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+const MONSTER_SHEETS_READY = ['all'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
 
 // ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
@@ -75,15 +75,15 @@ const _MONSTER_TABLE = [
   },
   { // ด่าน 8 สุสาน
     fx: 'bone',
-    normal: { name: 'โครงกระดูก',     color: 0xe8e8d8, ability: 'revive_once_half_hp' },
-    ranged: { name: 'ผีวิญญาณ',       color: 0xaaccff, ability: 'soul_shot_pierce', fx: 'smoke' },
-    boss:   { name: 'อัศวินไร้หัว',   color: 0x4a4f5a, ability: 'slash_radius_lifesteal' },
+    normal: { name: 'โครงกระดูก',     color: 0xe8e8d8, ability: 'revive_once_half_hp', sizeMul: 1.4 },
+    ranged: { name: 'ผีวิญญาณ',       color: 0xaaccff, ability: 'soul_shot_pierce', fx: 'smoke', sizeMul: 1.29 },
+    boss:   { name: 'อัศวินไร้หัว',   color: 0x4a4f5a, ability: 'slash_radius_lifesteal', sizeMul: 1.34 },
   },
   { // ด่าน 9 ปราสาทปีศาจ
     fx: 'smoke',
-    normal: { name: 'อิมป์',          color: 0xd03a5a, ability: 'blink_behind_player' },
-    ranged: { name: 'จอมเวทปีศาจ',    color: 0x8a3ad0, ability: 'multi_spell_heal_allies' },
-    boss:   { name: 'ลอร์ดปีศาจ',     color: 0x3a0a4a, ability: 'all_skills_enrage_30pct' },
+    normal: { name: 'อิมป์',          color: 0xd03a5a, ability: 'blink_behind_player', sizeMul: 1.3 },
+    ranged: { name: 'จอมเวทปีศาจ',    color: 0x8a3ad0, ability: 'multi_spell_heal_allies', sizeMul: 1.5 },
+    boss:   { name: 'ลอร์ดปีศาจ',     color: 0x3a0a4a, ability: 'all_skills_enrage_30pct', sizeMul: 1.0 },
   },
 ];
 
