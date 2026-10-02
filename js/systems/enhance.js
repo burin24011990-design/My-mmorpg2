@@ -3,12 +3,16 @@
 (function () {
   const P = Main.prototype;
 
+  // เซฟเครื่องทันที + ขอให้คลาวด์อัปโหลดเร็วขึ้น (save.js เป็นคนกำหนด saveSoon)
+  const sv = scene => { if (scene && scene.saveSoon) scene.saveSoon(); };
+
   // ---------- สวมใส่ / ถอดอุปกรณ์ (ย้ายมาจาก items.js เพราะ items.js โหลดก่อน Main) ----------
   P.equipItem = function (slotKey, item) {
     const old = this.equipment[slotKey];
     this.equipment[slotKey] = item;
     if (old) this.addItemToBag(old);
     this.computeAtk();
+    sv(this);
   };
 
   // ถ้ากระเป๋าเต็มจะไม่ถอด (กันของหายแลกเป็นทอง)
@@ -19,6 +23,7 @@
     this.equipment[slotKey] = null;
     this.addItemToBag(it);
     this.computeAtk();
+    sv(this);
   };
 
   // ---------- ค่าที่ปรับได้ ----------
@@ -142,12 +147,14 @@
     this.stats.gold -= c.gold;
     if (Math.random() >= window.enhanceChance(it)) {
       this.toastMsg('ตีบวกล้มเหลว! เสียหิน ' + big(c.stones) + ' ก้อน และทอง ' + big(c.gold) + ' (ยังเป็น +' + p + ')');
+      sv(this);   // เสียหิน/ทองไปแล้ว ต้องเซฟด้วย (กันปิดเกมแล้วหินกลับมา)
       return true;
     }
     const up = Object.assign({}, it, { plus: p + 1 });
     if (src === 'bag') this.bag[id] = up; else this.equipment[id] = up;
     this.computeAtk();
     this.toastMsg('ตีบวกสำเร็จ! ' + itemLabel(up));
+    sv(this);
     return true;
   };
 
@@ -164,6 +171,7 @@
     }
     this.addStonesToBag(n);
     this.toastMsg('ย่อย ' + itemLabel(it) + ' ได้หิน ' + big(n) + ' ก้อน');
+    sv(this);
     return true;
   };
 
@@ -185,6 +193,7 @@
     if (box.count <= 0) this.bag[idx] = null;
     for (let i = 0; i < k; i++) this.bag[this.findEmptyBagSlot()] = randomEquipItem(box.level, box.tier);
     this.toastMsg('เปิดกล่อง ' + k + ' ใบ ได้อุปกรณ์ ' + k + ' ชิ้น' + (k < n ? ' (กระเป๋าเต็ม)' : ''));
+    sv(this);
     return k;
   };
 
@@ -205,6 +214,7 @@
     }
     this.addStonesToBag(total);
     this.toastMsg('ย่อยกล่อง ' + n + ' ใบ ได้หิน ' + big(total) + ' ก้อน');
+    sv(this);
     return n;
   };
 
@@ -231,6 +241,7 @@
     const made = Object.assign({}, it, { star: Math.min(MAX_STAR, (it.star || 0) + 1) });
     used.forEach((slot, i) => { this.bag[slot] = i < k ? Object.assign({}, made) : null; });
     this.toastMsg('รวมสำเร็จ ' + k + ' ครั้ง ได้ ' + itemLabel(made) + ' x' + k);
+    sv(this);
     return k;
   };
 
@@ -257,7 +268,10 @@
         this.bag[b] = null;
       }
     });
-    if (!dryRun) this.toastMsg(made > 0 ? 'รวมสำเร็จ ' + made + ' ครั้ง' : 'ในที่ติ๊กไม่มีคู่ที่รวมกันได้');
+    if (!dryRun) {
+      this.toastMsg(made > 0 ? 'รวมสำเร็จ ' + made + ' ครั้ง' : 'ในที่ติ๊กไม่มีคู่ที่รวมกันได้');
+      if (made > 0) sv(this);
+    }
     return made;
   };
 
@@ -311,6 +325,7 @@
 
     for (let i = 0; i < this.bag.length; i++) this.bag[i] = out[i] || null;
     this.toastMsg('จัดกระเป๋าเรียบร้อย');
+    sv(this);
   };
 
   // ---------- ไอคอนหิน (วาดเองด้วยโค้ด ไม่ต้องมีไฟล์รูป) ----------
