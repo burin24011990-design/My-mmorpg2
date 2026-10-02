@@ -81,6 +81,10 @@ Object.assign(Main.prototype, {
       const validItem = it => it && typeof it === 'object' && (
         (it.kind === 'box' && Number.isFinite(it.level) && Number.isFinite(it.count)) ||
         (it.kind === 'skillbook' && SKILL_DEFS[it.sid] && Number.isFinite(it.count) && it.count > 0) ||
+        // หินตีบวก / หินออฟ / หินล้างออฟ (ของที่ซ้อนได้)
+        (it.kind === 'stone' && Number.isFinite(it.count) && it.count > 0) ||
+        (it.kind === 'cleanstone' && Number.isFinite(it.count) && it.count > 0) ||
+        (it.kind === 'optstone' && it.color && Number.isFinite(it.level) && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'equip' && STAT_GROWTH[it.baseSlot] && Number.isFinite(it.level) && Number.isFinite(it.star) &&
           (it.baseSlot !== 'weapon' || CLASSES[it.class]))
       );
@@ -96,6 +100,9 @@ Object.assign(Main.prototype, {
       (Array.isArray(d.bag) ? d.bag : []).forEach((it, i) => {
         if (i < BAG_SIZE && validItem(it)) {
           if (it.kind === 'skillbook') it = { kind: 'skillbook', sid: it.sid, count: Math.min(MAX_SKILLBOOK_STACK, Math.floor(it.count)) };
+          if ((it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone') && typeof MAX_STONE_STACK !== 'undefined') {
+            it = { ...it, count: Math.min(MAX_STONE_STACK, Math.floor(it.count)) };
+          }
           bag[i] = it;
         }
       });
