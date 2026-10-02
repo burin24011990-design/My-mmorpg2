@@ -31,11 +31,11 @@
       [25, 127], [164, 159], [323, 207], [535, 243], [778, 280],
       [1058, 268], [1330, 219], [1549, 175], [1735, 127], [1869, 98] ] },
     // --- นักธนู ---
-    ar_root:   { file: 'img/fx/ar_root.png',   fw: 165, fh: 242, frames: 12, fps: 16 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน)
+    ar_root:   { file: 'img/fx/ar_root2.png',   fw: 190, fh: 242, frames: 12, fps: 16, parts: { in: [0, 5], loop: [6, 8], out: [9, 11] }, loopFps: 9 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน: เข้า -> วนค้าง -> ออก)
     ar_rain:   { file: 'img/fx/ar_rain4.png',  fw: 180, fh: 430, frames: 14, fps: 20, ring: 100 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs)
-    ar_pierce: { file: 'img/fx/ar_pierce.png', fw: 165, fh: 194, frames: 12, fps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
-    ar_shot:   { file: 'img/fx/ar_shot.png',   fw: 152, fh: 234, frames: 13, fps: 24 },   // ยิงคู่ (กระสุน)
-    ar_multi:  { file: 'img/fx/ar_multi.png',  fw: 165, fh: 162, frames: 12, fps: 24 },   // ธนูตรึงขา (กระสุน)
+    ar_pierce: { file: 'img/fx/ar_pierce2.png', fw: 199, fh: 194, frames: 12, fps: 30, ox: 0.899, parts: { in: [0, 4], loop: [5, 9] }, loopFps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
+    ar_shot:   { file: 'img/fx/ar_shot2.png',   fw: 210, fh: 234, frames: 13, fps: 30, ox: 0.919, parts: { in: [0, 5], loop: [6, 9] }, loopFps: 24 },   // ยิงคู่ (กระสุน)
+    ar_multi:  { file: 'img/fx/ar_multi2.png',  fw: 225, fh: 162, frames: 12, fps: 30, ox: 0.938, parts: { in: [0, 3], loop: [4, 8] }, loopFps: 24 },   // ธนูตรึงขา (กระสุน)
   };
 
   // แบบ rects: คำนวณความกว้างสูงสุดไว้ใช้กับ fit
@@ -71,13 +71,13 @@
 
   // ลูกศรนักธนู (ใช้จาก archer.js: shootArrow) key = id สกิล
   const ARROWS = {
-    ar_shot:   { sheet: 'ar_shot',   scale: 0.8, add: true },
-    ar_multi:  { sheet: 'ar_multi',  scale: 0.8, add: true },
-    ar_pierce: { sheet: 'ar_pierce', scale: 1.1, add: false },
+    ar_shot:   { sheet: 'ar_shot',   scale: 0.42, add: true },
+    ar_multi:  { sheet: 'ar_multi',  scale: 0.4,  add: true },
+    ar_pierce: { sheet: 'ar_pierce', scale: 0.5,  add: false },
   };
-  // เอฟเฟกต์ตอนโดนมอน (เรียกจาก archer.js)
+  // เอฟเฟกต์ตอนโดนมอน (เรียกจาก archer.js) | oy = จุดกึ่งกลางวงเถาวัลย์ที่พื้น (0-1 จากบน)
   const HITS = {
-    ar_multi: { sheet: 'ar_root', scale: 0.55, oy: 0.68, add: false },   // เถาวัลย์ตรึงขา
+    ar_multi: { sheet: 'ar_root', scale: 0.5, oy: 0.72, add: false },   // เถาวัลย์ตรึงขา
   };
 
   function loadSheets(scene) {
@@ -121,6 +121,12 @@
             frames = scene.anims.generateFrameNumbers(k, { start: 0, end: d.frames - 1 });
           }
           scene.anims.create({ key: k, frameRate: d.fps, repeat: 0, frames: frames });
+          if (d.parts) {   // แยกช่วงอนิเมชัน: _in เล่นครั้งเดียว / _loop วนซ้ำ / _out เล่นครั้งเดียว
+            const P = d.parts;
+            scene.anims.create({ key: k + '_in', frameRate: d.fps, repeat: 0, frames: scene.anims.generateFrameNumbers(k, { start: P.in[0], end: P.in[1] }) });
+            scene.anims.create({ key: k + '_loop', frameRate: d.loopFps || d.fps, repeat: -1, frames: scene.anims.generateFrameNumbers(k, { start: P.loop[0], end: P.loop[1] }) });
+            if (P.out) scene.anims.create({ key: k + '_out', frameRate: d.fps, repeat: 0, frames: scene.anims.generateFrameNumbers(k, { start: P.out[0], end: P.out[1] }) });
+          }
         }
       });
       Object.keys(IMAGES).forEach(k => {
@@ -211,26 +217,49 @@
   };
 
   // ลูกศร: คืน sprite ที่เล่นอนิเมชันตลอดเวลาบิน (archer.js จะ tween ตำแหน่งเอง) | ไม่มีภาพ -> คืน null (ใช้สี่เหลี่ยมเดิม)
+  // ภาพถูกจัดให้ปลายหัวลูกศรอยู่ตำแหน่งเดียวกันทุกเฟรม (origin = ปลายหัว) จึงบินเนียน ไม่เด้งซ้ายขวา
   function arrow(scene, def, sx, sy, ux, uy, d, dur, big) {
     try {
       const c = def && ARROWS[def.id];
       if (!c) return null;
       if (!scene.anims.exists(c.sheet)) { if (!c._warned) { c._warned = true; console.warn('skillFx: ไม่มีอนิเมชัน', c.sheet); if (scene.toastMsg) scene.toastMsg('ไม่พบภาพ ' + c.sheet + '.png'); } return null; }
-      const s = scene.add.sprite(sx, sy, c.sheet).setDepth(61).setScale(c.scale).setRotation(Math.atan2(uy, ux));
+      const sh = SHEETS[c.sheet];
+      const s = scene.add.sprite(sx, sy, c.sheet).setOrigin(sh.ox || 0.9, 0.5).setDepth(61).setScale(c.scale).setRotation(Math.atan2(uy, ux));
       if (c.add) s.setBlendMode(Phaser.BlendModes.ADD);
-      s.play({ key: c.sheet, duration: Math.max(dur, 200) });
+      if (scene.anims.exists(c.sheet + '_in')) {
+        s.play(c.sheet + '_in');
+        s.once('animationcomplete', () => { if (s.active) s.play(c.sheet + '_loop'); });
+      } else {
+        s.play({ key: c.sheet, duration: Math.max(dur, 200) });
+      }
       return s;
     } catch (e) { console.error('skillFx.arrow', e); return null; }
   }
-  // เอฟเฟกต์ตอนโดนมอน
+  // เอฟเฟกต์ตอนโดนมอน: เถาวัลย์ผุดขึ้น -> วนค้างตลอดเวลาล็อก -> หดลงตอนใกล้หมดเวลา (ms = เวลาล็อก)
   function hit(scene, id, e, ms) {
     try {
       const c = HITS[id];
       if (!c || !e || !scene.anims.exists(c.sheet)) return;
+      const sh = SHEETS[c.sheet];
       const s = scene.add.sprite(e.x, e.y + 14, c.sheet).setDepth(69).setScale(c.scale).setOrigin(0.5, c.oy || 0.5);
       if (c.add) s.setBlendMode(Phaser.BlendModes.ADD);
-      s.play(ms ? { key: c.sheet, duration: ms } : c.sheet);   // ms = ให้เล่นยาวเท่าเวลาล็อกขา
-      s.once('animationcomplete', () => s.destroy());
+      const follow = () => { if (!s.active) return; if (!e.active) { s.destroy(); return; } s.setPosition(e.x, e.y + 14); };
+      scene.events.on('update', follow);
+      s.once('destroy', () => scene.events.off('update', follow));
+      if (!(ms && scene.anims.exists(c.sheet + '_loop'))) {
+        s.play(c.sheet);
+        s.once('animationcomplete', () => s.destroy());
+        return;
+      }
+      const inMs = (sh.parts.in[1] - sh.parts.in[0] + 1) / sh.fps * 1000;
+      const outMs = sh.parts.out ? (sh.parts.out[1] - sh.parts.out[0] + 1) / sh.fps * 1000 : 0;
+      s.play(c.sheet + '_in');
+      s.once('animationcomplete', () => { if (s.active) s.play(c.sheet + '_loop'); });
+      scene.time.delayedCall(Math.max(inMs, ms - outMs), () => {
+        if (!s.active) return;
+        if (outMs > 0) { s.play(c.sheet + '_out'); s.once('animationcomplete', () => s.destroy()); }
+        else s.destroy();
+      });
     } catch (err) { console.error('skillFx.hit', err); }
   }
 
