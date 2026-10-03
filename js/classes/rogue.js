@@ -9,24 +9,25 @@
   const RG_IDS = ['rg_dash', 'rg_vanish', 'rg_slow', 'rg_drain'];
   const clamp = Phaser.Math.Clamp;
 
-  // คูลดาวน์อัลติ: ใช้ค่ากลางจาก _shared.js ถ้ามี ไม่มีก็ใช้ 60 วินาที (กันไฟล์พังถ้าไม่มีตัวแปร ULTI_CD)
-  const ULTI_COOLDOWN = (typeof window.ULTI_CD === 'number') ? window.ULTI_CD
-    : (typeof ULTI_CD === 'number' ? ULTI_CD : 60000);
+  // คูลดาวน์อัลติโจร (มิลลิวินาที): 20000 = 20 วินาที
+  const ULTI_COOLDOWN = 20000;
 
   Classes.defineClass('rogue', { color: 0x9b6bff, name: 'โจร', label: 'โจร' });
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   // 1) เงาพุ่งฟัน: พุ่งไปฟัน hits ครั้ง ครั้งละ hitMul ของดาเมจ | ฟันโดนแล้วพุ่งต่อได้ recasts ครั้งภายใน recastMs
+  //    recastMul = ความแรงของการพุ่งครั้งที่ 2 (2 = แรง 2 เท่า)
   //    กดค้างแล้วลากเพื่อเลือกทิศพุ่งได้ (ตั้งค่าที่ DIR_CFG ใน aimDash.js) | แตะเฉยๆ = พุ่งหาเป้า/ทิศที่หันอยู่
   Classes.skill('rg_dash', {
     name: 'เงาพุ่งฟัน', class: 'rogue', type: 'rdash', noInfo: true,
     dmg: 14, range: 170, cd: 6000, mp: 14,
     hits: 2, hitMul: 0.6, hitR: 75,
-    recasts: 1, recastMs: 2500, recastRange: 280,
+    recasts: 1, recastMs: 2500, recastRange: 280, recastMul: 2,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'พุ่งฟัน ' + def.hits + ' ครั้ง ครั้งละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
-      ' • ฟันโดนแล้วพุ่งต่อได้ ' + def.recasts + ' ครั้ง • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' • ฟันโดนแล้วพุ่งต่อได้ ' + def.recasts + ' ครั้ง แรง x' + def.recastMul + ' (≈' +
+      Math.round(Classes.power(def.id, def, lv, S) * def.hitMul * def.recastMul) + ' ต่อครั้ง) • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // 2) เงาหายตัว: หายตัว dur มิลลิวินาที | ฟันครั้งแรกแรงขึ้น bonus เท่า และลดเกราะ armorBreak (0.35 = 35%) นาน armorMs
@@ -61,7 +62,7 @@
       '% ของดาเมจต่อเป้า • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้
+  // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้ | คูลดาวน์ 20 วิ
   // (ภาพพายุใน skillFx.js เล่น 640ms = hits x gap ถ้าเปลี่ยน hits/gap ให้ปรับ fps ของ rg_ult ใน skillFx.js ตาม)
   Classes.ulti('rogue', {
     name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_COOLDOWN, mp: 50, type: 'rult',
@@ -117,7 +118,8 @@
 
   // ---------- เงาพุ่งฟัน ----------
   // towards = มอนที่พุ่งเข้าหา | dir = {x,y} ทิศที่ผู้เล่นลากเลือก (ถ้ามี dir จะพุ่งตามทิศนี้เต็มระยะ)
-  function doDash(scene, def, dmg, towards, left, dir) {
+  // boosted = true เมื่อเป็นการพุ่งต่อ (ครั้งที่ 2) ใช้ข้อความ x2 | dmg ที่ส่งเข้ามาถูกคูณ recastMul แล้ว
+  function doDash(scene, def, dmg, towards, left, dir, boosted) {
     const p = scene.player;
     const chase = towards && !dir;
     let dx, dy;
@@ -131,7 +133,8 @@
       while (d > 0 && scene.segmentBlocked(p.x, p.y, p.x + ux * d, p.y + uy * d, 14)) d -= 15;
     }
     d = Math.max(0, d);
-    scene.flash(p.x, p.y, 30, 0xb98cff);
+    scene.flash(p.x, p.y, boosted ? 44 : 30, boosted ? 0xff6b9a : 0xb98cff);
+    if (boosted) scene.popText(p.x, p.y - 40, 'พุ่งแรง x' + (def.recastMul || 1) + '!', '#ff9ec0');
     // รอยพุ่งสีม่วง (skillFx.js) ใช้ทิศ/ระยะจริงของการพุ่งครั้งนี้
     if (d > 10 && window.SkillFx && window.SkillFx.dashTrail) window.SkillFx.dashTrail(scene, p.x, p.y, ux, uy, d);
     scene.tweens.add({ targets: p, x: clamp(p.x + ux * d, 20, WORLD_W - 20), y: clamp(p.y + uy * d, 20, WORLD_H - 20), duration: 140 });
@@ -141,12 +144,12 @@
     for (let i = 0; i < def.hits; i++) {
       scene.time.delayedCall(70 + i * 90, () => {
         const list = Classes.enemiesIn(scene, p.x, p.y, def.hitR);
-        scene.flash(p.x, p.y, def.hitR * 0.7, 0xd9b3ff);
+        scene.flash(p.x, p.y, def.hitR * 0.7, boosted ? 0xff9ec0 : 0xd9b3ff);
         landed += list.length;
         list.forEach(e => rogueHit(scene, e, per));
         if (i === def.hits - 1 && landed > 0 && left > 0) {   // ฟันโดน = เปิดช่วงพุ่งต่อ
           scene.rogueRecast = { sid: def.id, until: scene.time.now + def.recastMs, left: left };
-          scene.popText(p.x, p.y - 40, 'พุ่งต่อได้!', '#d9b3ff');
+          scene.popText(p.x, p.y - 40, 'พุ่งต่อได้ x' + (def.recastMul || 1) + '!', '#d9b3ff');
         }
       });
     }
@@ -158,7 +161,7 @@
     else doDash(this, def, dmg, pickTarget(this, def.range + 90), def.recasts);
   };
 
-  // กดสกิลพุ่งซ้ำระหว่างช่วงพุ่งต่อ = พุ่งอีกครั้งโดยไม่เสีย MP/คูลดาวน์ | บอท: หายตัวเฉพาะตอนมีเป้า และไม่หายตัวซ้อน
+  // กดสกิลพุ่งซ้ำระหว่างช่วงพุ่งต่อ = พุ่งอีกครั้งโดยไม่เสีย MP/คูลดาวน์ (ดาเมจคูณ recastMul) | บอท: หายตัวเฉพาะตอนมีเป้า และไม่หายตัวซ้อน
   // gp = {dir:true, x, y} เมื่อผู้เล่นลากเลือกทิศจากปุ่มสกิล (aimDash.js)
   const _useSkill = P.useSkill;
   P.useSkill = function (idx, gp) {
@@ -171,8 +174,8 @@
         const t = dirA ? null : pickTarget(this, def.recastRange);
         if (dirA || t) {
           this.rogueRecast = null;
-          const dmg = Math.round(def.dmg * skillLvMul(this.skillLv && this.skillLv[sid]) + this.atk);
-          doDash(this, def, dmg, t, r.left - 1, dirA);
+          const base = def.dmg * skillLvMul(this.skillLv && this.skillLv[sid]) + this.atk;
+          doDash(this, def, Math.round(base * (def.recastMul || 1)), t, r.left - 1, dirA, true);
           return;
         }
       }
