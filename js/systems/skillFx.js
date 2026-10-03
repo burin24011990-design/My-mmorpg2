@@ -33,6 +33,12 @@
     // --- นักธนู ---
     ar_root:   { file: 'img/fx/ar_root2.png',   fw: 190, fh: 242, frames: 12, fps: 16, parts: { in: [0, 5], loop: [6, 8], out: [9, 11] }, loopFps: 9 },   // เถาวัลย์ล็อกขา (เล่นบนตัวมอน: เข้า -> วนค้าง -> ออก)
     ar_rain:   { file: 'img/fx/ar_rain4.png',  fw: 180, fh: 430, frames: 14, fps: 20, ring: 100 },   // ฝนลูกศร (14 เฟรม / 20 fps = 700ms เท่า tickMs)
+    // --- โจร ---
+    rg_dash:   { file: 'img/fx/rg_dash2.png',   fw: 209, fh: 127, frames: 11, fps: 34, ox: 0.9665, oy: 0.4961, peakW: 198, peakH: 114 },   // เงาพุ่งฟัน (รอยพุ่ง ใช้ผ่าน SkillFx.dashTrail)
+    rg_slow:   { file: 'img/fx/rg_slow2.png',   fw: 260, fh: 260, frames: 10, fps: 30, ring: 190 },    // ฟันตัดเอ็น (รอยเล็บ)
+    rg_drain:  { file: 'img/fx/rg_drain2.png',  fw: 247, fh: 208, frames: 10, fps: 30, ox: 0.9717, oy: 0.4916, peakW: 237, peakH: 195 },   // ฟันดูดเลือด (คลื่นฟันพุ่งออก)
+    rg_vanish: { file: 'img/fx/rg_vanish2.png', fw: 280, fh: 280, frames: 9,  fps: 18, ring: 205 },    // เงาหายตัว (ควันม่วง)
+    rg_ult:    { file: 'img/fx/rg_ult2.png',    fw: 302, fh: 302, frames: 8,  fps: 12.5, ring: 235 }, // พายุใบมีด (8 เฟรม / 12.5 fps = 640ms เท่า hits x gap)
     ar_pierce: { file: 'img/fx/ar_pierce2.png', fw: 199, fh: 194, frames: 12, fps: 30, ox: 0.899, parts: { in: [0, 4], loop: [5, 9] }, loopFps: 24 },   // ลูกศรเจาะเกราะ (กระสุน)
     ar_shot:   { file: 'img/fx/ar_shot2.png',   fw: 210, fh: 234, frames: 13, fps: 30, ox: 0.919, parts: { in: [0, 5], loop: [6, 9] }, loopFps: 24 },   // ยิงคู่ (กระสุน)
     ar_multi:  { file: 'img/fx/ar_multi2.png',  fw: 225, fh: 162, frames: 12, fps: 30, ox: 0.938, parts: { in: [0, 3], loop: [4, 8] }, loopFps: 24 },   // ธนูตรึงขา (กระสุน)
@@ -67,6 +73,12 @@
     // --- นักธนู ---
     // ฝนลูกศร: วางที่จุดลากเล็ง เล่นซ้ำตาม ticks | oy = จุดกึ่งกลางวงเวทในภาพ | fitMul = ขนาด (ใหญ่ไป ลดเลขนี้)
     ar_rain:     { sheet: 'ar_rain',  at: 'ground', fit: true, fitMul: 0.8, add: false, oy: 0.856, times: 'ticks', every: 'tickMs' },
+    // --- โจร ---
+    // travel = เอฟเฟกต์พุ่งจาก startDist ไปถึงปลายระยะ ใน travelMs | follow = ตามตัวผู้เล่น (เงาพุ่งฟันเล่นผ่าน SkillFx.dashTrail จาก rogue.js)
+    rg_slow:     { sheet: 'rg_slow',   at: 'front', dist: 55, rotate: true, fit: true, fitMul: 1.0, add: true },
+    rg_drain:    { sheet: 'rg_drain',  at: 'front', distRange: 1.0, startDist: 30, travel: true, travelMs: 200, rotate: true, byHalfW: true, mul: 1.15, add: true },
+    rg_vanish:   { sheet: 'rg_vanish', at: 'self',  scale: 0.6, add: false, follow: true },
+    'พายุใบมีด': { sheet: 'rg_ult',    at: 'self',  fit: true, fitMul: 1.0, add: false, follow: true },
     // อัลติ: ภาพลำแสงยาวภาพเดียว ยิงหลังชาร์จเสร็จ (delayField = ชื่อฟิลด์ใน def ที่เป็นเวลาหน่วง)
     'ธนูทลวงฟ้า': { image: 'ar_ult', at: 'self', bolt: true, heightMul: 1.0, delayField: 'chargeMs', hold: 160 },
   };
@@ -141,7 +153,7 @@
   const _sb = P.setupButtons;
   P.setupButtons = function () { _sb.call(this); loadSheets(this); };
 
-  function play(scene, cfg, x, y, ang, def) {
+  function play(scene, cfg, x, y, ang, def, tx, ty) {
     if (!scene.anims.exists(cfg.sheet)) return;
     const d = SHEETS[cfg.sheet];
     const base = d.rects ? d.maxW : (d.ring || d.fw * 0.8);                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
@@ -155,6 +167,12 @@
     if (cfg.add) s.setBlendMode(Phaser.BlendModes.ADD);
     s.play(cfg.sheet);
     s.once('animationcomplete', () => s.destroy());
+    if (cfg.travel && tx !== undefined) scene.tweens.add({ targets: s, x: tx, y: ty, duration: cfg.travelMs || 200, ease: 'Quad.easeOut' });   // พุ่งออกไปถึงปลายระยะ
+    if (cfg.follow && scene.player) {                                                                                                        // ตามตัวผู้เล่น
+      const fol = () => { if (s.active && scene.player) s.setPosition(scene.player.x, scene.player.y); };
+      scene.events.on('update', fol);
+      s.once('destroy', () => scene.events.off('update', fol));
+    }
     s.setAlpha(0.2);
     scene.tweens.add({ targets: s, alpha: 1, duration: 60 });
     // เฟดออกช่วงท้าย ให้ต่อรอบถัดไปได้นุ่มนวล ไม่กระตุก
@@ -206,12 +224,14 @@
           if (cfg.at === 'front') { const dd = cfg.distRange ? def.range * cfg.distRange : (cfg.dist || 0); px += ux * dd; py += uy * dd; }
           else if (cfg.at === 'ground') { const g = peekGround(this, def, x, y); px = g.x; py = g.y; }
           else if (cfg.back) { px -= ux * cfg.back; py -= uy * cfg.back; }
+          let tx, ty;
+          if (cfg.travel) { tx = px; ty = py; px = p.x + ux * (cfg.startDist || 0); py = p.y + uy * (cfg.startDist || 0); }
           const n = cfg.times ? (def[cfg.times] || 1) : 1;
           const gap = cfg.every ? (def[cfg.every] || 0) : 0;
           for (let i = 0; i < n; i++) {
             const wait = (cfg.delay || 0) + i * gap;
-            if (wait <= 0) play(this, cfg, px, py, ang, def);
-            else this.time.delayedCall(wait, () => play(scene, cfg, px, py, ang, def));
+            if (wait <= 0) play(this, cfg, px, py, ang, def, tx, ty);
+            else this.time.delayedCall(wait, () => play(scene, cfg, px, py, ang, def, tx, ty));
           }
           // เวทวาป: เล่นอีกครั้งที่จุดมาถึง
           if (cfg.arrive) this.time.delayedCall(60, () => play(scene, cfg, p.x, p.y, ang, def));
@@ -268,5 +288,20 @@
     } catch (err) { console.error('skillFx.hit', err); }
   }
 
-  window.SkillFx = { FX, SHEETS, IMAGES, arrow: arrow, hit: hit };
+  // เงาพุ่งฟัน: รอยพุ่งสีม่วงที่เล่นตามตัวละครตอนพุ่งจริง (ทิศ/ระยะจริงจาก rogue.js เพราะอาจสั้นลงเมื่อชนสิ่งกีดขวาง)
+  function dashTrail(scene, x, y, ux, uy, d) {
+    try {
+      const k = 'rg_dash';
+      if (!scene.anims.exists(k)) return;
+      const sh = SHEETS[k];
+      const s = scene.add.sprite(x, y, k).setOrigin(sh.ox, sh.oy).setDepth(68).setScale(0.55)
+        .setRotation(Math.atan2(uy, ux)).setBlendMode(Phaser.BlendModes.ADD);
+      s.play(k);
+      s.once('animationcomplete', () => s.destroy());
+      scene.tweens.add({ targets: s, x: x + ux * d, y: y + uy * d, duration: 140, ease: 'Quad.easeOut' });
+      scene.tweens.add({ targets: s, alpha: 0, delay: 200, duration: 140 });
+    } catch (e) { console.error('skillFx.dashTrail', e); }
+  }
+
+  window.SkillFx = { FX, SHEETS, IMAGES, arrow: arrow, hit: hit, dashTrail: dashTrail };
 })();
