@@ -9,6 +9,10 @@
   const RG_IDS = ['rg_dash', 'rg_vanish', 'rg_slow', 'rg_drain'];
   const clamp = Phaser.Math.Clamp;
 
+  // คูลดาวน์อัลติ: ใช้ค่ากลางจาก _shared.js ถ้ามี ไม่มีก็ใช้ 60 วินาที (กันไฟล์พังถ้าไม่มีตัวแปร ULTI_CD)
+  const ULTI_COOLDOWN = (typeof window.ULTI_CD === 'number') ? window.ULTI_CD
+    : (typeof ULTI_CD === 'number' ? ULTI_CD : 60000);
+
   Classes.defineClass('rogue', { color: 0x9b6bff, name: 'โจร', label: 'โจร' });
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
@@ -58,8 +62,9 @@
   });
 
   // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้
+  // (ภาพพายุใน skillFx.js เล่น 640ms = hits x gap ถ้าเปลี่ยน hits/gap ให้ปรับ fps ของ rg_ult ใน skillFx.js ตาม)
   Classes.ulti('rogue', {
-    name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_CD, mp: 50, type: 'rult',
+    name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_COOLDOWN, mp: 50, type: 'rult',
     hits: 4, hitMul: 0.4, gap: 160, vamp: 0.4,
   }, { scale: { patk: 1 } });
 
@@ -127,6 +132,8 @@
     }
     d = Math.max(0, d);
     scene.flash(p.x, p.y, 30, 0xb98cff);
+    // รอยพุ่งสีม่วง (skillFx.js) ใช้ทิศ/ระยะจริงของการพุ่งครั้งนี้
+    if (d > 10 && window.SkillFx && window.SkillFx.dashTrail) window.SkillFx.dashTrail(scene, p.x, p.y, ux, uy, d);
     scene.tweens.add({ targets: p, x: clamp(p.x + ux * d, 20, WORLD_W - 20), y: clamp(p.y + uy * d, 20, WORLD_H - 20), duration: 140 });
 
     const per = Math.round(dmg * def.hitMul);
@@ -175,10 +182,11 @@
       if (this.cdEnd[key] === before) this._dashAim = null;   // ใช้ไม่สำเร็จ (คูลดาวน์/MP) ล้างทิศที่ค้าง
       return res;
     }
-    if (def && def.type === 'rdrain' && !this.panel &&
+    // ฟันดูดเลือด / ฟันตัดเอ็น: ตั้งทิศก่อนใช้ ให้ handler และภาพเอฟเฟกต์อ่านจาก facing (ตรงกับทิศที่ฟันจริง)
+    if (def && (def.type === 'rdrain' || def.type === 'rslow') && !this.panel &&
         this.time.now >= (this.cdEnd['slot' + idx] || 0) && this.stats.mp >= def.mp) {
       const d = aimDir(this, gp);
-      this.facing.set(d.x, d.y);   // ตั้งทิศก่อนใช้ ให้ handler อ่านจาก facing
+      this.facing.set(d.x, d.y);
     }
     if (def && def.type === 'rvanish' && this.autoMode) {
       if (this.rogueStealth || !(this.target && this.target.active)) return;
@@ -230,6 +238,7 @@
   };
 
   // ---------- ฟันดูดเลือด ----------
+  // ถ้ามีภาพคลื่นฟัน (skillFx.js: rg_drain) จะไม่วาดแถบสี่เหลี่ยมซ้อน
   Classes.handlers.rdrain = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player;
     let ux = fx, uy = fy;
@@ -237,9 +246,11 @@
     if (l < 0.001) { ux = 1; uy = 0; } else { ux /= l; uy /= l; }
     const len = def.range, hw = def.halfW;
 
-    const r = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, 0xff4d7a, 0.4)
-      .setRotation(Math.atan2(uy, ux)).setDepth(60);
-    scene.tweens.add({ targets: r, alpha: 0, duration: 280, onComplete: () => r.destroy() });
+    if (!(scene.anims && scene.anims.exists('rg_drain'))) {
+      const r = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, 0xff4d7a, 0.4)
+        .setRotation(Math.atan2(uy, ux)).setDepth(60);
+      scene.tweens.add({ targets: r, alpha: 0, duration: 280, onComplete: () => r.destroy() });
+    }
 
     const list = scene.enemies.getChildren().filter(e => {
       if (!e.active) return false;
@@ -252,12 +263,13 @@
   };
 
   // ---------- อัลติ พายุใบมีด ----------
+  // ถ้ามีภาพพายุ (skillFx.js: rg_ult) จะไม่วาดแสงวาบซ้ำ
   Classes.handlers.rult = function (def, x, y, dmg) {
     const scene = this, per = Math.round(dmg * def.hitMul);
     for (let i = 0; i < def.hits; i++) {
       scene.time.delayedCall(i * def.gap, () => {
         const p = scene.player;
-        scene.flash(p.x, p.y, def.range * 0.8, 0xff6b9a);
+        if (!(scene.anims && scene.anims.exists('rg_ult'))) scene.flash(p.x, p.y, def.range * 0.8, 0xff6b9a);
         const list = Classes.enemiesIn(scene, p.x, p.y, def.range);
         list.forEach(e => rogueHit(scene, e, per));
         if (list.length) scene.healPlayer(Math.round(per * Math.min(list.length, 5) * def.vamp));
@@ -267,8 +279,12 @@
 
   // ---------- ไอคอน + ปุ่มพุ่งต่อ ----------
   const ICON_OF = { rdash: 'ic_dash', rvanish: 'ic_vanish', rslow: 'ic_melee', rdrain: 'ic_melee', rult: 'ic_melee' };
-  const _sik = skillIconKey;
-  skillIconKey = function (type) { return ICON_OF[type] || _sik(type); };
+  try {
+    if (typeof skillIconKey === 'function') {
+      const _sik = skillIconKey;
+      skillIconKey = function (type) { return ICON_OF[type] || _sik(type); };
+    }
+  } catch (err) { console.error('rogue.js skillIconKey', err); }
 
   const _setupButtons = P.setupButtons;
   P.setupButtons = function () {
