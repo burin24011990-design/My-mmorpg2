@@ -2,7 +2,7 @@
 // ยาเก็บในกระเป๋าเป็นไอเทม { kind:'potion', pid, count } ซ้อนได้ -> เซฟ/คลาวด์ทำงานเหมือนไอเทมอื่น
 // บัฟเป็นชั่วคราว ไม่เซฟ (รีเฟรชหน้าแล้วหาย)
 
-const POTION_MAX_STACK = 99;
+const POTION_MAX_STACK = 999;
 const POTION_USE_CD = 1000;   // ms คูลดาวน์การกินยาฟื้นฟู
 
 // แก้ราคา/ค่าต่างๆ ตรงนี้ได้เลย
@@ -24,7 +24,8 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   let scene = null;
   let tab = 'heal';
   let lastUse = 0;
-  let panel, strip, quick;
+  let panel, quick;
+  let lastSig = '';
 
   const now = () => Date.now();
   const toast = m => { if (scene && scene.toastMsg) scene.toastMsg(m); };
@@ -195,15 +196,82 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     });
   }
 
+  // ---------- ช่องยาด่วนแนวตั้ง (ใต้มินิแมพฝั่งซ้าย): ยา HP + บัฟ ATK / DEF / Max HP ----------
+  const QSLOTS = [
+    { ids: ['hp_l', 'hp_m', 'hp_s'], lab: 'HP',  tab: 'heal' },   // กินยาเลือดตัวใหญ่สุดที่มี
+    { ids: ['b_atk'],                lab: 'ATK', tab: 'buff' },
+    { ids: ['b_def'],                lab: 'DEF', tab: 'buff' },
+    { ids: ['b_hp'],                 lab: 'HP+', tab: 'buff' },
+  ];
+  const qslots = [];
+  const BOTTLE = '<svg viewBox="0 0 32 32"><rect x="12" y="3" width="8" height="5" fill="#cfcfcf"/>' +
+    '<rect x="10" y="8" width="12" height="3" fill="#2a2a2a"/>' +
+    '<rect x="6" y="11" width="20" height="18" rx="5" style="fill:var(--pc)"/>' +
+    '<rect x="10" y="14" width="3" height="9" fill="#fff" opacity=".45"/></svg>';
+
+  function buildQuick() {
+    QSLOTS.forEach(d => {
+      const el = document.createElement('button');
+      el.className = 'qs';
+      el.innerHTML = '<i class="qs-fill"></i>' + BOTTLE + '<span class="qs-lab">' + d.lab + '</span>' +
+                     '<b class="qs-cnt"></b><em class="qs-time"></em>';
+      const q = { el, d, id: d.ids[0], has: false,
+        fill: el.querySelector('.qs-fill'), cnt: el.querySelector('.qs-cnt'), time: el.querySelector('.qs-time') };
+      el.addEventListener('click', () => {
+        if (q.has) {
+          const before = lastUse;
+          use(q.id);
+          if (lastUse !== before) {            // กินยาฟื้นฟูสำเร็จ -> เล่นแอนิเมชันคูลดาวน์
+            el.style.setProperty('--cd', POTION_USE_CD + 'ms');
+            el.classList.remove('cd'); void el.offsetWidth; el.classList.add('cd');
+          }
+          updateQuick();
+        } else { tab = d.tab; toggle(true); }   // ช่องว่าง = เปิดร้านที่แท็บนั้น
+      });
+      quick.appendChild(el);
+      qslots.push(q);
+    });
+  }
+
+  function updateQuick() {
+    const n = now();
+    qslots.forEach(q => {
+      const d = q.d;
+      const owned = d.ids.find(id => countPotion(id) > 0);
+      const id = owned || d.ids[Math.min(1, d.ids.length - 1)];
+      const p = POTIONS[id];
+      q.id = id; q.has = !!owned;
+      q.el.style.setProperty('--pc', p.color);
+      q.el.classList.toggle('empty', !owned);
+      q.cnt.textContent = owned ? countPotion(id) : '+';
+      const b = p.buff && buffs[id];
+      const left = b ? (b.until - n) / 1000 : 0;
+      q.el.classList.toggle('on', left > 0);
+      q.fill.style.height = left > 0 ? Math.min(100, left / p.buff.sec * 100) + '%' : '0';
+      q.time.textContent = left > 0 ? Math.ceil(left) : '';
+    });
+  }
+
+  // วางช่องให้ตรงกับกรอบเกม (ใต้มินิแมพ) ไม่ว่าจอจะมีขอบดำเท่าไร
+  function layoutQuick() {
+    const cv = document.querySelector('canvas');
+    if (!cv || !quick) return;
+    const r = cv.getBoundingClientRect();
+    if (!r.width) return;
+    const sz = Math.max(34, Math.min(52, r.height * 0.1));
+    quick.style.setProperty('--qs', sz + 'px');
+    quick.style.left = (r.left + 8) + 'px';
+    quick.style.top = (r.top + r.height * 0.47) + 'px';
+  }
+
   // ---------- UI ----------
   function initUI() {
     if (panel) return;
 
     quick = document.createElement('div'); quick.id = 'potion-quick';
     document.body.appendChild(quick);
-
-    strip = document.createElement('div'); strip.id = 'buff-strip';
-    document.body.appendChild(strip);
+    buildQuick();
+    window.addEventListener('resize', layoutQuick);
 
     panel = document.createElement('div'); panel.id = 'shop-panel'; panel.hidden = true;
     document.body.appendChild(panel);
@@ -214,9 +282,6 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
       else if (a === 'tab') { tab = id; render(); }
       else if (a === 'buy') buy(id);
       else if (a === 'use') use(id);
-    });
-    quick.addEventListener('click', e => {
-      const t = e.target.closest('[data-id]'); if (t) use(t.dataset.id);
     });
 
     setInterval(tick, 500);
@@ -257,19 +322,12 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     Object.keys(buffs).forEach(pid => { if (buffs[pid].until <= n) { delete buffs[pid]; expired = true; } });
     if (expired) { scene.computeAtk(); toast('บัฟหมดเวลา'); }
 
-    strip.innerHTML = Object.keys(buffs).map(pid => {
-      const p = POTIONS[pid], s = Math.ceil((buffs[pid].until - n) / 1000);
-      return '<div class="bf" style="border-color:' + p.color + '">' + p.icon + ' ' + BUFF_LABEL[p.buff.stat] + ' +' + p.buff.value + '%' +
-             ' <i>' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') + '</i></div>';
-    }).join('');
+    layoutQuick();
+    updateQuick();
 
-    // ปุ่มกินยาด่วน: ยา HP ตัวที่มีอยู่ (เลือกใหญ่สุดก่อน)
-    const hp = ['hp_l', 'hp_m', 'hp_s'].find(id => countPotion(id) > 0);
-    const html = hp
-      ? '<button data-id="' + hp + '">' + POTIONS[hp].icon + '<small>' + countPotion(hp) + '</small></button>'
-      : '';
-    if (quick.innerHTML !== html) quick.innerHTML = html;
-
-    if (!panel.hidden) render();
+    if (!panel.hidden) {
+      const sig = scene.stats.gold + '|' + Object.keys(POTIONS).map(countPotion).join(',');
+      if (sig !== lastSig) { lastSig = sig; render(); }
+    }
   }
 })();
