@@ -109,9 +109,10 @@
       const a = this.aim;
       if (!a || p.id !== a.pid) return;
       const vx = p.x - a.sx, vy = p.y - a.sy, len = Math.hypot(vx, vy);
-      // นิ้วยังอยู่ในวงปุ่มสกิลเดิม = ถือว่ายังไม่ได้ลาก (ปล่อยแล้วใช้สกิลได้ตามปกติ ไม่ยกเลิก)
+      // ลากเกิน AIM_DRAG_MIN = เล็งอิสระตามนิ้วเสมอ (ไม่ล็อกเป้า) แม้นิ้วยังอยู่ในวงปุ่มสกิล
+      // ปล่อยแล้วใช้สกิลตามทิศ/จุดที่ลาก ไม่ยกเลิก (ยกเลิกเฉพาะบนปุ่ม ✕)
       a.inBtn = Math.hypot(p.x - a.bx, p.y - a.by) < a.br;
-      a.dragged = len >= AIM_DRAG_MIN && !a.inBtn;
+      a.dragged = len >= AIM_DRAG_MIN;
       if (a.dragged && len > 0.001) {
         a.dx = vx / len; a.dy = vy / len;
         a.ratio = Math.min(len / AIM_DRAG_MAX, 1);
