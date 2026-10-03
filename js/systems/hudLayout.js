@@ -3,10 +3,10 @@
 // โหลดต่อจาก ui.js / skills.js และก่อน bot.js
 
 const ROV = {
-  ax: W - 96, ay: H - 92,        // ศูนย์กลางปุ่มโจมตี
-  attackR: 52, skillR: 32, ultiR: 40,
-  ring: 132,                     // รัศมีโค้ง
-  startDeg: 160, stepDeg: 32,    // ปุ่มแรกที่ 160° แล้วไล่ขึ้นด้านบนทีละ 32°
+  ax: W - 100, ay: H - 92,       // ศูนย์กลางปุ่มโจมตี
+  attackR: 52, skillR: 30, ultiR: 38,
+  ring: 165,                     // รัศมีโค้ง (ยิ่งมากปุ่มยิ่งห่างกัน)
+  startDeg: 170, stepDeg: 30,    // ปุ่มแรกที่ 170° แล้วไล่ขึ้นด้านบนทีละ 30°
 };
 
 // ปุ่มโจมตีใหญ่ + วงในตกแต่ง
@@ -68,9 +68,9 @@ Main.prototype.rovPos = function (i) {
 Main.prototype.setupButtons = function () {
   // แถบโค้งจาง ๆ รองใต้ปุ่มทั้งหมด
   const deco = this.add.graphics().setScrollFactor(0).setDepth(99);
-  deco.lineStyle(76, 0xffffff, 0.07);
+  deco.lineStyle(80, 0xffffff, 0.07);
   deco.beginPath();
-  deco.arc(ROV.ax, ROV.ay, ROV.ring, Phaser.Math.DegToRad(148), Phaser.Math.DegToRad(305), false);
+  deco.arc(ROV.ax, ROV.ay, ROV.ring, Phaser.Math.DegToRad(155), Phaser.Math.DegToRad(305), false);
   deco.strokePath();
 
   this.attackBtn = this.makeCircleBtn(ROV.ax, ROV.ay, ROV.attackR, 0xcf3d3d, 'โจมตี', () => this.useBasicAttack());
