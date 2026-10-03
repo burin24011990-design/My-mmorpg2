@@ -22,11 +22,11 @@
 
   // เลือกตามชนิดสกิล (def.type ใน priest.js)
   const FX = {
-    heal1:   { sheet: 'pr_heal',  at: 'self',   diam: 96, follow: true, add: false },                         // ฮีลเดี่ยว
+    heal1:   { sheet: 'pr_heal',  at: 'self',   diam: 80, follow: true, behind: true, dy: 20, alpha: 0.85, add: false },                         // ฮีลเดี่ยว
     healaoe: { sheet: 'pr_mass',  at: 'ground', fit: true, fitMul: 0.85, sy: 0.6, add: false },              // ฮีลหมู่
     holy:    { sheet: 'pr_smite', at: 'ground', fit: true, fitMul: 0.8,  sy: 0.6, add: true },               // แสงพิพากษา
     pulti:   { sheet: 'pr_ulti',  at: 'ground', fit: true, fitMul: 1.0,  add: true },                        // อัลติแสงสวรรค์
-    haste:   { sheet: 'pr_haste', at: 'self',   diam: 84, loop: true, add: false },                          // พรแห่งลม (วนตามตัวตลอดบัพ)
+    haste:   { sheet: 'pr_haste', at: 'self',   diam: 64, sy: 0.75, loop: true, behind: true, dy: 20, alpha: 0.6, add: false },                          // พรแห่งลม (วนตามตัวตลอดบัพ)
   };
   const SKIP_COLORS = [GREEN, GOLD, CYAN, WHITE];
 
@@ -74,8 +74,14 @@
     return { x: x, y: y };
   }
 
-  function followPlayer(scene, s) {
-    const fol = () => { if (s.active && scene.player) s.setPosition(scene.player.x, scene.player.y); };
+  // dy = เลื่อนลงมาที่เท้า | behind = วาดไว้หลังตัวละคร (ไม่ทับตัว)
+  function followPlayer(scene, s, cfg) {
+    const dy = (cfg && cfg.dy) || 0;
+    const fol = () => {
+      if (!s.active || !scene.player) return;
+      s.setPosition(scene.player.x, scene.player.y + dy);
+      if (cfg && cfg.behind) s.setDepth((scene.player.depth || 0) - 0.01);
+    };
     scene.events.on('update', fol);
     s.once('destroy', () => scene.events.off('update', fol));
   }
@@ -84,13 +90,14 @@
   function playOnce(scene, cfg, x, y, def, nearPlayer) {
     const d = SHEETS[cfg.sheet];
     const sc = scaleOf(cfg, d, def), sy = sc * (cfg.sy || 1);
-    const s = scene.add.sprite(x, y, cfg.sheet).setOrigin(0.5, d.oy).setDepth(70)
+    const top = cfg.alpha || 1;
+    const s = scene.add.sprite(x, y + (cfg.dy || 0), cfg.sheet).setOrigin(0.5, d.oy).setDepth(70)
       .setScale(sc * 0.85, sy * 0.85).setAlpha(0);
     if (cfg.add) s.setBlendMode(Phaser.BlendModes.ADD);
     s.play(cfg.sheet);
     s.once('animationcomplete', () => s.destroy());
-    if (cfg.follow && nearPlayer) followPlayer(scene, s);
-    scene.tweens.add({ targets: s, alpha: 1, scaleX: sc, scaleY: sy, duration: 120, ease: 'Quad.easeOut' });
+    if (cfg.follow && nearPlayer) followPlayer(scene, s, cfg);
+    scene.tweens.add({ targets: s, alpha: top, scaleX: sc, scaleY: sy, duration: 120, ease: 'Quad.easeOut' });
     const life = (d.frames / d.fps) * 1000;
     scene.tweens.add({ targets: s, alpha: 0, delay: Math.max(0, life - 130), duration: 130 });
   }
@@ -100,15 +107,15 @@
     const d = SHEETS[cfg.sheet];
     if (!nearPlayer) { playOnce(scene, cfg, x, y, def, false); return; }   // ของผู้เล่นอื่น: เล่นรอบเดียวพอ
     if (scene._hasteFx && scene._hasteFx.active) scene._hasteFx.destroy();   // ร่ายซ้ำ = รีเฟรช ไม่ซ้อนกัน
-    const sc = scaleOf(cfg, d, def);
-    const s = scene.add.sprite(x, y, cfg.sheet).setOrigin(0.5, d.oy).setDepth(69)
-      .setScale(sc * 0.8).setAlpha(0);
+    const sc = scaleOf(cfg, d, def), sy = sc * (cfg.sy || 1);
+    const s = scene.add.sprite(x, y + (cfg.dy || 0), cfg.sheet).setOrigin(0.5, d.oy).setDepth(69)
+      .setScale(sc * 0.8, sy * 0.8).setAlpha(0);
     if (cfg.add) s.setBlendMode(Phaser.BlendModes.ADD);
     s.play(cfg.sheet + '_loop');
-    followPlayer(scene, s);
+    followPlayer(scene, s, cfg);
     scene._hasteFx = s;
     const dur = def.dur || 5000;
-    scene.tweens.add({ targets: s, alpha: 0.9, scaleX: sc, scaleY: sc, duration: 250, ease: 'Quad.easeOut' });
+    scene.tweens.add({ targets: s, alpha: cfg.alpha || 0.9, scaleX: sc, scaleY: sy, duration: 250, ease: 'Quad.easeOut' });
     scene.tweens.add({ targets: s, alpha: 0, delay: Math.max(300, dur - 400), duration: 400, onComplete: () => s.active && s.destroy() });
   }
 
