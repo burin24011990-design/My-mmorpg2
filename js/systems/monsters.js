@@ -4,6 +4,7 @@
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
 // หมายเหตุ: หนังสือสกิลดรอปจากมินิบอสเท่านั้น (5%) เป็นไอเทมบนพื้น -> เก็บเข้ากระเป๋า (ดู pickup ใน inventory.js)
 // หมายเหตุ: ชื่อ/สี/แอนิเมชันของมอนอยู่ใน js/data/monsterDefs.js
+// หมายเหตุ: ตัวเลขดาเมจอยู่ใน js/systems/damageFx.js (showDamage)
 const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
@@ -213,8 +214,7 @@ Object.assign(Main.prototype, {
     e.provoked = true;                                   // โดนตี = โกรธ สู้กลับ
     if (e.state === 'idle') e.state = 'chase';
     this.revealUntil = this.time.now + BUSH_REVEAL_AFTER_ATTACK; // โจมตีแล้วโผล่จากพุ่มชั่วคราว
-    const t = this.add.text(e.x, e.y - 20, String(dmg), { fontSize: '16px', color: '#ffe066' }).setOrigin(0.5);
-    this.tweens.add({ targets: t, y: t.y - 30, alpha: 0, duration: 600, onComplete: () => t.destroy() });
+    showDamage(this, e.x, e.y - 20, dmg, 'normal');      // ตัวเลขดาเมจ (ดู damageFx.js)
     if (e.hp > 0) monsterHitFx(this, e);                 // กะพริบขาว + บีบตัว
     if (e.hp <= 0) {
       const x = e.x, y = e.y, zi = e.zoneIdx, z = ZONES[zi], lv = e.level;
