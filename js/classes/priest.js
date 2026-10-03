@@ -17,10 +17,12 @@
 
   // ---- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----
   // dmg = พลังฐานของสกิล (ฮีล = (dmg x เลเวล + พลังโจมตี) x heal) | range = ระยะฮีลเดี่ยว / รัศมีวง
+  // ฮีลหมู่: atkMul = พลังโจมตีรวม (1.2 = +20%) | regen = รีเจนเลือดต่อวินาที (0.015 = 1.5% ของเลือดสูงสุด) | buffDur = เวลาบัพ (ms)
+  // พรแห่งลม: mul = ความเร็วเดิน (1.35 = +35%) | aspd = ความเร็วโจมตี (1.3 = ตีไวขึ้น 30%) | dur = เวลาบัพ (ms)
   SKILL_DEFS.pr_heal      = { name: 'ฮีลเดี่ยว',   class: 'priest', dmg: 24, range: 260, cd: 3000,  mp: 14, type: 'heal1',  heal: 2.5 };
   SKILL_DEFS.pr_smite     = { name: 'แสงพิพากษา', class: 'priest', dmg: 20, range: 130, cd: 3000,  mp: 18, type: 'holy' };
-  SKILL_DEFS.pr_haste     = { name: 'พรแห่งลม',   class: 'priest', dmg: 0,  range: 320, cd: 25000, mp: 20, type: 'haste',  dur: 12000, mul: 1.35 };
-  SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5 };
+  SKILL_DEFS.pr_haste     = { name: 'พรแห่งลม',   class: 'priest', dmg: 0,  range: 320, cd: 25000, mp: 20, type: 'haste',  dur: 12000, mul: 1.35, aspd: 1.3 };
+  SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5, atkMul: 1.2, regen: 0.015, buffDur: 10000 };
   ULTI_DEFS.priest        = { name: 'แสงสวรรค์',  dmg: 70, range: 190, cd: ULTI_CD, mp: 50, type: 'pulti', heal: 2 };
   const PRIEST_IDS = ['pr_heal', 'pr_smite', 'pr_haste', 'pr_mass_heal'];
 
@@ -76,6 +78,15 @@
     this.popText(this.player.x, this.player.y - 30, '+' + got, '#7dff9a');
   };
 
+  // บัพพลังโจมตี + รีเจนเลือด (จากฮีลหมู่) | ร่ายซ้ำ = รีเฟรชเวลา ไม่ซ้อนกัน
+  P.applyBless = function (def) {
+    if (!def.buffDur) return;
+    const now = this.time.now;
+    this.buffs = this.buffs || {};
+    this.buffs.bless = { until: now + def.buffDur, atkMul: def.atkMul || 1, regen: def.regen || 0, next: now + 1000 };
+    this.toastMsg('✨ พลังโจมตี +' + Math.round(((def.atkMul || 1) - 1) * 100) + '% และรีเจนเลือด นาน ' + (def.buffDur / 1000) + ' วิ');
+  };
+
   // ---------- เอฟเฟกต์สกิล ----------
   // ตอนนี้ฮีล/บัพมีผลกับผู้เล่นเอง | ผู้เล่นคนอื่นต้องเชื่อม network.js: ฟังอีเวนต์ this.events.on('priest-team', ...)
   const HANDLERS = {
@@ -89,8 +100,14 @@
       const p = this.player, amt = Math.round(dmg * def.heal);
       this.flash(x, y, def.range, GREEN);
       this.time.delayedCall(120, () => this.flash(x, y, def.range * 0.6, 0xffffff));
-      if (Phaser.Math.Distance.Between(x, y, p.x, p.y) <= def.range) this.healPlayer(amt);
-      this.events.emit('priest-team', { type: 'heal', x: x, y: y, r: def.range, amount: amt });
+      if (Phaser.Math.Distance.Between(x, y, p.x, p.y) <= def.range) {
+        this.healPlayer(amt);
+        this.applyBless(def);   // ใครอยู่ในวง ได้ทั้งฮีล + บัพพลังโจมตี + รีเจนเลือด
+      }
+      this.events.emit('priest-team', {
+        type: 'heal', x: x, y: y, r: def.range, amount: amt,
+        buff: { atkMul: def.atkMul, regen: def.regen, dur: def.buffDur },
+      });
     },
     holy(def, x, y, dmg) {
       this.flash(x, y, def.range, GOLD);
@@ -102,10 +119,12 @@
     haste(def, x, y, dmg) {
       const p = this.player;
       this.buffs = this.buffs || {};
-      this.buffs.haste = { until: this.time.now + def.dur, mul: def.mul };
+      this.buffs.haste = { until: this.time.now + def.dur, mul: def.mul, aspd: def.aspd || 1 };
       this.flash(p.x, p.y, 60, CYAN);
-      this.toastMsg('⚡ ความเร็ว +' + Math.round((def.mul - 1) * 100) + '% นาน ' + (def.dur / 1000) + ' วิ');
-      this.events.emit('priest-team', { type: 'haste', x: p.x, y: p.y, r: def.range, dur: def.dur, mul: def.mul });
+      this.toastMsg('⚡ ความเร็ว +' + Math.round((def.mul - 1) * 100) + '%'
+        + (def.aspd > 1 ? ' โจมตีไว +' + Math.round((def.aspd - 1) * 100) + '%' : '')
+        + ' นาน ' + (def.dur / 1000) + ' วิ');
+      this.events.emit('priest-team', { type: 'haste', x: p.x, y: p.y, r: def.range, dur: def.dur, mul: def.mul, aspd: def.aspd });
     },
     pulti(def, x, y, dmg) {
       const p = this.player, amt = Math.round(dmg * def.heal);
@@ -160,8 +179,11 @@
     if (this._inBotGround && cfg && cfg.self) return;   // บอทอย่ายิงสกิลฮีลลงที่มอน
     if (this.autoMode) {
       const hpR = this.stats.hp / this.maxHp();
-      if ((def.type === 'heal1' || def.type === 'healaoe') && hpR > 0.75) return;
-      if (def.type === 'haste' && this.buffs && this.buffs.haste && this.time.now < this.buffs.haste.until) return;
+      const now = this.time.now, bs = this.buffs && this.buffs.bless;
+      if (def.type === 'heal1' && hpR > 0.75) return;
+      // ฮีลหมู่: บอทร่ายเมื่อเลือดต่ำ หรือเมื่อบัพพลังโจมตีหมดแล้ว
+      if (def.type === 'healaoe' && hpR > 0.75 && bs && now < bs.until) return;
+      if (def.type === 'haste' && this.buffs && this.buffs.haste && now < this.buffs.haste.until) return;
     }
     const key = 'slot' + idx, before = this.cdEnd[key];
     const r = _useSkill.call(this, idx, gp);
@@ -198,7 +220,7 @@
     };
   }
 
-  // ---------- บัพความเร็ว ----------
+  // ---------- บัพความเร็วเดิน ----------
   const _um = P.updateMovement;
   P.updateMovement = function () {
     _um.call(this);
@@ -209,22 +231,72 @@
     }
   };
 
+  // ---------- บัพพลังโจมตี: คูณดาเมจที่ตีโดนมอนทุกชนิด (โจมตีธรรมดา + สกิล + ลูกยิง) ----------
+  // ครอบฟังก์ชัน damage ของ scene (ไม่ยุ่งกับค่า atk ที่ระบบสเตตัสคำนวณอยู่)
+  function installDamageHook(scene) {
+    if (typeof scene.damage !== 'function' || scene.damage._prWrapped) return;
+    const orig = scene.damage;
+    const wrapped = function (e, dmg) {
+      const bl = this.buffs && this.buffs.bless;
+      if (bl && this.time.now < bl.until && typeof dmg === 'number' && e && e !== this.player) {
+        const a = Array.prototype.slice.call(arguments);
+        a[1] = Math.round(dmg * bl.atkMul);
+        return orig.apply(this, a);
+      }
+      return orig.apply(this, arguments);
+    };
+    wrapped._prWrapped = true;
+    scene.damage = wrapped;
+  }
+
+  // ---------- ตัวอัปเดตบัพทุกเฟรม: รีเจนเลือด + ความเร็วโจมตี ----------
+  function tickBuffs(scene) {
+    const now = scene.time.now;
+    // รีเจนเลือด: ฟื้นทุก 1 วินาที เป็น % ของเลือดสูงสุด
+    const bl = scene.buffs && scene.buffs.bless;
+    if (bl && now < bl.until && now >= bl.next) {
+      bl.next = now + 1000;
+      if (scene.stats && scene.stats.hp > 0 && bl.regen > 0) {
+        scene.healPlayer(Math.max(1, Math.round(scene.maxHp() * bl.regen)));
+      }
+    }
+    // ความเร็วโจมตี: ตอนโจมตีธรรมดาครั้งใหม่ ย่นเวลาคูลดาวน์ลงตาม aspd
+    const cd = scene.cdEnd;
+    if (cd && cd.basic !== scene._prBasicSeen) {
+      const hs = scene.buffs && scene.buffs.haste;
+      if (hs && now < hs.until && hs.aspd > 1 && cd.basic > now) {
+        cd.basic = now + (cd.basic - now) / hs.aspd;
+      }
+      scene._prBasicSeen = cd.basic;
+    }
+  }
+
   const _setupButtons = P.setupButtons;
   P.setupButtons = function () {
     _setupButtons.call(this);
     register();
     makeIcons(this);
-    this.buffText = this.add.text(W / 2, 62, '', { fontSize: '12px', color: '#9fe8ff' })
+    installDamageHook(this);
+    this.buffText = this.add.text(W / 2, 62, '', { fontSize: '12px', color: '#9fe8ff', align: 'center' })
       .setOrigin(0.5, 0).setScrollFactor(0).setDepth(101);
   };
 
   const _usb = P.updateSkillButtons;
   P.updateSkillButtons = function (time) {
     _usb.call(this, time);
+    tickBuffs(this);
     if (!this.buffText) return;
-    const b = this.buffs && this.buffs.haste;
-    this.buffText.setText(b && time < b.until
-      ? '⚡ ความเร็ว +' + Math.round((b.mul - 1) * 100) + '% (' + Math.ceil((b.until - time) / 1000) + 's)' : '');
+    const b = this.buffs && this.buffs.haste, bl = this.buffs && this.buffs.bless;
+    const lines = [];
+    if (b && time < b.until) {
+      lines.push('⚡ ความเร็ว +' + Math.round((b.mul - 1) * 100) + '%'
+        + (b.aspd > 1 ? ' โจมตีไว +' + Math.round((b.aspd - 1) * 100) + '%' : '')
+        + ' (' + Math.ceil((b.until - time) / 1000) + 's)');
+    }
+    if (bl && time < bl.until) {
+      lines.push('✨ พลังโจมตี +' + Math.round((bl.atkMul - 1) * 100) + '% รีเจนเลือด (' + Math.ceil((bl.until - time) / 1000) + 's)');
+    }
+    this.buffText.setText(lines.join('\n'));
   };
 
   // ปลดล็อกเพื่อทดสอบ
@@ -245,8 +317,16 @@
     const d = SKILL_DEFS[sid], sc = window.__mainScene;
     const pw = Math.round(d.dmg * skillLvMul(lv) + (sc && sc.atk ? sc.atk : 0));
     const cd = ' • คูลดาวน์ ' + (d.cd / 1000).toFixed(1) + 's';
-    if (d.type === 'heal1' || d.type === 'healaoe') return 'ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP' + cd;
-    if (d.type === 'haste') return 'ความเร็ว +' + Math.round((d.mul - 1) * 100) + '% นาน ' + (d.dur / 1000) + ' วิ' + cd;
+    if (d.type === 'heal1') return 'ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP' + cd;
+    if (d.type === 'healaoe') {
+      return 'ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP • พลังโจมตี +' + Math.round(((d.atkMul || 1) - 1) * 100)
+        + '% • รีเจนเลือด ' + ((d.regen || 0) * 100).toFixed(1) + '%/วิ นาน ' + ((d.buffDur || 0) / 1000) + ' วิ' + cd;
+    }
+    if (d.type === 'haste') {
+      return 'ความเร็ว +' + Math.round((d.mul - 1) * 100) + '%'
+        + (d.aspd > 1 ? ' • โจมตีไว +' + Math.round((d.aspd - 1) * 100) + '%' : '')
+        + ' นาน ' + (d.dur / 1000) + ' วิ' + cd;
+    }
     if (d.type === 'holy') return 'ดาเมจแสง ' + pw + cd;
     return null;
   }
