@@ -1,1 +1,28 @@
 
+/* กรอบการ์ดสกิลตามสีสายอาชีพ */
+.pp-skill2 {
+  border: 2px solid var(--ac) !important;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ac) 40%, transparent),
+    0 0 10px color-mix(in srgb, var(--ac) 45%, transparent) !important;
+  position: relative;
+}
+
+/* แถบสีด้านซ้ายของการ์ด */
+.pp-skill2::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 6px;
+  background: var(--ac);
+}
+
+/* ป้ายชื่อสาย (ดาบ/ธนู/คทา/พระ/โจร) */
+.pp-skill2 .pp-stag {
+  color: #111 !important;
+  background: var(--ac) !important;
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
