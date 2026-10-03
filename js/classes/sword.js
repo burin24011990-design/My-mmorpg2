@@ -1,9 +1,9 @@
 // ===== อาชีพดาบ (sword) — แก้ความสามารถสกิลของดาบที่ไฟล์นี้ =====
-// ฟันตรง (sw_slash)          | สกิลเริ่มต้น ดาเมจแรงขึ้น + เพิ่มพลังโจมตีชั่วคราวทุกครั้งที่ฟัน
-// สกิล 1 พุ่งทะยาน (sw_dash)  | ลากเลือกทิศได้
+// ฟันตรง (sw_slash)          | สกิลเริ่มต้น ดาเมจแรงขึ้น + เพิ่มพลังโจมตีชั่วคราว (เป็น %) ทุกครั้งที่ฟัน
+// สกิล 1 พุ่งทะยาน (sw_dash)  | พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง (แบบกลุ่ม) | ลากเลือกทิศได้
 // สกิล 2 ฟันสตั้น   (sw_cross) | ฟันตรงด้านหน้าเป็นแนวกว้าง สตั้นมอน | ลากเลือกทิศได้
-// สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง + เพิ่มเกราะให้ตัวเอง
-// อัลติ  ดาบสังหาร           | ฟันตรงเป็นแนวกว้างมาก สตั้นมอน | ลากเลือกทิศได้
+// สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง 2 ครั้ง + เพิ่มเกราะให้ตัวเอง (เป็น %)
+// อัลติ  ดาบสังหาร           | ฟันตรงเป็นแนวกว้างมาก สตั้นมอน | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
 // dmg = ค่าฐาน | range = ระยะ (ฟันตรง = ความยาว, ฟันหมุน = รัศมี) | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส
 (function () {
@@ -11,30 +11,39 @@
   if (!Classes) throw new Error('sword.js: ไม่พบ window.Classes -> _shared.js ไม่ทำงาน/โหลดไม่ขึ้น (ดู error ก่อนหน้า)');
 
   const P = Main.prototype;
+  const clamp = Phaser.Math.Clamp;
   const TEST_UNLOCK = true;   // true = ปลดล็อกสกิลดาบทันทีเพื่อทดสอบ (ทดสอบเสร็จเปลี่ยนเป็น false ให้ได้จากหนังสือสกิล)
   const SW_IDS = ['sw_spin', 'sw_dash', 'sw_cross'];
   const BOSS_STUN_MUL = 0.5;  // บอสโดนสตั้นสั้นลงครึ่งหนึ่ง (ตั้ง 1 = เท่ามอนทั่วไป)
   const ARMOR_STAT = null;    // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติจาก pdef/def/armor/defense)
   const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
   const ATK_STAT = 'patk';    // ชื่อสเตตัสพลังโจมตีที่ใช้บัพของฟันตรง
+  const SWORD_ULTI_CD = 30000; // คูลดาวน์อัลติดาบ (มิลลิวินาที): 30000 = 30 วินาที
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('sword', { name: 'โจมตี', dmg: 10, range: 60, cd: 650, type: 'melee', class: 'sword' });
 
-  // ฟันตรง: ดาเมจเดิม 12 -> 20 | ทุกครั้งที่ฟัน เพิ่มพลังโจมตี atkBuff นาน atkBuffMs มิลลิวินาที (ฟันซ้ำ = ต่อเวลา)
+  // ฟันตรง: ดาเมจเดิม 12 -> 20 | ทุกครั้งที่ฟัน เพิ่มพลังโจมตี atkBuffPct (0.25 = +25%) นาน atkBuffMs มิลลิวินาที
   Classes.skill('sw_slash', {
     name: 'ฟันตรง', class: 'sword', type: 'melee',
     dmg: 20, range: 60, cd: 4000, mp: 8,
-    atkBuff: 12, atkBuffMs: 3000,
+    atkBuffPct: 0.25, atkBuffMs: 3000,
   }, {
     scale: { patk: 1 },
     noInfo: true,
     info: (def, lv, S) => 'ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' • ฟันแล้วเพิ่มพลังโจมตี +' + def.atkBuff + ' นาน ' + (def.atkBuffMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' • ฟันแล้วเพิ่มพลังโจมตี +' + Math.round(def.atkBuffPct * 100) + '% นาน ' + (def.atkBuffMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // สกิล 1: พุ่งทะยาน (เหมือนเดิม)
-  Classes.skill('sw_dash', { name: 'พุ่งทะยาน', class: 'sword', dmg: 16, range: 150, cd: 3600, mp: 14, type: 'dash' }, { scale: { patk: 1 } });
+  // สกิล 1: พุ่งทะยาน (แบบกลุ่ม) — พุ่งทะลวงระยะ range ตีทุกตัวที่อยู่ในแนวทางพุ่ง กว้าง pathW*2 (รวมจุดเริ่มและจุดปลาย)
+  Classes.skill('sw_dash', {
+    name: 'พุ่งทะยาน', class: 'sword', type: 'dash', noInfo: true,
+    dmg: 16, range: 150, cd: 3600, mp: 14, pathW: 55,
+  }, {
+    scale: { patk: 1 },
+    info: (def, lv, S) => 'พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+      ' ต่อตัว • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+  });
 
   // สกิล 2: ฟันสตั้น — ฟันตรงด้านหน้า ยาว range กว้าง halfW*2 | สตั้น stunMs มิลลิวินาที
   Classes.skill('sw_cross', {
@@ -46,19 +55,20 @@
       ' สตั้น ' + (def.stunMs / 1000) + ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // สกิล 3: ฟันหมุน — ฟันรอบตัวรัศมี range | เพิ่มเกราะ armor นาน armorMs มิลลิวินาที
+  // สกิล 3: ฟันหมุน — ฟันรอบตัวรัศมี range จำนวน spins ครั้ง ห่างกัน spinGap มิลลิวินาที (ดาเมจต่อครั้ง = dmg)
+  // เพิ่มเกราะ armorPct (0.3 = +30%) นาน armorMs มิลลิวินาที
   Classes.skill('sw_spin', {
     name: 'ฟันหมุน', class: 'sword', type: 'sspin', noInfo: true,
-    dmg: 18, range: 150, cd: 5000, mp: 18, armor: 30, armorMs: 6000,
+    dmg: 18, range: 150, cd: 5000, mp: 18, spins: 2, spinGap: 350, armorPct: 0.3, armorMs: 6000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ฟันรอบตัววงกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' เพิ่มเกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => 'ฟันรอบตัววงกว้าง ' + def.spins + ' ครั้ง ครั้งละ ≈' + Classes.power(def.id, def, lv, S) +
+      ' เพิ่มเกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // อัลติ ดาบสังหาร — ฟันตรงยาว range กว้าง halfW*2 | สตั้น stunMs | ลากเลือกทิศได้
+  // อัลติ ดาบสังหาร — ฟันตรงยาว range กว้าง halfW*2 | สตั้น stunMs | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
   Classes.ulti('sword', {
-    name: 'ดาบสังหาร', dmg: 70, range: 240, halfW: 85, cd: ULTI_CD, mp: 50, type: 'sult', stunMs: 2000,
+    name: 'ดาบสังหาร', dmg: 70, range: 240, halfW: 85, cd: SWORD_ULTI_CD, mp: 50, type: 'sult', stunMs: 2000,
   }, { scale: { patk: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(SW_IDS);
@@ -130,38 +140,110 @@
     }
   }
 
-  // เพิ่มเกราะให้ตัวเอง
+  // บัพแบบ % ของสเตตัส: คิดจากค่าสเตตัสตอนที่ยังไม่มีบัพนี้ (จดไว้ตลอดที่บัพยังอยู่) กันการทบซ้ำเวลาร่ายต่อ
+  // คืน { ok, flat } flat = ค่าที่บวกจริง
+  function pctBuff(scene, id, key, pct, ms) {
+    const now = scene.time.now;
+    const book = scene._swPct = scene._swPct || {};
+    let rec = book[id];
+    if (!rec || now >= rec.until) {
+      let base = 0;
+      try {
+        const S = scene.getStats ? scene.getStats() : null;
+        if (S && typeof S[key] === 'number') base = S[key];
+      } catch (e) { console.error('pctBuff', id, e); }
+      rec = book[id] = { base: base, until: 0 };
+    }
+    const flat = Math.max(1, Math.round(rec.base * pct));
+    rec.until = now + ms;
+    return { ok: statBuff(scene, id, key, flat, ms), flat: flat };
+  }
+
+  // เพิ่มเกราะให้ตัวเอง (% ของเกราะปัจจุบัน)
   function armorBuff(scene, def) {
     let key = ARMOR_STAT;
     try {
       const S = scene.getStats ? scene.getStats() : null;
       if (!key) key = ARMOR_KEYS.find(k => S && (k in S));
     } catch (e) { console.error('armorBuff', e); }
-    if (statBuff(scene, 'sw_armor', key, def.armor, def.armorMs)) {
-      scene.toastMsg('🛡 เกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) + ' วิ');
-    } else warnOnce(scene, 'เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ใส่ชื่อที่ ARMOR_STAT');
+    const r = pctBuff(scene, 'sw_armor', key, def.armorPct, def.armorMs);
+    if (r.ok) scene.toastMsg('🛡 เกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ');
+    else warnOnce(scene, 'เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ใส่ชื่อที่ ARMOR_STAT');
   }
 
-  // เพิ่มพลังโจมตีชั่วคราวจากฟันตรง (แสดงข้อความตอนบัพเริ่ม ไม่เด้งซ้ำทุกครั้งที่ฟันต่อ)
+  // เพิ่มพลังโจมตีชั่วคราวจากฟันตรง (% ของพลังโจมตีปัจจุบัน) แสดงข้อความตอนบัพเริ่ม ไม่เด้งซ้ำทุกครั้งที่ฟันต่อ
   function atkBuff(scene, def) {
     const now = scene.time.now;
-    if (statBuff(scene, 'sw_atk', ATK_STAT, def.atkBuff, def.atkBuffMs)) {
-      if (now >= (scene._swAtkUntil || 0)) scene.popText(scene.player.x, scene.player.y - 40, '⚔ ATK +' + def.atkBuff, '#ffb36b');
+    const r = pctBuff(scene, 'sw_atk', ATK_STAT, def.atkBuffPct, def.atkBuffMs);
+    if (r.ok) {
+      if (now >= (scene._swAtkUntil || 0)) scene.popText(scene.player.x, scene.player.y - 40, '⚔ ATK +' + Math.round(def.atkBuffPct * 100) + '%', '#ffb36b');
       scene._swAtkUntil = now + def.atkBuffMs;
     } else warnOnce(scene, 'เพิ่มพลังโจมตีไม่ได้ (ไม่พบ addStatBuff) ดู stats.js');
   }
+
+  // ระยะจากจุด (px,py) ถึงเส้นตรงช่วง (ax,ay)-(bx,by)
+  function distToSeg(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    let t = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  // ปิดเสียงดาเมจชั่วคราวระหว่างเรียกฟังก์ชัน (ใช้ให้การพุ่งเดิมเคลื่อนตัวอย่างเดียว ไม่ตีซ้ำ)
+  function withoutDamage(scene, fn) {
+    const own = Object.prototype.hasOwnProperty.call(scene, 'damage');
+    const real = scene.damage;
+    scene.damage = function () {};
+    try { return fn(); } finally { if (own) scene.damage = real; else delete scene.damage; }
+  }
+
+  // ---------- พุ่งทะยานแบบกลุ่ม ----------
+  // ให้ระบบเดิมพุ่งตัวละคร (รวมเอฟเฟกต์/ทิศที่ลากเลือก) แล้วคิดดาเมจใหม่: ตีทุกตัวในแนวพุ่ง + จุดเริ่ม + จุดปลาย ตัวละ 1 ครั้ง
+  const _apply = P.applySkillEffect;
+  P.applySkillEffect = function (def, x, y, fx, fy, dmg, kind) {
+    if (!def || !(def.id === 'sw_dash' || def === SKILL_DEFS.sw_dash) || !this.player) return _apply.apply(this, arguments);
+    const scene = this, p = scene.player, args = arguments;
+    const sx = p.x, sy = p.y;
+    const nx = clamp(sx + (fx || 0) * def.range, 20, WORLD_W - 20);
+    const ny = clamp(sy + (fy || 0) * def.range, 20, WORLD_H - 20);
+    const res = withoutDamage(scene, () => _apply.apply(scene, args));
+    let n = 0;
+    scene.enemies.getChildren().slice().forEach(e => {
+      if (!e.active) return;
+      const hit = distToSeg(e.x, e.y, sx, sy, nx, ny) <= (def.pathW || 55)
+        || Phaser.Math.Distance.Between(x, y, e.x, e.y) < 90
+        || Phaser.Math.Distance.Between(nx, ny, e.x, e.y) < 70;
+      if (hit) { n++; scene.damage(e, dmg); }
+    });
+    if (n > 1) scene.popText(sx, sy - 40, 'ทะลวง x' + n + '!', '#ffe066');
+    return res;
+  };
 
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
   Classes.handlers.sstun = function (def, x, y, dmg, fx, fy) {
     slashBox(this, def, dmg, fx, fy, 0xffd45e);
   };
 
-  Classes.handlers.sspin = function (def, x, y, dmg) {
-    const p = this.player, col = CLASSES.sword ? CLASSES.sword.color : 0xffffff;
-    this.flash(p.x, p.y, def.range, col);
-    this.time.delayedCall(110, () => this.flash(p.x, p.y, def.range * 0.6, 0xffffff));
-    Classes.enemiesIn(this, p.x, p.y, def.range).forEach(e => this.damage(e, dmg));
-    armorBuff(this, def);
+  // ฟันหมุน: ฟันรอบตัวหลายครั้ง (spins) | ครั้งแรกเพิ่มเกราะ + นัดต่อไปเรียกตัวเองซ้ำเพื่อให้ภาพหมุนเล่นใหม่ทุกครั้ง
+  Classes.handlers.sspin = function (def, x, y, dmg, fx, fy) {
+    const scene = this, p = scene.player, col = CLASSES.sword ? CLASSES.sword.color : 0xffffff;
+    const now = scene.time.now, cont = scene._swSpin;
+    scene._swSpin = null;
+    const fresh = !(cont && now - cont.t < 250);
+    const left = fresh ? Math.max(0, (def.spins || 1) - 1) : cont.left;   // จำนวนครั้งที่ยังเหลือหลังครั้งนี้
+
+    scene.flash(p.x, p.y, def.range, col);
+    scene.time.delayedCall(110, () => scene.flash(p.x, p.y, def.range * 0.6, 0xffffff));
+    Classes.enemiesIn(scene, p.x, p.y, def.range).forEach(e => scene.damage(e, dmg));
+    if (fresh) armorBuff(scene, def);
+
+    if (left > 0) {
+      scene.time.delayedCall(def.spinGap || 350, () => {
+        if (!scene.player) return;
+        scene._swSpin = { t: scene.time.now, left: left - 1 };
+        scene.applySkillEffect(def, scene.player.x, scene.player.y, fx, fy, dmg, def.class);
+      });
+    }
   };
 
   Classes.handlers.sult = function (def, x, y, dmg, fx, fy) {
