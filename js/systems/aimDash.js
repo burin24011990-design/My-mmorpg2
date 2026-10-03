@@ -15,7 +15,7 @@
     archer: { cast: 380 },
   };
   // สกิลที่ลากเลือก "ทิศ": กดค้างแล้วลาก ปล่อยแล้วใช้ (แตะเฉยๆ = ใช้แบบเดิม)
-  // len = ความยาวลูกศรที่โชว์ | w = ครึ่งความกว้างแถบที่โชว์ (ไม่ใส่ = 16)
+  // len = ความยาวลูกศรที่โชว์ (ปลายหัวลูกศร = ระยะที่สกิลโดนจริง) | w = ครึ่งความกว้างแถบที่โชว์ (ไม่ใส่ = 16)
   // เพิ่มสกิลใหม่: ใส่ id สกิลตรงนี้ หรือให้ไฟล์อาชีพลงทะเบียนเองผ่าน window.DIR_CFG / window.DIR_ULTI
   const DIR_CFG = {
     sw_dash: { len: 150 },    // พุ่งทะยาน (ดาบ)
@@ -32,6 +32,7 @@
   const DASH_CD = 20000;      // คูลดาวน์แดช 20 วิ
   const DASH_DIST = 170;
   const DASH_MS = 160;
+  const READY_COL = 0x5dff7a; // สีลูกศรเมื่อสกิลพร้อมใช้ (เขียว)
 
   const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
   const isDirOnly = sid => !!(sid && DIR_CFG[sid] && !GROUND_CFG[sid]);
@@ -162,7 +163,7 @@
     if (this.aim) return;
     const now = this.time.now;
     const isUlti = kind === 'ulti', isDash = kind === 'dash';
-    let def, cfg, clsKey = null, key, sid = null, dir = false, color = null;
+    let def, cfg, clsKey = null, key, sid = null, dir = false, color = null, recast = false;
 
     if (isDash) {
       if (now < (this.cdEnd.dash || 0)) return;
@@ -177,7 +178,7 @@
       }
       // ช่วงพุ่งต่อของโจร: กดซ้ำได้โดยไม่เสียคูลดาวน์/MP จึงต้องเปิดให้ลากเล็งได้
       const rc = this.rogueRecast;
-      const recast = !!(dir && sid && rc && rc.sid === sid && now < rc.until && rc.left > 0);
+      recast = !!(dir && sid && rc && rc.sid === sid && now < rc.until && rc.left > 0);
       if (!recast) {
         if (now < (this.cdEnd[key] || 0)) return;
         if (this.stats.mp < def.mp) { this.toastMsg('มานาไม่พอ'); return; }
@@ -187,6 +188,7 @@
     const base = (typeof ROV !== 'undefined') ? ROV : { ax: W - 96, ay: H - 92 };
     this.aim = {
       kind: kind, isUlti: isUlti, dir: dir, color: color,
+      key: key, mp: def.mp || 0, free: recast,   // key/mp/free ใช้เช็กว่าพร้อมใช้ (ลูกศรสีเขียว)
       idx: idx, def: def, cfg: cfg, clsKey: clsKey, pid: pointer.id,
       sx: pointer.x, sy: pointer.y, bx: btn.c.x, by: btn.c.y, br: btn.c.radius,
       cx: base.ax + CANCEL_DX, cy: Math.max(40, base.ay + CANCEL_DY), cr: CANCEL_R,
@@ -204,20 +206,25 @@
 
     const p = this.player;
     const baseCol = a.color || (a.clsKey && CLASSES[a.clsKey] ? CLASSES[a.clsKey].color : 0xffffff);
-    const col = a.cancel ? 0xff5555 : baseCol;
+    // พร้อมใช้ = ไม่ติดคูลดาวน์ และมานาพอ (เช็กสดทุกเฟรม) | สกิลเลือกทิศจะเป็นสีเขียวเมื่อพร้อม
+    const ready = a.free || (this.time.now >= (this.cdEnd[a.key] || 0) && this.stats.mp >= a.mp);
+    const col = a.cancel ? 0xff5555 : (a.dir && ready ? READY_COL : baseCol);
 
     if (a.dir) {
-      // แถบ/ลูกศรบอกทิศ (โชว์เมื่อเริ่มลาก) กว้างตาม cfg.w
+      // ลูกศรบอกทิศ (โชว์เมื่อเริ่มลาก) กว้างตาม cfg.w | ปลายหัวลูกศรอยู่ที่ระยะ len พอดี = ระยะที่สกิลโดนจริง
       if (a.dragged) {
-        const len = a.cfg.len, w = a.cfg.w || 16, ah = Math.max(26, w + 8);
-        const ex = p.x + a.dx * len, ey = p.y + a.dy * len;
+        const len = a.cfg.len, w = a.cfg.w || 16;
+        const ah = Math.min(Math.max(26, w + 8), len * 0.45);   // ครึ่งความกว้างหัวลูกศร
+        const hl = ah;                                           // ความยาวหัวลูกศร
         const nx = -a.dy, ny = a.dx;
+        const tx = p.x + a.dx * len, ty = p.y + a.dy * len;                    // ปลายหัว
+        const bx = p.x + a.dx * (len - hl), by = p.y + a.dy * (len - hl);      // ฐานหัว = ปลายก้าน
         g.fillStyle(col, a.cancel ? 0.12 : 0.3);
-        g.fillTriangle(p.x + nx * w, p.y + ny * w, p.x - nx * w, p.y - ny * w, ex + nx * w, ey + ny * w);
-        g.fillTriangle(p.x - nx * w, p.y - ny * w, ex + nx * w, ey + ny * w, ex - nx * w, ey - ny * w);
+        g.fillTriangle(p.x + nx * w, p.y + ny * w, p.x - nx * w, p.y - ny * w, bx + nx * w, by + ny * w);
+        g.fillTriangle(p.x - nx * w, p.y - ny * w, bx + nx * w, by + ny * w, bx - nx * w, by - ny * w);
         g.fillStyle(col, a.cancel ? 0.25 : 0.8);
-        g.fillTriangle(ex + a.dx * ah, ey + a.dy * ah, ex + nx * ah, ey + ny * ah, ex - nx * ah, ey - ny * ah);
-        g.lineStyle(3, col, 0.95).lineBetween(p.x, p.y, ex, ey);
+        g.fillTriangle(tx, ty, bx + nx * ah, by + ny * ah, bx - nx * ah, by - ny * ah);
+        g.lineStyle(3, col, 0.95).lineBetween(p.x, p.y, bx, by);
       }
     } else {
       // วงเล็งบนแผนที่
