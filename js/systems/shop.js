@@ -2,7 +2,7 @@
 // ยาเก็บในกระเป๋าเป็นไอเทม { kind:'potion', pid, count } ซ้อนได้ -> เซฟ/คลาวด์ทำงานเหมือนไอเทมอื่น
 // บัฟเป็นชั่วคราว ไม่เซฟ (รีเฟรชหน้าแล้วหาย)
 
-const POTION_MAX_STACK = 999;
+const POTION_MAX_STACK = 99;
 const POTION_USE_CD = 1000;   // ms คูลดาวน์การกินยาฟื้นฟู
 
 // แก้ราคา/ค่าต่างๆ ตรงนี้ได้เลย
@@ -26,6 +26,11 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   let lastUse = 0;
   let panel, quick;
   let lastSig = '';
+  const HP_PICK_KEY = 'shop_hp_pick_v1';
+  const HP_ORDER = ['hp_s', 'hp_m', 'hp_l'];   // ลำดับสลับเมื่อกดค้าง: เล็ก -> กลาง -> ใหญ่
+  const LONG_PRESS_MS = 500;
+  let hpPick = null;                            // null = อัตโนมัติ (ใช้ตัวใหญ่สุดที่มี)
+  try { const v = localStorage.getItem(HP_PICK_KEY); if (HP_ORDER.indexOf(v) !== -1) hpPick = v; } catch (e) {}
 
   const now = () => Date.now();
   const toast = m => { if (scene && scene.toastMsg) scene.toastMsg(m); };
@@ -198,7 +203,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
 
   // ---------- ช่องยาด่วนแนวตั้ง (ใต้มินิแมพฝั่งซ้าย): ยา HP + บัฟ ATK / DEF / Max HP ----------
   const QSLOTS = [
-    { ids: ['hp_l', 'hp_m', 'hp_s'], lab: 'HP',  tab: 'heal' },   // กินยาเลือดตัวใหญ่สุดที่มี
+    { ids: ['hp_l', 'hp_m', 'hp_s'], lab: 'HP',  tab: 'heal', cycle: true },   // กดค้างเพื่อสลับขนาดขวด
     { ids: ['b_atk'],                lab: 'ATK', tab: 'buff' },
     { ids: ['b_def'],                lab: 'DEF', tab: 'buff' },
     { ids: ['b_hp'],                 lab: 'HP+', tab: 'buff' },
@@ -209,15 +214,41 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     '<rect x="6" y="11" width="20" height="18" rx="5" style="fill:var(--pc)"/>' +
     '<rect x="10" y="14" width="3" height="9" fill="#fff" opacity=".45"/></svg>';
 
+  function cycleHp(q) {
+    const next = HP_ORDER[(HP_ORDER.indexOf(q.id) + 1) % HP_ORDER.length];
+    hpPick = next;
+    try { localStorage.setItem(HP_PICK_KEY, next); } catch (e) {}
+    try { if (navigator.vibrate) navigator.vibrate(25); } catch (e) {}
+    const p = POTIONS[next];
+    toast('เลือก ' + p.name + ' (' + p.desc + ')' + (countPotion(next) ? '' : ' - ยังไม่มี'));
+    updateQuick();
+  }
+
   function buildQuick() {
     QSLOTS.forEach(d => {
       const el = document.createElement('button');
       el.className = 'qs';
       el.innerHTML = '<i class="qs-fill"></i>' + BOTTLE + '<span class="qs-lab">' + d.lab + '</span>' +
                      '<b class="qs-cnt"></b><em class="qs-time"></em>';
-      const q = { el, d, id: d.ids[0], has: false,
-        fill: el.querySelector('.qs-fill'), cnt: el.querySelector('.qs-cnt'), time: el.querySelector('.qs-time') };
+      const q = { el, d, id: d.ids[0], has: false, longFired: false,
+        fill: el.querySelector('.qs-fill'), cnt: el.querySelector('.qs-cnt'),
+        time: el.querySelector('.qs-time'), lab: el.querySelector('.qs-lab') };
+
+      // กดค้างที่ช่อง HP = สลับขนาดขวด
+      if (d.cycle) {
+        let timer = null;
+        const stop = () => { clearTimeout(timer); timer = null; el.classList.remove('hold'); };
+        el.addEventListener('pointerdown', () => {
+          q.longFired = false; stop();
+          el.classList.add('hold');
+          timer = setTimeout(() => { timer = null; q.longFired = true; el.classList.remove('hold'); cycleHp(q); }, LONG_PRESS_MS);
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, stop));
+        el.addEventListener('contextmenu', e => e.preventDefault());   // กันเมนูค้างของมือถือ
+      }
+
       el.addEventListener('click', () => {
+        if (q.longFired) { q.longFired = false; return; }              // กดค้างเสร็จแล้ว ไม่นับเป็นการแตะ
         if (q.has) {
           const before = lastUse;
           use(q.id);
@@ -237,13 +268,16 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     const n = now();
     qslots.forEach(q => {
       const d = q.d;
-      const owned = d.ids.find(id => countPotion(id) > 0);
-      const id = owned || d.ids[Math.min(1, d.ids.length - 1)];
+      let id;
+      if (d.cycle) id = hpPick || d.ids.find(x => countPotion(x) > 0) || 'hp_m';   // เลือกเอง หรือ อัตโนมัติ
+      else id = d.ids[0];
       const p = POTIONS[id];
-      q.id = id; q.has = !!owned;
+      const have = countPotion(id);
+      q.id = id; q.has = have > 0;
       q.el.style.setProperty('--pc', p.color);
-      q.el.classList.toggle('empty', !owned);
-      q.cnt.textContent = owned ? countPotion(id) : '+';
+      q.el.classList.toggle('empty', !have);
+      q.cnt.textContent = have ? have : '+';
+      q.lab.textContent = d.cycle ? 'HP ' + p.heal.hp + '%' : d.lab;
       const b = p.buff && buffs[id];
       const left = b ? (b.until - n) / 1000 : 0;
       q.el.classList.toggle('on', left > 0);
