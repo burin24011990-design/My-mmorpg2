@@ -78,12 +78,8 @@ Main.prototype.setupButtons = function () {
   const up = this.rovPos(4);
   this.ultiBtn = this.makeUltiBtn(up.x, up.y, ROV.ultiR);
 
-  this.bagBtn = this.makePillBtn(W - 12, 16, 120, 32, '🎒 กระเป๋า', 0x2a4a2a, () => this.openInventory('bag'));
-  this.bookBtn = this.makePillBtn(W - 12, 54, 120, 32, '📜 สกิล', 0x2a2a4a, () => this.openSkillBook());
-  this.autoBtn = this.makePillBtn(W - 12, 92, 120, 32, 'บอท: ปิด', 0x4a3a2a, () => this.toggleAuto());
-  this.equipBtn = this.makePillBtn(W - 12, 130, 120, 32, '🛡 อุปกรณ์', 0x2a2a5a, () => this.openInventory('equip'));
-  this.stageBtn = this.makePillBtn(W - 12, 168, 120, 32, '🗺 เลือกด่าน', 0x2a4a5a, () => this.openStageSelect());
-  this.statusBtn = this.makePillBtn(W - 12, 206, 120, 32, '📊 สเตตัส', 0x3a2a4a, () => this.openStatusPanel());
+  // แถบเมนูด้านบน (กระเป๋า สกิล บอท อุปกรณ์ เลือกด่าน สเตตัส) อยู่ใน js/systems/topbar.js
+  this.setupTopBar();
 };
 
 // สลับการแสดงผลส่วนเสริมของปุ่มอัลติตามคอมโบสกิล
