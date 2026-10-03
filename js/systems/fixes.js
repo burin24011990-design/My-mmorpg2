@@ -9,6 +9,7 @@ Object.assign(Main.prototype, {
 
     const dmg = Math.max(1, raw - this.equipDefBonus);
     this.stats.hp -= dmg;
+    if (window.showDamage) showDamage(this, p.x, p.y - 30, dmg, 'player');   // ตัวเลขดาเมจที่ผู้เล่นโดน
     p.setTint(0xff6666); this.time.delayedCall(150, () => p.clearTint());
 
     if (this.stats.hp <= 0) {
