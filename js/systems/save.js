@@ -84,6 +84,7 @@ Object.assign(Main.prototype, {
         // หินตีบวก / หินออฟ / หินล้างออฟ (ของที่ซ้อนได้)
         (it.kind === 'stone' && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'cleanstone' && Number.isFinite(it.count) && it.count > 0) ||
+        (it.kind === 'potion' && POTIONS[it.pid] && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'optstone' && it.color && Number.isFinite(it.level) && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'equip' && STAT_GROWTH[it.baseSlot] && Number.isFinite(it.level) && Number.isFinite(it.star) &&
           (it.baseSlot !== 'weapon' || CLASSES[it.class]))
