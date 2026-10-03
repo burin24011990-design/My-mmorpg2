@@ -1,9 +1,9 @@
 // ===== อาชีพคทา (mage) — แก้ความสามารถสกิลของคทาที่ไฟล์นี้ =====
 // สกิล 1 สายฟ้า     (mg_bolt) | ยิงสายฟ้าไปข้างหน้าเป็นแนวใหญ่ ติดไฟช็อต (เลือดลดต่อวินาที) | ลากเลือกทิศได้
-// สกิล 2 เวทวาป     (mg_nova) | วาปไปทางที่กำหนด + เพิ่มเกราะชั่วขณะ | ลากเลือกทิศได้
+// สกิล 2 เวทวาป     (mg_nova) | วาปไปทางที่กำหนด + เพิ่มเกราะชั่วขณะ + รีเจนมานาเพิ่มขึ้นชั่วขณะ | ลากเลือกทิศได้
 // สกิล 3 ลูกไฟ      (mg_fire) | วางระเบิดลูกไฟวงกว้างลงพื้น 1 ครั้ง ติดสตั้น | ลากเล็งวางได้
 // สกิล 4 ธารน้ำแข็ง (mg_ice)  | วางวงน้ำแข็งลงพื้น ดาเมจ 2 ครั้ง มีโอกาสแช่แข็ง | ลากเล็งวางได้
-// อัลติ  ระเบิดมหาเวท         | ระเบิดรอบตัวเป็นวงกว้าง รุนแรง ติดแช่แข็ง + ไฟช็อต | คูลดาวน์ 60 วิ
+// อัลติ  ระเบิดมหาเวท         | ระเบิดรอบตัวเป็นวงกว้าง รุนแรง ติดแช่แข็ง + ไฟช็อต + เติมมานาเต็มทันที | คูลดาวน์ 60 วิ
 // dmg = ค่าฐาน | range = ระยะ/รัศมี | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส (ap = พลังเวท)
 (function () {
@@ -18,6 +18,7 @@
   const BOSS_CC_MUL = 0.5;      // บอสโดนสตั้น/แช่แข็งสั้นลงครึ่งหนึ่ง (ตั้ง 1 = เท่ามอนทั่วไป)
   const ARMOR_STAT = null;      // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติจาก pdef/def/armor/defense)
   const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
+  const MANA_TICK = 500;        // บัพรีเจนมานาเติมทุกกี่มิลลิวินาที
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('mage', { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' });
@@ -34,12 +35,14 @@
   });
 
   // สกิล 2: เวทวาป — วาประยะ range ไปทางที่เลือก | เพิ่มเกราะ armor นาน armorMs มิลลิวินาที
+  // รีเจนมานา: mpRegen = ฟื้นมานาเพิ่มต่อวินาที เป็น % ของมานาสูงสุด (0.05 = 5%/วิ) นาน mpRegenMs มิลลิวินาที
   Classes.skill('mg_nova', {
     name: 'เวทวาป', class: 'mage', type: 'mblink', noInfo: true,
-    dmg: 0, range: 220, cd: 8000, mp: 16, armor: 25, armorMs: 4000,
+    dmg: 0, range: 220, cd: 8000, mp: 16, armor: 25, armorMs: 4000, mpRegen: 0.05, mpRegenMs: 6000,
   }, {
     scale: { ap: 1 },
     info: (def, lv, S) => 'วาปไปทางที่ลาก ระยะ ' + def.range + ' เพิ่มเกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) +
+      ' วิ • รีเจนมานา +' + Math.round(def.mpRegen * 100) + '%/วิ นาน ' + (def.mpRegenMs / 1000) +
       ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
@@ -65,9 +68,10 @@
   });
 
   // อัลติ ระเบิดมหาเวท — ระเบิดรอบตัวรัศมี range | แช่แข็ง freezeMs + ไฟช็อต shockMs | คูลดาวน์ 60 วิ
+  // mpFull: true = เติมมานาเต็มทันทีหลังร่าย (ตั้ง false ถ้าไม่ต้องการ)
   Classes.ulti('mage', {
     name: 'ระเบิดมหาเวท', dmg: 110, range: 260, cd: 60000, mp: 60, type: 'mult',
-    freezeMs: 2500, shockMul: 0.3, shockMs: 5000,
+    freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true,
   }, { scale: { ap: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(MG_IDS);
@@ -151,6 +155,38 @@
     }
   }
 
+  // ---------- มานา ----------
+  // หามานาสูงสุด (รองรับหลายชื่อ เผื่อระบบสเตตัสตั้งชื่อต่างกัน) คืน 0 ถ้าหาไม่เจอ
+  function maxMpOf(scene) {
+    try {
+      if (typeof scene.maxMp === 'function') return scene.maxMp() || 0;
+      const st = scene.stats || {};
+      return st.maxMp || st.mpMax || 0;
+    } catch (e) { console.error('maxMpOf', e); }
+    return 0;
+  }
+
+  // บัพรีเจนมานาเพิ่ม (จากเวทวาป) | ร่ายซ้ำ = รีเฟรชเวลา ไม่ซ้อนกัน
+  function manaRegenBuff(scene, def) {
+    if (!def.mpRegen || !def.mpRegenMs) return;
+    const now = scene.time.now;
+    scene._mgMana = { until: now + def.mpRegenMs, rate: def.mpRegen, next: now + MANA_TICK };
+    scene.toastMsg('💧 รีเจนมานา +' + Math.round(def.mpRegen * 100) + '%/วิ นาน ' + (def.mpRegenMs / 1000) + ' วิ');
+  }
+
+  // เรียกทุกเฟรม: เติมมานาเพิ่มตามบัพ
+  function tickMana(scene) {
+    const b = scene._mgMana;
+    if (!b) return;
+    const now = scene.time.now;
+    if (now >= b.until) { scene._mgMana = null; return; }
+    if (now < b.next) return;
+    b.next = now + MANA_TICK;
+    const st = scene.stats, max = maxMpOf(scene);
+    if (!st || !(max > 0) || st.hp <= 0) return;
+    st.mp = Math.min(max, st.mp + max * b.rate * (MANA_TICK / 1000));
+  }
+
   // วาดสายฟ้าซิกแซกตามทิศ
   function drawBolt(scene, p, u, len, hw) {
     const nx = -u.y, ny = u.x, N = 10, pts = [];
@@ -186,7 +222,7 @@
     });
   };
 
-  // สกิล 2: วาป + เกราะ
+  // สกิล 2: วาป + เกราะ + รีเจนมานา
   Classes.handlers.mblink = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player, u = unit(fx, fy);
     let d = def.range;
@@ -199,6 +235,7 @@
     if (p.body) p.body.reset(nx, ny); else p.setPosition(nx, ny);
     scene.flash(nx, ny, 48, 0xe0c8ff);
     armorBuff(scene, def);
+    manaRegenBuff(scene, def);
   };
 
   // สกิล 3: ลูกไฟวงกว้างวางพื้น (เตือนสั้นๆ แล้วระเบิด 1 ครั้ง) + สตั้น
@@ -238,7 +275,7 @@
     scene.time.delayedCall((def.ticks - 1) * def.tickMs + 500, () => zone.destroy());
   };
 
-  // อัลติ: ระเบิดรอบตัว + แช่แข็ง + ไฟช็อต
+  // อัลติ: ระเบิดรอบตัว + แช่แข็ง + ไฟช็อต + เติมมานาเต็มทันที
   Classes.handlers.mult = function (def, x, y, dmg) {
     const scene = this, p = scene.player;
     const ring = scene.add.circle(p.x, p.y, def.range, 0x9fe8ff, 0.25).setStrokeStyle(4, 0xffffff, 0.9).setDepth(60).setScale(0.1);
@@ -252,6 +289,20 @@
       scene.damage(e, dmg);
     });
     if (list.length) scene.popText(p.x, p.y - 50, '❄ แช่แข็ง + ⚡ ไฟช็อต!', '#d9f4ff');
+
+    // เติมมานาเต็มทันที (หลังหักมานาที่ใช้ร่ายแล้ว)
+    if (def.mpFull && scene.stats) {
+      const max = maxMpOf(scene);
+      if (max > 0) {
+        scene.stats.mp = max;
+        scene.flash(p.x, p.y, 44, 0x4aa8ff);
+        scene.popText(p.x, p.y - 72, '💧 มานาเต็ม!', '#7cc4ff');
+      } else if (scene.time.now > (scene._mgWarnAt || 0)) {
+        scene._mgWarnAt = scene.time.now + 4000;
+        console.warn('mage.js: เติมมานาไม่ได้ (ไม่พบ maxMp() หรือ stats.maxMp)');
+        scene.toastMsg('⚠ เติมมานาไม่ได้ (ดู console)');
+      }
+    }
   };
 
   // ---------- ตั้งทิศก่อนใช้สกิล + บอทไม่ใช้เวทวาป ----------
@@ -268,11 +319,12 @@
     return _useSkill.call(this, idx, gp);
   };
 
-  // ---------- สถานะบนมอน: แช่แข็ง (freeze) / ไฟช็อต (shock) ----------
+  // ---------- สถานะบนมอน: แช่แข็ง (freeze) / ไฟช็อต (shock) + บัพรีเจนมานาของตัวเรา ----------
   // แช่แข็ง: มอนหยุดเดิน (สีฟ้า) | ไฟช็อต: ลดเลือดทุก SHOCK_TICK มิลลิวินาที (สีเหลือง)
   const _ue = P.updateEnemies;
   P.updateEnemies = function (time) {
     _ue.call(this, time);
+    tickMana(this);
     const scene = this;
     this.enemies.getChildren().slice().forEach(e => {
       const fx = e._fx;
