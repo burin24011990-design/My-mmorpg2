@@ -24,8 +24,9 @@ function botAtk(cls) {
   const _setupButtons = Main.prototype.setupButtons;
   Main.prototype.setupButtons = function () {
     _setupButtons.call(this);
-    this.botCfgBtn = this.makePillBtn(W - 12, 244, 120, 32, '⚙ ตั้งค่าบอท', 0x4a3a4a, () => this.openBotPanel());
-    this.botStatusText = this.add.text(W / 2, 40, '', { fontSize: '12px', color: '#9fd98a' })
+    // ปุ่ม "ตั้งค่าบอท" ย้ายไปอยู่แถบเมนูด้านบนแล้ว (js/systems/topbar.js)
+    // ข้อความสถานะบอท วางใต้แถบเมนู
+    this.botStatusText = this.add.text(W / 2, 60, '', { fontSize: '12px', color: '#9fd98a', stroke: '#000', strokeThickness: 3 })
       .setOrigin(0.5, 0).setScrollFactor(0).setDepth(101);
   };
 
