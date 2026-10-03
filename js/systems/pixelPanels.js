@@ -6,6 +6,7 @@
  * events: window 'pp:useSkill' {id} | 'pp:upgradeSkill' {id} | 'pp:unequipSkill' {id} | 'pp:slot' {slot} | 'pp:reset'
  * ฟิลด์เสริมของสกิล (ถ้ามี จะแสดงเลเวลและปุ่มอัป): lv, maxLv, books, need, maxed
  * ฟิลด์ equip: true = แสดงปุ่ม "ใส่สกิล" | unequip: true = แสดงปุ่ม "ถอดสกิล"
+ * ฟิลด์ตกแต่ง (skillPanelData.js เติมให้): img = รูปสกิล | accent = สีประจำอาชีพ | clsLabel = ชื่ออาชีพ | next = ข้อความเลเวลถัดไป
  */
 (function () {
   var layer = document.getElementById('ui-layer') || document.body;
@@ -57,13 +58,43 @@
 
   var state = { statusTab: 'basic', skillTab: 'general' };
 
+  // แถวสกิล: รูป + ชื่อ/เลเวล/อาชีพ + ชิป (MP, คูลดาวน์, ลากเล็ง) + รายการคำอธิบาย + แถบหนังสือ + ปุ่ม
   function skillRow(s) {
     var hasLv = s.maxLv != null;
-    var sub = s.info ? esc(s.info) : 'Lv. ' + s.lv;
-    var lvBadge = hasLv ? ' <span style="color:#ffe066;font-size:.8em">Lv.' + s.lv + '/' + s.maxLv + '</span>' : '';
-    var bookLine = hasLv
-      ? '<br><span style="color:#9fd0ff">📕 หนังสือ ' + s.books + (s.maxed ? '' : '/' + s.need) + ' เล่ม</span>'
-      : '';
+    var accent = s.accent || '#c9a45c';
+
+    // แตกข้อความ info (คั่นด้วย " • ") เป็นชิปกับรายการอธิบาย
+    var chips = '<span class="pp-chip mp">💧 MP ' + esc(s.mp) + '</span>';
+    var bullets = '';
+    String(s.info || '').split(' • ').forEach(function (p) {
+      p = p.trim();
+      if (!p) return;
+      var m = /คูลดาวน์\s*([\d.]+s?)/.exec(p);
+      if (m) chips += '<span class="pp-chip cd">⏱ ' + esc(m[1]) + '</span>';
+      else if (/ลากเลือกทิศ|ลากเล็ง/.test(p)) chips += '<span class="pp-chip dir">↗ ลากเล็งได้</span>';
+      else bullets += '<li>' + esc(p) + '</li>';
+    });
+    if (!bullets && !hasLv) bullets = '<li>Lv. ' + esc(s.lv) + '</li>';
+
+    var iconHtml = s.img
+      ? '<img src="' + esc(s.img) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+        '<span class="pp-sfb" style="display:none">' + icon(s.icon) + '</span>'
+      : '<span class="pp-sfb">' + icon(s.icon) + '</span>';
+    var lvTag = hasLv ? '<span class="pp-slv">Lv.' + esc(s.lv) + '</span>' : '';
+    var clsTag = s.clsLabel ? '<span class="pp-stag">' + esc(s.clsLabel) + '</span>' : '';
+    var lvBadge = hasLv ? '<span class="pp-slvtxt">Lv.' + esc(s.lv) + '/' + esc(s.maxLv) + '</span>' : '';
+
+    var nextLine = (!s.maxed && s.next) ? '<div class="pp-snext">▲ ' + esc(s.next) + '</div>' : '';
+    var bookLine = '';
+    if (hasLv) {
+      if (s.maxed) bookLine = '<div class="pp-sbook"><b>★ เลเวลสูงสุดแล้ว</b></div>';
+      else {
+        var pct = s.need > 0 ? Math.max(0, Math.min(100, Math.round(s.books / s.need * 100))) : 100;
+        bookLine = '<div class="pp-sbook"><span>📕 หนังสือ ' + esc(s.books) + '/' + esc(s.need) + ' เล่ม</span>' +
+                   '<div class="pp-sbar"><i style="width:' + pct + '%"></i></div></div>';
+      }
+    }
+
     var useBtn = s.equip
       ? '<button class="pp-btn green" data-skill="' + esc(s.id) + '">ใส่สกิล</button>'
       : s.off
@@ -71,7 +102,7 @@
         : '<button class="pp-btn" data-skill="' + esc(s.id) + '">ใช้งาน</button>';
     // สกิลที่ใส่อยู่ในช่องต่อสู้: ปุ่ม "ใช้งาน" + "ถอดสกิล" อยู่แถวเดียวกัน
     if (s.unequip) {
-      useBtn = '<div style="display:flex;flex-direction:row;gap:6px">' + useBtn +
+      useBtn = '<div class="row">' + useBtn +
                '<button class="pp-btn" data-unq="' + esc(s.id) + '">ถอดสกิล</button></div>';
     }
     var upBtn = '';
@@ -80,12 +111,17 @@
         ? '<button class="pp-btn" disabled>MAX</button>'
         : '<button class="pp-btn" data-upg="' + esc(s.id) + '"' + (s.books >= s.need ? '' : ' disabled') + '>อัปเลเวล</button>';
     }
-    var btns = hasLv
-      ? '<div style="display:flex;flex-direction:column;gap:6px">' + useBtn + upBtn + '</div>'
-      : useBtn;
-    return '<div class="pp-skill"><div class="pp-slot">' + icon(s.icon) + '</div>' +
-      '<div><h4>' + esc(s.name) + lvBadge + '</h4><small>' + sub + '<br><span class="mp">ใช้ MP ' + s.mp + '</span>' + bookLine + '</small></div>' +
-      btns + '</div>';
+
+    return '<div class="pp-skill pp-skill2" style="--ac:' + esc(accent) + '">' +
+      '<div class="pp-sicon">' + iconHtml + lvTag + '</div>' +
+      '<div class="pp-sbody">' +
+        '<div class="pp-shead"><h4>' + esc(s.name) + '</h4>' + lvBadge + clsTag + '</div>' +
+        '<div class="pp-chips">' + chips + '</div>' +
+        (bullets ? '<ul class="pp-sdesc">' + bullets + '</ul>' : '') +
+        nextLine + bookLine +
+      '</div>' +
+      '<div class="pp-sbtns">' + useBtn + upBtn + '</div>' +
+    '</div>';
   }
   var views = {
     status: function (d) {
@@ -146,7 +182,7 @@
   function ensure(name) {
     if (wins[name]) return wins[name];
     var w = document.createElement('div');
-    w.className = 'pp-win';
+    w.className = 'pp-win pp-win-' + name;
     w.innerHTML = '<div class="pp-head"><span class="pp-ico">' + meta[name].ico + '</span><h2>' + meta[name].title +
                   '</h2><button class="pp-x" aria-label="ปิด">✕</button></div><div class="pp-body"></div>';
     layer.appendChild(w);
