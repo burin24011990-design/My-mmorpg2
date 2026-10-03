@@ -17,12 +17,12 @@
 
   // ---- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----
   // dmg = พลังฐานของสกิล (ฮีล = (dmg x เลเวล + พลังโจมตี) x heal) | range = ระยะฮีลเดี่ยว / รัศมีวง
-  // ฮีลหมู่: atkMul = พลังโจมตีรวม (1.2 = +20%) | regen = รีเจนเลือดต่อวินาที (0.015 = 1.5% ของเลือดสูงสุด) | buffDur = เวลาบัพ (ms)
+  // ฮีลหมู่: atkMul = พลังโจมตีรวม (1.2 = +20%) | atkMs = เวลาบัพพลังโจมตี (ms) | regen = รีเจนเลือดต่อวินาที (0.015 = 1.5% ของเลือดสูงสุด) | buffDur = เวลารีเจนเลือด (ms)
   // พรแห่งลม: mul = ความเร็วเดิน (1.35 = +35%) | aspd = ความเร็วโจมตี (1.3 = ตีไวขึ้น 30%) | dur = เวลาบัพ (ms)
   SKILL_DEFS.pr_heal      = { name: 'ฮีลเดี่ยว',   class: 'priest', dmg: 24, range: 260, cd: 3000,  mp: 14, type: 'heal1',  heal: 2.5 };
   SKILL_DEFS.pr_smite     = { name: 'แสงพิพากษา', class: 'priest', dmg: 20, range: 130, cd: 3000,  mp: 18, type: 'holy' };
   SKILL_DEFS.pr_haste     = { name: 'พรแห่งลม',   class: 'priest', dmg: 0,  range: 320, cd: 25000, mp: 20, type: 'haste',  dur: 12000, mul: 1.35, aspd: 1.3 };
-  SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5, atkMul: 1.2, regen: 0.015, buffDur: 10000 };
+  SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5, atkMul: 1.2, atkMs: 5000, regen: 0.015, buffDur: 10000 };
   ULTI_DEFS.priest        = { name: 'แสงสวรรค์',  dmg: 70, range: 190, cd: ULTI_CD, mp: 50, type: 'pulti', heal: 2 };
   const PRIEST_IDS = ['pr_heal', 'pr_smite', 'pr_haste', 'pr_mass_heal'];
 
@@ -83,8 +83,9 @@
     if (!def.buffDur) return;
     const now = this.time.now;
     this.buffs = this.buffs || {};
-    this.buffs.bless = { until: now + def.buffDur, atkMul: def.atkMul || 1, regen: def.regen || 0, next: now + 1000 };
-    this.toastMsg('✨ พลังโจมตี +' + Math.round(((def.atkMul || 1) - 1) * 100) + '% และรีเจนเลือด นาน ' + (def.buffDur / 1000) + ' วิ');
+    const atkMs = def.atkMs || def.buffDur;
+    this.buffs.bless = { until: now + def.buffDur, atkUntil: now + atkMs, atkMul: def.atkMul || 1, regen: def.regen || 0, next: now + 1000 };
+    this.toastMsg('✨ พลังโจมตี +' + Math.round(((def.atkMul || 1) - 1) * 100) + '% นาน ' + (atkMs / 1000) + ' วิ • รีเจนเลือด นาน ' + (def.buffDur / 1000) + ' วิ');
   };
 
   // ---------- เอฟเฟกต์สกิล ----------
@@ -182,7 +183,7 @@
       const now = this.time.now, bs = this.buffs && this.buffs.bless;
       if (def.type === 'heal1' && hpR > 0.75) return;
       // ฮีลหมู่: บอทร่ายเมื่อเลือดต่ำ หรือเมื่อบัพพลังโจมตีหมดแล้ว
-      if (def.type === 'healaoe' && hpR > 0.75 && bs && now < bs.until) return;
+      if (def.type === 'healaoe' && hpR > 0.75 && bs && now < bs.atkUntil) return;
       if (def.type === 'haste' && this.buffs && this.buffs.haste && now < this.buffs.haste.until) return;
     }
     const key = 'slot' + idx, before = this.cdEnd[key];
@@ -238,7 +239,7 @@
     const orig = scene.damage;
     const wrapped = function (e, dmg) {
       const bl = this.buffs && this.buffs.bless;
-      if (bl && this.time.now < bl.until && typeof dmg === 'number' && e && e !== this.player) {
+      if (bl && this.time.now < bl.atkUntil && typeof dmg === 'number' && e && e !== this.player) {
         const a = Array.prototype.slice.call(arguments);
         a[1] = Math.round(dmg * bl.atkMul);
         return orig.apply(this, a);
@@ -294,7 +295,9 @@
         + ' (' + Math.ceil((b.until - time) / 1000) + 's)');
     }
     if (bl && time < bl.until) {
-      lines.push('✨ พลังโจมตี +' + Math.round((bl.atkMul - 1) * 100) + '% รีเจนเลือด (' + Math.ceil((bl.until - time) / 1000) + 's)');
+      const atkOn = time < bl.atkUntil;
+      lines.push('✨ ' + (atkOn ? 'พลังโจมตี +' + Math.round((bl.atkMul - 1) * 100) + '% (' + Math.ceil((bl.atkUntil - time) / 1000) + 's) ' : '')
+        + 'รีเจนเลือด (' + Math.ceil((bl.until - time) / 1000) + 's)');
     }
     this.buffText.setText(lines.join('\n'));
   };
@@ -320,7 +323,7 @@
     if (d.type === 'heal1') return 'ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP' + cd;
     if (d.type === 'healaoe') {
       return 'ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP • พลังโจมตี +' + Math.round(((d.atkMul || 1) - 1) * 100)
-        + '% • รีเจนเลือด ' + ((d.regen || 0) * 100).toFixed(1) + '%/วิ นาน ' + ((d.buffDur || 0) / 1000) + ' วิ' + cd;
+        + '% นาน ' + ((d.atkMs || d.buffDur || 0) / 1000) + ' วิ • รีเจนเลือด ' + ((d.regen || 0) * 100).toFixed(1) + '%/วิ นาน ' + ((d.buffDur || 0) / 1000) + ' วิ' + cd;
     }
     if (d.type === 'haste') {
       return 'ความเร็ว +' + Math.round((d.mul - 1) * 100) + '%'
