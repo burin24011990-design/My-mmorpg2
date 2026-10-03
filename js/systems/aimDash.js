@@ -130,6 +130,10 @@
       this.cancelTxt.setVisible(false);
       if (this.panel) return;
       if (a.cancel) return;
+      if (a.dragged) {                           // ลากวางเอง: ไม่ล็อกเป้าจนกว่าสกิลจะออกจริง
+        this._freeAimUntil = this.time.now + 900;
+        this.target = null;
+      }
 
       // ปุ่มแดช: ลาก = พุ่งตามทิศที่ลาก | แตะ/ยังอยู่ในปุ่ม = ทิศเดิม (จอยสติ๊ก/ทิศที่หันอยู่)
       if (a.kind === 'dash') { this.useDash(a.dragged ? { x: a.dx, y: a.dy } : null); return; }
@@ -246,6 +250,17 @@
       .lineBetween(a.cx - k, a.cy - k, a.cx + k, a.cy + k)
       .lineBetween(a.cx + k, a.cy - k, a.cx - k, a.cy + k);
     this.cancelTxt.setPosition(a.cx, a.cy + a.cr + 12).setVisible(true);
+  };
+
+  // ---------- ลากเล็งอิสระ: ระหว่างลาก (และช่วงร่าย) ไม่ล็อกศัตรู ----------
+  // ครอบ updateTargeting: ถ้ากำลังลากเล็ง หรืออยู่ในช่วงร่ายสกิลที่เพิ่งลากวาง จะเคลียร์เป้าทิ้ง
+  // เพื่อไม่ให้ระบบล็อกเป้าดึงจุดตก/ทิศของสกิลไปหาศัตรู (แตะเฉยๆ ยังล็อกเป้าตามปกติ)
+  const _updateTargeting = P.updateTargeting;
+  P.updateTargeting = function () {
+    const r = _updateTargeting ? _updateTargeting.apply(this, arguments) : undefined;
+    const a = this.aim;
+    if ((a && a.dragged) || this.time.now < (this._freeAimUntil || 0)) this.target = null;
+    return r;
   };
 
   // ---------- ปุ่มสกิล ----------
