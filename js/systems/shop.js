@@ -8,9 +8,10 @@ const POTION_USE_CD = 1000;   // ms คูลดาวน์การกิน�
 // แก้ราคา/ค่าต่างๆ ตรงนี้ได้เลย
 // heal: { hp, mp }  |  buff: { stat: 'atk'|'def'|'hp'|'mp', value, sec }
 const POTIONS = {
-  hp_s: { tab: 'heal', icon: '🧪', color: '#e0413a', name: 'ยาเลือดเล็ก',   price: 20,  desc: 'ฟื้น HP 50',   heal: { hp: 50 } },
-  hp_m: { tab: 'heal', icon: '🧪', color: '#ff6b5a', name: 'ยาเลือดกลาง',   price: 60,  desc: 'ฟื้น HP 150',  heal: { hp: 150 } },
-  hp_l: { tab: 'heal', icon: '🧪', color: '#ff9a8a', name: 'ยาเลือดใหญ่',   price: 160, desc: 'ฟื้น HP 400',  heal: { hp: 400 } },
+  // heal.hp = เปอร์เซ็นต์ของ Max HP (10 = ฟื้น 10%)
+  hp_s: { tab: 'heal', icon: '🧪', color: '#e0413a', name: 'ยาเลือดเล็ก',   price: 20,  desc: 'ฟื้น HP 10%',  heal: { hp: 10 } },
+  hp_m: { tab: 'heal', icon: '🧪', color: '#ff6b5a', name: 'ยาเลือดกลาง',   price: 60,  desc: 'ฟื้น HP 20%',  heal: { hp: 20 } },
+  hp_l: { tab: 'heal', icon: '🧪', color: '#ff9a8a', name: 'ยาเลือดใหญ่',   price: 160, desc: 'ฟื้น HP 30%',  heal: { hp: 30 } },
   // buff.value = เปอร์เซ็นต์ (10 = +10%)
   b_atk: { tab: 'buff', icon: '⚔️', color: '#e0413a', name: 'ยาพลังโจมตี',  price: 120, desc: 'ATK +10% นาน 60 วิ',    buff: { stat: 'atk', value: 10, sec: 60 } },
   b_def: { tab: 'buff', icon: '🛡️', color: '#c9a227', name: 'ยาเกราะแกร่ง', price: 100, desc: 'DEF +15% นาน 60 วิ',    buff: { stat: 'def', value: 15, sec: 60 } },
@@ -23,7 +24,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   let scene = null;
   let tab = 'heal';
   let lastUse = 0;
-  let panel, btn, strip, quick;
+  let panel, strip, quick;
 
   const now = () => Date.now();
   const toast = m => { if (scene && scene.toastMsg) scene.toastMsg(m); };
@@ -83,8 +84,9 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
       if (now() - lastUse < POTION_USE_CD) return;
       if (st.hp >= scene.maxHp()) { toast('HP เต็มอยู่แล้ว'); return; }
       takePotion(pid); lastUse = now();
-      st.hp = Math.min(scene.maxHp(), st.hp + p.heal.hp);
-      toast(p.name + ' ' + p.desc.replace('ฟื้น', '+'));
+      const amt = Math.ceil(scene.maxHp() * p.heal.hp / 100);
+      st.hp = Math.min(scene.maxHp(), st.hp + amt);
+      toast(p.name + ' +' + amt + ' HP');
     } else if (p.buff) {
       takePotion(pid);
       buffs[pid] = { until: now() + p.buff.sec * 1000 };
@@ -127,6 +129,41 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     return _loadStage.apply(this, arguments);
   };
 
+  // ---------- ปุ่มร้านค้าในแถบเมนูบนขวา (แถบนี้วาดด้วย Phaser ใน topbar.js) ----------
+  const _makeTopIcons = Main.prototype.makeTopIcons;
+  Main.prototype.makeTopIcons = function () {
+    _makeTopIcons.apply(this, arguments);
+    if (this.textures.exists('tb_shop')) return;
+    const g = this.make.graphics({ x: 0, y: 0, add: false });
+    g.fillStyle(0x6b4423); g.fillRect(15, 8, 10, 7);                 // ปากถุง
+    g.fillStyle(0x8f5a28); g.fillRoundedRect(8, 14, 24, 22, 9);      // ตัวถุง
+    g.fillStyle(0xb5763a); g.fillRoundedRect(8, 14, 24, 12, 7);
+    g.fillStyle(0xf2c94c); g.fillCircle(20, 26, 6.5);                // เหรียญ
+    g.fillStyle(0xc9a227); g.fillCircle(20, 26, 3.5);
+    g.lineStyle(2, 0x4a2c12); g.strokeRoundedRect(8, 14, 24, 22, 9);
+    g.generateTexture('tb_shop', 40, 40); g.destroy();
+  };
+
+  // จัดแถบใหม่ให้มี 8 ปุ่ม (เหมือนของเดิม + ร้านค้าท้ายแถว)
+  Main.prototype.setupTopBar = function () {
+    this.makeTopIcons();
+    const items = [
+      ['tb_bag',    'กระเป๋า',    0x2a4a2a, () => this.openInventory('bag'),   'bagBtn'],
+      ['tb_scroll', 'สกิล',       0x2a2a4a, () => this.openSkillBook(),        'bookBtn'],
+      ['tb_bot',    'บอท: ปิด',   0x4a3a2a, () => this.toggleAuto(),           'autoBtn'],
+      ['tb_gear',   'ตั้งค่าบอท', 0x4a3a4a, () => this.openBotPanel(),         'botCfgBtn'],
+      ['tb_shield', 'อุปกรณ์',    0x2a2a5a, () => this.openInventory('equip'), 'equipBtn'],
+      ['tb_map',    'เลือกด่าน',  0x2a4a5a, () => this.openStageSelect(),      'stageBtn'],
+      ['tb_chart',  'สเตตัส',     0x3a2a4a, () => this.openStatusPanel(),      'statusBtn'],
+      ['tb_shop',   'ร้านค้า',    0x5a3a1a, () => toggle(),                    'shopBtn'],
+    ];
+    let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
+    items.forEach(it => {
+      this[it[4]] = this.makeTopBtn(x, TB.top, TB.w, TB.h, it[0], it[1], it[2], it[3]);
+      x += TB.w + TB.gap;
+    });
+  };
+
   // 3) ให้กระเป๋า/ช่องไอเทมรู้จัก kind:'potion'
   const _itemLabel = itemLabel;
   itemLabel = function (it) {
@@ -161,10 +198,6 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   // ---------- UI ----------
   function initUI() {
     if (panel) return;
-    btn = document.createElement('button');
-    btn.id = 'shop-btn'; btn.textContent = '🛒';
-    btn.addEventListener('click', () => toggle());
-    document.body.appendChild(btn);
 
     quick = document.createElement('div'); quick.id = 'potion-quick';
     document.body.appendChild(quick);
@@ -191,6 +224,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   }
 
   function toggle(force) {
+    if (!panel) return;
     panel.hidden = force === undefined ? !panel.hidden : !force;
     if (!panel.hidden) render();
   }
