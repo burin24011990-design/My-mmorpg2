@@ -1,28 +1,54 @@
 /* ===== ร้านค้า / ยา / บัฟ ===== */
 /* ปุ่มร้านค้าอยู่ในแถบเมนูบน (shop.js) ส่วนไฟล์นี้คือหน้าต่างร้าน / ปุ่มกินยาด่วน / แถบบัฟ */
-#shop-panel, #potion-quick, #buff-strip, #shop-panel button {
+#shop-panel, #potion-quick, #potion-quick button, #shop-panel button {
   font-family: 'Mitr', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
+/* ช่องยาด่วนแนวตั้ง (ตำแหน่ง/ขนาดถูกตั้งจาก shop.js ให้ตรงกับกรอบเกม) */
 #potion-quick {
-  position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: 70px; z-index: 900;
-  display: flex; flex-direction: column; gap: 8px;
+  --qs: 46px;
+  position: fixed; left: 8px; top: 50%; z-index: 900;
+  display: flex; flex-direction: column; gap: calc(var(--qs) * .2);
 }
-#potion-quick button {
-  position: relative; width: 52px; height: 52px; border-radius: 12px; font-size: 26px;
-  background: rgba(38, 9, 15, .85); border: 2px solid #ffd45c; color: #fff; padding: 0;
+.qs {
+  --pc: #e0413a;
+  position: relative; width: var(--qs); height: var(--qs); padding: 0; overflow: hidden;
+  border-radius: 12px; border: 2px solid var(--pc);
+  background: linear-gradient(160deg, #3a1520 0%, #14070a 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .15);
+  color: #fff; transition: transform .08s;
 }
-#potion-quick small {
-  position: absolute; right: 3px; bottom: 1px; font-size: 12px; color: #ffe28a;
+.qs:active { transform: scale(.92); }
+.qs svg {
+  position: absolute; left: 50%; top: 55%; width: 62%; height: 62%;
+  transform: translate(-50%, -50%); filter: drop-shadow(0 1px 1px #000);
 }
-#buff-strip {
-  position: fixed; right: calc(8px + env(safe-area-inset-right)); top: 130px; z-index: 900;
-  display: flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 45vw; pointer-events: none;
+.qs-lab {
+  position: absolute; top: 2px; left: 0; right: 0; text-align: center; line-height: 1;
+  font-size: calc(var(--qs) * .2); color: #ffe28a; text-shadow: 0 0 3px #000;
 }
-#buff-strip .bf {
-  font-size: 12px; color: #fff; background: rgba(0, 0, 0, .7);
-  border: 1.5px solid #fff; border-radius: 8px; padding: 2px 6px;
+.qs-cnt {
+  position: absolute; right: 3px; bottom: 1px; font-weight: 500; line-height: 1.1;
+  font-size: calc(var(--qs) * .27); text-shadow: 0 0 3px #000, 0 0 3px #000;
 }
-#buff-strip .bf i { font-style: normal; color: #ffe28a; }
+.qs-fill {                       /* แถบเวลาบัฟที่เหลือ ไล่ลงจากบนลงล่าง */
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  background: var(--pc); opacity: .35; transition: height .5s linear;
+}
+.qs-time {
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  text-align: center; font-style: normal; font-size: calc(var(--qs) * .36); line-height: 1;
+  text-shadow: 0 0 4px #000, 0 0 4px #000;
+}
+.qs.on { box-shadow: 0 0 10px var(--pc), inset 0 0 8px rgba(255, 255, 255, .25); }
+.qs.on svg { opacity: .55; }
+.qs.empty { border-color: #5a4a2a; }
+.qs.empty svg { opacity: .3; filter: grayscale(.7); }
+.qs.empty .qs-cnt { color: #ffd45c; font-size: calc(var(--qs) * .34); }
+.qs.cd::after {                  /* คูลดาวน์กินยา */
+  content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .55);
+  transform-origin: top; animation: qscd var(--cd, 1s) linear forwards;
+}
+@keyframes qscd { from { transform: scaleY(1); } to { transform: scaleY(0); } }
 
 #shop-panel {
   position: fixed; z-index: 9000; left: 50%; top: 50%; transform: translate(-50%, -50%);
