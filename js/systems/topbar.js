@@ -1,0 +1,95 @@
+// ===== แถบเมนูด้านบน (ไอคอนวาดเอง) =====
+const TB = { w: 50, h: 46, gap: 5, top: 8 };
+
+Main.prototype.makeTopIcons = function () {
+  if (this.textures.exists('tb_bag')) return;
+  const g = this.make.graphics({ x: 0, y: 0, add: false });
+  const mk = (key, fn) => { g.clear(); fn(g); g.generateTexture(key, 40, 40); };
+
+  mk('tb_bag', g => {
+    g.lineStyle(3, 0x6b4423); g.beginPath(); g.arc(20, 12, 7, Math.PI, 0, false); g.strokePath();
+    g.fillStyle(0xb5763a); g.fillRoundedRect(7, 12, 26, 24, 6);
+    g.fillStyle(0x8f5a28); g.fillRoundedRect(7, 12, 26, 10, 5);
+    g.fillStyle(0xf2c94c); g.fillRect(17, 19, 6, 7);
+    g.lineStyle(2, 0x4a2c12); g.strokeRoundedRect(7, 12, 26, 24, 6);
+  });
+  mk('tb_scroll', g => {
+    g.fillStyle(0xf3e2b3); g.fillRect(9, 8, 22, 24);
+    g.fillStyle(0xd9b36a); g.fillRoundedRect(6, 5, 28, 6, 3); g.fillRoundedRect(6, 29, 28, 6, 3);
+    g.fillStyle(0x8a6a32); [14, 19, 24].forEach(y => g.fillRect(12, y, 16, 2));
+  });
+  mk('tb_bot', g => {
+    g.fillStyle(0x8fb4d9); g.fillRoundedRect(8, 12, 24, 20, 5);
+    g.fillRect(5, 18, 3, 8); g.fillRect(32, 18, 3, 8); g.fillRect(19, 6, 2, 6);
+    g.fillStyle(0xe04040); g.fillCircle(20, 5, 3);
+    g.fillStyle(0x1a2a3a); g.fillCircle(15, 21, 3.5); g.fillCircle(25, 21, 3.5); g.fillRect(14, 27, 12, 2);
+  });
+  mk('tb_shield', g => {
+    g.fillStyle(0x5a7fc4); g.beginPath();
+    g.moveTo(20, 4); g.lineTo(34, 9); g.lineTo(33, 22); g.lineTo(20, 36); g.lineTo(7, 22); g.lineTo(6, 9);
+    g.closePath(); g.fillPath();
+    g.fillStyle(0x8fb0ea); g.beginPath();
+    g.moveTo(20, 8); g.lineTo(20, 31); g.lineTo(10, 21); g.lineTo(10, 12); g.closePath(); g.fillPath();
+    g.lineStyle(2, 0x1d2f5a); g.strokePath();
+  });
+  mk('tb_map', g => {
+    g.fillStyle(0x9bd6b0); g.fillRect(6, 10, 9, 22); g.fillRect(25, 10, 9, 22);
+    g.fillStyle(0x6fb88e); g.fillRect(15, 8, 10, 22);
+    g.lineStyle(3, 0xe04040); g.lineBetween(17, 15, 23, 22); g.lineBetween(23, 15, 17, 22);
+  });
+  mk('tb_chart', g => {
+    g.fillStyle(0x5ec26a); g.fillRect(8, 22, 6, 12);
+    g.fillStyle(0xf2c94c); g.fillRect(17, 14, 6, 20);
+    g.fillStyle(0xe06060); g.fillRect(26, 7, 6, 27);
+    g.fillStyle(0xcccccc); g.fillRect(6, 34, 28, 2);
+  });
+  mk('tb_gear', g => {
+    g.fillStyle(0xb8c0cc);
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      g.fillCircle(20 + Math.cos(a) * 13, 20 + Math.sin(a) * 13, 4);
+    }
+    g.fillCircle(20, 20, 12);
+    g.fillStyle(0x3a2a3a); g.fillCircle(20, 20, 5);
+    g.lineStyle(2, 0x5a6270); g.strokeCircle(20, 20, 12);
+  });
+  g.destroy();
+};
+
+Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick) {
+  const cx = x + w / 2, cy = y + h / 2;
+  const bg = this.add.graphics().setScrollFactor(0).setDepth(98);
+  const draw = (down) => {
+    bg.clear();
+    bg.fillStyle(color, down ? 1 : 0.92); bg.fillRoundedRect(x, y, w, h, 8);
+    bg.fillStyle(0xffffff, down ? 0.05 : 0.14); bg.fillRoundedRect(x + 2, y + 2, w - 4, h * 0.4, 6);
+    bg.lineStyle(2, down ? 0xffe28a : 0x8a6a32, 1); bg.strokeRoundedRect(x, y, w, h, 8);
+  };
+  draw(false);
+  const c = this.add.rectangle(cx, cy, w, h, color, 0.01).setScrollFactor(0).setDepth(99).setInteractive();
+  const icon = this.add.image(cx, cy - 6, iconKey).setDisplaySize(26, 26).setScrollFactor(0).setDepth(101);
+  const t = this.add.text(cx, y + h - 9, label, { fontFamily: 'Mitr, sans-serif', fontSize: '9px', color: '#fff', stroke: '#000', strokeThickness: 3 })
+    .setOrigin(0.5).setScrollFactor(0).setDepth(101);
+  c.on('pointerdown', () => { draw(true); onClick(); });
+  c.on('pointerup', () => draw(false));
+  c.on('pointerout', () => draw(false));
+  return { c, t, bg, icon };
+};
+
+Main.prototype.setupTopBar = function () {
+  this.makeTopIcons();
+  const items = [
+    ['tb_bag',    'กระเป๋า',    0x2a4a2a, () => this.openInventory('bag'),   'bagBtn'],
+    ['tb_scroll', 'สกิล',       0x2a2a4a, () => this.openSkillBook(),        'bookBtn'],
+    ['tb_bot',    'บอท: ปิด',   0x4a3a2a, () => this.toggleAuto(),           'autoBtn'],
+    ['tb_gear',   'ตั้งค่าบอท', 0x4a3a4a, () => this.openBotPanel(),         'botCfgBtn'],
+    ['tb_shield', 'อุปกรณ์',    0x2a2a5a, () => this.openInventory('equip'), 'equipBtn'],
+    ['tb_map',    'เลือกด่าน',  0x2a4a5a, () => this.openStageSelect(),      'stageBtn'],
+    ['tb_chart',  'สเตตัส',     0x3a2a4a, () => this.openStatusPanel(),      'statusBtn'],
+  ];
+  let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
+  items.forEach(it => {
+    this[it[4]] = this.makeTopBtn(x, TB.top, TB.w, TB.h, it[0], it[1], it[2], it[3]);
+    x += TB.w + TB.gap;
+  });
+};
