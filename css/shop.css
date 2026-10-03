@@ -1,0 +1,62 @@
+/* ===== ร้านค้า / ยา / บัฟ ===== */
+/* ปรับตำแหน่งปุ่มได้ตรง top/left ถ้าชนกับ HUD เดิม */
+#shop-btn, #shop-panel, #potion-quick, #buff-strip, #shop-panel button {
+  font-family: 'Mitr', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+#shop-btn {
+  position: fixed; left: calc(8px + env(safe-area-inset-left)); top: 90px; z-index: 900;
+  width: 46px; height: 46px; border-radius: 12px; font-size: 24px;
+  background: #26090f; border: 2px solid #ffd45c; color: #fff;
+}
+#potion-quick {
+  position: fixed; left: calc(8px + env(safe-area-inset-left)); bottom: 70px; z-index: 900;
+  display: flex; flex-direction: column; gap: 8px;
+}
+#potion-quick button {
+  position: relative; width: 52px; height: 52px; border-radius: 12px; font-size: 26px;
+  background: rgba(38, 9, 15, .85); border: 2px solid #ffd45c; color: #fff; padding: 0;
+}
+#potion-quick small {
+  position: absolute; right: 3px; bottom: 1px; font-size: 12px; color: #ffe28a;
+}
+#buff-strip {
+  position: fixed; left: calc(60px + env(safe-area-inset-left)); top: 90px; z-index: 900;
+  display: flex; flex-wrap: wrap; gap: 4px; max-width: 45vw; pointer-events: none;
+}
+#buff-strip .bf {
+  font-size: 12px; color: #fff; background: rgba(0, 0, 0, .7);
+  border: 1.5px solid #fff; border-radius: 8px; padding: 2px 6px;
+}
+#buff-strip .bf i { font-style: normal; color: #ffe28a; }
+
+#shop-panel {
+  position: fixed; z-index: 9000; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(420px, 92vw); max-height: 88vh; display: flex; flex-direction: column;
+  background: #1a0a0e; border: 2px solid #ffd45c; border-radius: 14px; color: #fff; overflow: hidden;
+}
+#shop-panel[hidden] { display: none; }
+.sp-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #26090f; font-size: 16px; }
+.sp-head .sp-gold { margin-left: auto; color: #ffe28a; }
+.sp-head button { background: none; border: 0; color: #fff; font-size: 20px; padding: 4px 8px; }
+.sp-tabs { display: flex; }
+.sp-tabs button {
+  flex: 1; padding: 8px 0; font-size: 14px; background: #120609; color: #aaa; border: 0; border-bottom: 2px solid transparent;
+}
+.sp-tabs button.on { color: #ffe28a; border-bottom-color: #ffd45c; background: #1a0a0e; }
+.sp-list { overflow-y: auto; touch-action: pan-y; padding: 6px; }
+.sp-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px; margin-bottom: 6px;
+  background: #26090f; border-radius: 10px;
+}
+.sp-ico {
+  width: 42px; height: 42px; flex: none; display: flex; align-items: center; justify-content: center;
+  font-size: 24px; border: 2px solid #888; border-radius: 10px; background: #120609;
+}
+.sp-info { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.sp-info b { font-size: 14px; font-weight: 500; }
+.sp-info small { font-size: 11px; color: #bbb; }
+.sp-btns { display: flex; gap: 4px; flex: none; }
+.sp-btns button { min-width: 48px; padding: 5px 6px; border-radius: 8px; border: 0; font-size: 12px; line-height: 1.2; color: #fff; }
+.sp-buy { background: #b8860b; }
+.sp-use { background: #2e7d4f; }
+.sp-btns button.off { opacity: .35; }
