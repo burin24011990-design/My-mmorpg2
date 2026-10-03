@@ -4,8 +4,8 @@
 
 const ROV = {
   ax: W - 150, ay: H - 120,      // ศูนย์กลางปุ่มโจมตี (ยิ่งลบมาก ยิ่งเข้ามาจากขอบขวา/ล่าง)
-  attackR: 52, skillR: 30, ultiR: 38,
-  ring: 165,                     // รัศมีโค้ง (ยิ่งมากปุ่มยิ่งห่างกัน)
+  attackR: 52, skillR: 38, ultiR: 38,   // ปุ่มสกิลกับอัลติขนาดเท่ากัน
+  ring: 185,                     // รัศมีโค้ง (ยิ่งมากปุ่มยิ่งห่างกัน)
   startDeg: 170, stepDeg: 30,    // ปุ่มแรกที่ 170° แล้วไล่ขึ้นด้านบนทีละ 30°
 };
 
@@ -68,7 +68,7 @@ Main.prototype.rovPos = function (i) {
 Main.prototype.setupButtons = function () {
   // แถบโค้งจาง ๆ รองใต้ปุ่มทั้งหมด
   const deco = this.add.graphics().setScrollFactor(0).setDepth(99);
-  deco.lineStyle(80, 0xffffff, 0.07);
+  deco.lineStyle(92, 0xffffff, 0.07);
   deco.beginPath();
   deco.arc(ROV.ax, ROV.ay, ROV.ring, Phaser.Math.DegToRad(155), Phaser.Math.DegToRad(305), false);
   deco.strokePath();
