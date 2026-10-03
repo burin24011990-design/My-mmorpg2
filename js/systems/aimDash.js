@@ -26,6 +26,7 @@
   window.DIR_CFG = DIR_CFG; window.DIR_ULTI = DIR_ULTI;
   const AIM_DRAG_MIN = 14;    // ลากน้อยกว่านี้ถือว่าแตะ = ตกที่มอนที่ล็อก
   const AIM_DRAG_MAX = 110;   // ลากไกลเท่านี้ = ระยะสูงสุด
+  const HOLD_MS = 220;        // กดค้างนานกว่านี้ = เล็งอิสระ (ไม่ล็อกมอน) | ปล่อยโดยไม่ลาก = ลงที่ตัวเอง/ทิศที่หันอยู่
   const CANCEL_DX = -270;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี (ลบ = ไปทางซ้าย)
   const CANCEL_DY = -210;     // (ลบ = ขึ้นด้านบน) ยิ่งค่ามากยิ่งห่างจากปุ่มสกิล
   const CANCEL_R = 30;        // รัศมีปุ่ม ✕ (พื้นที่รับนิ้วกว้างกว่านี้อีก 10)
@@ -96,6 +97,17 @@
   };
 
   // ---------- ระบบลากเล็ง ----------
+  // กดค้างโดยไม่ขยับ: จุดตก = ที่ตัวเอง (ratio 0) | ทิศ = ทิศที่หันอยู่
+  P.aimHoldInit = function (a) {
+    a.dragged = true; a.ratio = 0;
+    const f = this.facing;
+    const l = f ? Math.hypot(f.x, f.y) : 0;
+    if (l > 0.001) { a.dx = f.x / l; a.dy = f.y / l; } else { a.dx = 1; a.dy = 0; }
+  };
+  P.aimHoldCheck = function (a) {
+    if (!a.dragged && this.time.now - a.t0 >= HOLD_MS) this.aimHoldInit(a);
+  };
+
   P.initAim = function () {
     if (this._aimInit) return;
     this._aimInit = true;
@@ -112,10 +124,14 @@
       // ลากเกิน AIM_DRAG_MIN = เล็งอิสระตามนิ้วเสมอ (ไม่ล็อกเป้า) แม้นิ้วยังอยู่ในวงปุ่มสกิล
       // ปล่อยแล้วใช้สกิลตามทิศ/จุดที่ลาก ไม่ยกเลิก (ยกเลิกเฉพาะบนปุ่ม ✕)
       a.inBtn = Math.hypot(p.x - a.bx, p.y - a.by) < a.br;
-      a.dragged = len >= AIM_DRAG_MIN;
-      if (a.dragged && len > 0.001) {
-        a.dx = vx / len; a.dy = vy / len;
-        a.ratio = Math.min(len / AIM_DRAG_MAX, 1);
+      // กดค้างเกิน HOLD_MS ถือว่าเล็งอิสระแล้ว (ปล่อยทันทีโดยไม่ขยับ = ลงที่ตัวเอง ไม่ล็อกมอน)
+      const held = this.time.now - a.t0 >= HOLD_MS;
+      a.dragged = len >= AIM_DRAG_MIN || held;
+      if (a.dragged) {
+        if (len >= 2) {
+          a.dx = vx / len; a.dy = vy / len;
+          a.ratio = Math.min(len / AIM_DRAG_MAX, 1);
+        } else { this.aimHoldInit(a); }
       }
       // ยกเลิกเฉพาะตอนนิ้วอยู่บนปุ่ม ✕ เท่านั้น (ลากไปที่ไหนก็ได้ นอกจาก ✕ = ใช้สกิล)
       a.overX = Math.hypot(p.x - a.cx, p.y - a.cy) < a.cr + 10;
@@ -131,6 +147,7 @@
       this.cancelTxt.setVisible(false);
       if (this.panel) return;
       if (a.cancel) return;
+      this.aimHoldCheck(a);                      // กดค้างโดยไม่ขยับ = เล็งอิสระ (ลงที่ตัวเอง)
       if (a.dragged) {                           // ลากวางเอง: ไม่ล็อกเป้าจนกว่าสกิลจะออกจริง
         this._freeAimUntil = this.time.now + 900;
         this.target = null;
@@ -198,7 +215,7 @@
       idx: idx, def: def, cfg: cfg, clsKey: clsKey, pid: pointer.id,
       sx: pointer.x, sy: pointer.y, bx: btn.c.x, by: btn.c.y, br: btn.c.radius,
       cx: base.ax + CANCEL_DX, cy: Math.max(40, base.ay + CANCEL_DY), cr: CANCEL_R,
-      dragged: false, inBtn: true, dx: 0, dy: 0, ratio: 0, cancel: false, overX: false,
+      t0: now, dragged: false, inBtn: true, dx: 0, dy: 0, ratio: 0, cancel: false, overX: false,
     };
   };
 
@@ -209,6 +226,7 @@
     const a = this.aim;
     if (!a) { this.cancelTxt.setVisible(false); return; }
     if (this.panel) { this.aim = null; this.cancelTxt.setVisible(false); return; }
+    this.aimHoldCheck(a);   // กดค้างเกิน HOLD_MS = เข้าโหมดเล็งอิสระ
 
     const p = this.player;
     const baseCol = a.color || (a.clsKey && CLASSES[a.clsKey] ? CLASSES[a.clsKey].color : 0xffffff);
@@ -260,7 +278,8 @@
   P.updateTargeting = function () {
     const r = _updateTargeting ? _updateTargeting.apply(this, arguments) : undefined;
     const a = this.aim;
-    if ((a && a.dragged) || this.time.now < (this._freeAimUntil || 0)) this.target = null;
+    const free = a && (a.dragged || this.time.now - a.t0 >= HOLD_MS);
+    if (free || this.time.now < (this._freeAimUntil || 0)) this.target = null;
     return r;
   };
 
