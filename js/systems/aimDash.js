@@ -26,8 +26,8 @@
   window.DIR_CFG = DIR_CFG; window.DIR_ULTI = DIR_ULTI;
   const AIM_DRAG_MIN = 14;    // ลากน้อยกว่านี้ถือว่าแตะ = ตกที่มอนที่ล็อก
   const AIM_DRAG_MAX = 110;   // ลากไกลเท่านี้ = ระยะสูงสุด
-  const CANCEL_DX = -110;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี
-  const CANCEL_DY = -200;
+  const CANCEL_DX = -270;     // ตำแหน่งปุ่ม ✕ เทียบกับศูนย์กลางปุ่มโจมตี (ลบ = ไปทางซ้าย)
+  const CANCEL_DY = -210;     // (ลบ = ขึ้นด้านบน) ยิ่งค่ามากยิ่งห่างจากปุ่มสกิล
   const CANCEL_R = 30;        // รัศมีปุ่ม ✕ (พื้นที่รับนิ้วกว้างกว่านี้อีก 10)
   const DASH_CD = 20000;      // คูลดาวน์แดช 20 วิ
   const DASH_DIST = 170;
@@ -109,15 +109,16 @@
       const a = this.aim;
       if (!a || p.id !== a.pid) return;
       const vx = p.x - a.sx, vy = p.y - a.sy, len = Math.hypot(vx, vy);
-      if (!a.dragged && len >= AIM_DRAG_MIN) a.dragged = true;
+      // นิ้วยังอยู่ในวงปุ่มสกิลเดิม = ถือว่ายังไม่ได้ลาก (ปล่อยแล้วใช้สกิลได้ตามปกติ ไม่ยกเลิก)
+      a.inBtn = Math.hypot(p.x - a.bx, p.y - a.by) < a.br;
+      a.dragged = len >= AIM_DRAG_MIN && !a.inBtn;
       if (a.dragged && len > 0.001) {
         a.dx = vx / len; a.dy = vy / len;
         a.ratio = Math.min(len / AIM_DRAG_MAX, 1);
       }
-      // ยกเลิก: นิ้วอยู่บนปุ่ม ✕ หรือลากกลับมาบนปุ่มสกิลเดิม
-      a.overX = a.dragged && Math.hypot(p.x - a.cx, p.y - a.cy) < a.cr + 10;
-      const overBtn = a.dragged && Math.hypot(p.x - a.bx, p.y - a.by) < a.br;
-      a.cancel = a.overX || overBtn;
+      // ยกเลิกเฉพาะตอนนิ้วอยู่บนปุ่ม ✕ เท่านั้น (ลากไปที่ไหนก็ได้ นอกจาก ✕ = ใช้สกิล)
+      a.overX = Math.hypot(p.x - a.cx, p.y - a.cy) < a.cr + 10;
+      a.cancel = a.overX;
     });
 
     const fin = p => {
@@ -128,12 +129,12 @@
       this.cancelGfx.clear();
       this.cancelTxt.setVisible(false);
       if (this.panel) return;
-      if (a.dragged && a.cancel) return;
+      if (a.cancel) return;
 
-      // ปุ่มแดช: ลาก = พุ่งตามทิศที่ลาก | แตะ = ทิศเดิม (จอยสติ๊ก/ทิศที่หันอยู่)
+      // ปุ่มแดช: ลาก = พุ่งตามทิศที่ลาก | แตะ/ยังอยู่ในปุ่ม = ทิศเดิม (จอยสติ๊ก/ทิศที่หันอยู่)
       if (a.kind === 'dash') { this.useDash(a.dragged ? { x: a.dx, y: a.dy } : null); return; }
 
-      // สกิล/อัลติแบบเลือกทิศ: ลาก = ใช้ตามทิศที่ลาก | แตะ = ใช้แบบเดิม (หาเป้า/ทิศที่หันอยู่)
+      // สกิล/อัลติแบบเลือกทิศ: ลาก = ใช้ตามทิศที่ลาก | แตะ/ยังอยู่ในปุ่ม = ใช้แบบเดิม (หาเป้า/ทิศที่หันอยู่)
       if (a.dir) {
         let gp = null;
         if (a.dragged) {
@@ -192,7 +193,7 @@
       idx: idx, def: def, cfg: cfg, clsKey: clsKey, pid: pointer.id,
       sx: pointer.x, sy: pointer.y, bx: btn.c.x, by: btn.c.y, br: btn.c.radius,
       cx: base.ax + CANCEL_DX, cy: Math.max(40, base.ay + CANCEL_DY), cr: CANCEL_R,
-      dragged: false, dx: 0, dy: 0, ratio: 0, cancel: false, overX: false,
+      dragged: false, inBtn: true, dx: 0, dy: 0, ratio: 0, cancel: false, overX: false,
     };
   };
 
