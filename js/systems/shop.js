@@ -303,6 +303,31 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     }
   }
 
+  // ---------- ซ่อนช่องยาเมื่อมีหน้าต่างอื่นเปิดอยู่ (กระเป๋า, อุปกรณ์, ร้านค้า ฯลฯ) ----------
+  // ตรวจจากสิ่งที่ "อยู่บนสุด" ตรงจุดกลางๆ ของจอ ถ้าไม่ใช่ตัวเกม (canvas) แปลว่ามีหน้าต่างทับอยู่
+  function overlayOpen() {
+    if (panel && !panel.hidden) return true;
+    const cv = document.querySelector('canvas');
+    if (!cv) return false;
+    const r = cv.getBoundingClientRect();
+    if (!r.width) return false;
+    const pts = [[.5, .5], [.3, .5], [.7, .5], [.5, .3], [.5, .7]];
+    for (let i = 0; i < pts.length; i++) {
+      const el = document.elementFromPoint(r.left + r.width * pts[i][0], r.top + r.height * pts[i][1]);
+      if (!el || el === cv || el === document.body || el === document.documentElement || el.id === 'ui-layer') continue;
+      if ((quick && quick.contains(el)) || (quickR && quickR.contains(el))) continue;
+      if (el.closest && el.closest('#err-box, #cloud-toast')) continue;
+      return true;
+    }
+    return false;
+  }
+  function syncQuickVisibility() {
+    if (!quick || !quickR) return;
+    const hide = overlayOpen();
+    quick.classList.toggle('hide', hide);
+    quickR.classList.toggle('hide', hide);
+  }
+
   // ---------- UI ----------
   function initUI() {
     if (panel) return;
@@ -326,6 +351,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     });
 
     setInterval(tick, 500);
+    setInterval(syncQuickVisibility, 120);
     tick();
   }
 
