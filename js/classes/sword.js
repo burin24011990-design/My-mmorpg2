@@ -1,11 +1,11 @@
 // ===== อาชีพดาบ (sword) — แก้ความสามารถสกิลของดาบที่ไฟล์นี้ =====
 // ฟันตรง (sw_slash)          | สกิลเริ่มต้น ฟันเป็นแนวสี่เหลี่ยม (ยาว range กว้าง halfW*2) + เพิ่มพลังโจมตีชั่วคราว (เป็น %)
-// สกิล 1 พุ่งทะยาน (sw_dash)  | พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง | บล็อกการโจมตี 1 ครั้ง (2 วิ) | ลากเลือกทิศได้
+// สกิล 1 พุ่งทะยาน (sw_dash)  | พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง | บล็อกการโจมตี 1 ครั้ง (3 วิ) | ลากเลือกทิศได้
 // สกิล 2 ฟันสตั้น   (sw_cross) | ฟันตรงด้านหน้าเป็นแนวกว้าง สตั้นมอน | ลากเลือกทิศได้
-// สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง 2 ครั้ง + เพิ่มเกราะ (เป็น %) + บล็อกการโจมตี 1 ครั้ง (2 วิ)
+// สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง 2 ครั้ง + เพิ่มเกราะ (เป็น %) + บล็อกการโจมตี 1 ครั้ง (3 วิ)
 // อัลติ  ดาบสังหาร           | ฟันตรงเป็นแนวกว้างมาก สตั้นมอน | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
 // dmg = ค่าฐาน | range = ระยะ (ฟันตรง = ความยาว, ฟันหมุน = รัศมี) | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
-// blockMs = บล็อกการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (2000 = 2 วิ)
+// blockMs = บล็อกการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (3000 = 3 วิ)
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส
 (function () {
   const Classes = window.Classes;
@@ -40,7 +40,7 @@
   // สกิล 1: พุ่งทะยาน (แบบกลุ่ม) — พุ่งทะลวงระยะ range ตีทุกตัวที่อยู่ในแนวทางพุ่ง กว้าง pathW*2 | บล็อก 1 ครั้ง blockMs
   Classes.skill('sw_dash', {
     name: 'พุ่งทะยาน', class: 'sword', type: 'dash', noInfo: true,
-    dmg: 16, range: 150, cd: 3600, mp: 14, pathW: 55, blockMs: 2000,
+    dmg: 16, range: 150, cd: 3600, mp: 14, pathW: 55, blockMs: 3000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
@@ -48,20 +48,21 @@
   });
 
   // สกิล 2: ฟันสตั้น — ฟันตรงด้านหน้า ยาว range กว้าง halfW*2 | สตั้น stunMs มิลลิวินาที
+  // healPct = ฟื้นเลือดทันทีที่ใช้ เป็น % ของ HP สูงสุด (0.4 = 40%)
   Classes.skill('sw_cross', {
     name: 'ฟันสตั้น', class: 'sword', type: 'sstun', noInfo: true,
-    dmg: 22, range: 200, halfW: 50, cd: 4000, mp: 14, stunMs: 1500,
+    dmg: 22, range: 260, halfW: 80, cd: 4000, mp: 14, stunMs: 1500, healPct: 0.4,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ฟันตรงด้านหน้าเป็นแนวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' สตั้น ' + (def.stunMs / 1000) + ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' สตั้น ' + (def.stunMs / 1000) + ' วิ • ฟื้นเลือด ' + Math.round(def.healPct * 100) + '% ของ HP สูงสุด • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // สกิล 3: ฟันหมุน — ฟันรอบตัวรัศมี range จำนวน spins ครั้ง ห่างกัน spinGap มิลลิวินาที (ดาเมจต่อครั้ง = dmg)
   // เพิ่มเกราะ armorPct (0.3 = +30%) นาน armorMs มิลลิวินาที | บล็อก 1 ครั้ง blockMs
   Classes.skill('sw_spin', {
     name: 'ฟันหมุน', class: 'sword', type: 'sspin', noInfo: true,
-    dmg: 18, range: 150, cd: 5000, mp: 18, spins: 2, spinGap: 350, armorPct: 0.3, armorMs: 6000, blockMs: 2000,
+    dmg: 18, range: 150, cd: 5000, mp: 18, spins: 2, spinGap: 350, armorPct: 0.3, armorMs: 6000, blockMs: 3000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ฟันรอบตัววงกว้าง ' + def.spins + ' ครั้ง ครั้งละ ≈' + Classes.power(def.id, def, lv, S) +
@@ -71,7 +72,7 @@
 
   // อัลติ ดาบสังหาร — ฟันตรงยาว range กว้าง halfW*2 | สตั้น stunMs | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
   Classes.ulti('sword', {
-    name: 'ดาบสังหาร', dmg: 70, range: 240, halfW: 85, cd: SWORD_ULTI_CD, mp: 50, type: 'sult', stunMs: 2000,
+    name: 'ดาบสังหาร', dmg: 70, range: 300, halfW: 130, cd: SWORD_ULTI_CD, mp: 50, type: 'sult', stunMs: 2000,
   }, { scale: { patk: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(SW_IDS);
@@ -261,6 +262,12 @@
 
   Classes.handlers.sstun = function (def, x, y, dmg, fx, fy) {
     slashBox(this, def, dmg, fx, fy, 0xffd45e, true);
+    // ฟื้นเลือดอย่างมากทันทีที่ใช้ (% ของ HP สูงสุด)
+    if (def.healPct && this.healPlayer) {
+      const amt = Math.round(this.maxHp() * def.healPct);
+      this.healPlayer(amt);
+      this.popText(this.player.x, this.player.y - 62, '💚 +' + amt, '#7dff9b');
+    }
   };
 
   // ฟันหมุน: ฟันรอบตัวหลายครั้ง (spins) | ครั้งแรกเพิ่มเกราะ + บล็อก + นัดต่อไปเรียกตัวเองซ้ำเพื่อให้ภาพหมุนเล่นใหม่ทุกครั้ง
