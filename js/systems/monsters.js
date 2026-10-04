@@ -23,6 +23,12 @@ const BOSS_SPEED = 130;            // ความเร็วบอส (มอ�
 const BOSS_TELEPORT_MIN_MINUTES = 5;   // บอสวาปย้ายที่ทุก 5-10 นาที (สุ่ม)
 const BOSS_TELEPORT_MAX_MINUTES = 10;
 const RANGED_SHOT_SCALE = 2.2;     // ขนาดลูกกระสุนมอนยิงไกล (ใหญ่ขึ้น = โดนง่ายขึ้น)
+// ชื่อมอน + หลอดเลือด (ปรับตรงนี้)
+const NAME_SIZE_NORMAL = '15px';   // ขนาดชื่อมอนธรรมดา/ยิงไกล
+const NAME_SIZE_EPIC = '17px';     // ขนาดชื่อ Epic
+const NAME_SIZE_BOSS = '19px';     // ขนาดชื่อมินิบอส
+const HPBAR_ONLY_WHEN_HURT = false; // true = โชว์หลอดเลือดเฉพาะตอนมอนเสียเลือดแล้ว
+const HPBAR_W_NORMAL = 50, HPBAR_W_EPIC = 66, HPBAR_W_BOSS = 90;   // ความกว้างหลอด (px)
 
 Object.assign(Main.prototype, {
   // โหลดด่าน: ล้างของเก่า วาดพื้นใหม่ สร้างพุ่ม/หิน เสกมอนของด่านนี้เท่านั้น
@@ -99,7 +105,7 @@ Object.assign(Main.prototype, {
     e.aggro = ranged ? 350 : 130; e.lose = ranged ? 480 : 320; e.leash = 450;
     e.speed = 70; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
-    this.initEnemyCommon(e, zi, pt, ranged ? '#ffb070' : '#ffe066', def.name + ' Lv.' + lv, '10px');
+    this.initEnemyCommon(e, zi, pt, ranged ? '#ffb070' : '#ffe066', def.name + ' Lv.' + lv, NAME_SIZE_NORMAL);
     return e;
   },
 
@@ -117,7 +123,7 @@ Object.assign(Main.prototype, {
     e.speed = BOSS_SPEED; e.hitRange = 40 * def.scale; e.nextShot = 0;
     e.nextTeleport = this.time.now + Phaser.Math.Between(BOSS_TELEPORT_MIN_MINUTES * 60000, BOSS_TELEPORT_MAX_MINUTES * 60000);
     e.setScale(def.scale);
-    this.initEnemyCommon(e, zi, pt, '#ff8888', '👑 ' + def.name + ' Lv.' + lv, '12px');
+    this.initEnemyCommon(e, zi, pt, '#ff8888', '👑 ' + def.name + ' Lv.' + lv, NAME_SIZE_BOSS);
     return e;
   },
 
@@ -138,7 +144,7 @@ Object.assign(Main.prototype, {
     e.speed = 75; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
     e._tint = 0xff66ff; e.setTint(0xff66ff);
-    this.initEnemyCommon(e, zi, pt, '#d98cff', '💎 ' + def.name + ' Lv.' + lv, '11px');
+    this.initEnemyCommon(e, zi, pt, '#d98cff', '💎 ' + def.name + ' Lv.' + lv, NAME_SIZE_EPIC);
     return e;
   },
 
@@ -167,7 +173,14 @@ Object.assign(Main.prototype, {
     e.wanderX = pt.x; e.wanderY = pt.y; e.nextWander = 0;
     e.atkUntil = 0; e.animState = '';
     if (e.def && e.def.hasSheet) e.play(e.def.key + '_idle');
-    e.levelText = this.add.text(pt.x, pt.y - 22 * ((e.def && e.def.scale) || 1), label, { fontSize, color, fontStyle: e.isBoss ? 'bold' : 'normal' }).setOrigin(0.5).setDepth(40);
+    const sc = (e.def && e.def.scale) || 1;
+    e.labelOff = (e.isBoss ? 46 : 30) * sc;              // ระยะชื่อเหนือตัวมอน (หลอดเลือดอยู่ใต้ชื่อ)
+    e.levelText = this.add.text(pt.x, pt.y - e.labelOff, label, {
+      fontFamily: 'Mitr, sans-serif', fontSize, color, fontStyle: e.isBoss ? 'bold' : 'normal',
+      stroke: '#000000', strokeThickness: 4
+    }).setOrigin(0.5).setDepth(40);
+    e.levelText.setShadow(0, 2, '#000000', 3, true, true);
+    e.levelText.setResolution(2);                        // คมชัดบนมือถือ
     e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
   },
 
@@ -254,6 +267,11 @@ Object.assign(Main.prototype, {
     if (time > (this.nextBossCheck || 0)) { this.nextBossCheck = time + 1000; this.spawnDueBosses(); }
     const hidden = this.updatePlayerHidden ? this.updatePlayerHidden(time) : false;
 
+    // หลอดเลือดมอนทั้งหมดวาดบน graphics ตัวเดียว (ล้างแล้ววาดใหม่ทุกเฟรม)
+    if (!this.enemyBarGfx) this.enemyBarGfx = this.add.graphics().setDepth(41);
+    const barG = this.enemyBarGfx;
+    barG.clear();
+
     this.enemies.getChildren().forEach(e => {
       if (e.isBoss && time > (e.nextTeleport || 0)) this.bossTeleport(e, time);
       const distPlayer = Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y);
@@ -300,8 +318,30 @@ Object.assign(Main.prototype, {
       // สกิลของ epic / บอส (ใช้ตอนไล่ตี)
       if (e.state === 'chase') this.enemySkill(e, time, distPlayer, canSee);
       this.updateEnemyAnim(e, time);
-      if (e.levelText) e.levelText.setPosition(e.x, e.y - (e.isBoss ? 40 : 22) * ((e.def && e.def.scale) || 1));
+      if (e.levelText) e.levelText.setPosition(e.x, e.y - e.labelOff);
+      this.drawEnemyBar(barG, e);
     });
+  },
+
+  // หลอดเลือดมอน: อยู่ใต้ชื่อ เขียว > เหลือง > แดง ตามเลือดที่เหลือ (วาดเฉพาะมอนที่อยู่ในจอ)
+  drawEnemyBar(g, e) {
+    if (!e.active || !e.maxHp) return;
+    if (HPBAR_ONLY_WHEN_HURT && e.hp >= e.maxHp) return;
+    const v = this.cameras.main.worldView;
+    if (e.x < v.x - 80 || e.x > v.right + 80 || e.y < v.y - 80 || e.y > v.bottom + 80) return;
+    const w = e.isBoss ? HPBAR_W_BOSS : (e.isEpic ? HPBAR_W_EPIC : HPBAR_W_NORMAL);
+    const h = e.isBoss ? 9 : 7;
+    const x = Math.round(e.x - w / 2);
+    const y = Math.round(e.y - e.labelOff + (e.isBoss ? 16 : 13));   // ใต้ชื่อ
+    const r = Math.max(0, Math.min(1, e.hp / e.maxHp));
+    const col = r > 0.5 ? 0x5be35b : (r > 0.25 ? 0xffd23c : 0xff4a4a);
+    g.fillStyle(0x000000, 0.8).fillRect(x - 1, y - 1, w + 2, h + 2);   // ขอบดำ
+    g.fillStyle(0x3a0d0d, 1).fillRect(x, y, w, h);                      // พื้นหลอด
+    const fw = Math.round(w * r);
+    if (fw > 0) {
+      g.fillStyle(col, 1).fillRect(x, y, fw, h);
+      g.fillStyle(0xffffff, 0.28).fillRect(x, y, fw, 2);                // เงาสะท้อนด้านบน
+    }
   },
 
   // opts (ไม่ใส่ก็ได้): { skill: def ของสกิล, crit: true }
