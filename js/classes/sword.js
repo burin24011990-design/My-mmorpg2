@@ -1,10 +1,11 @@
 // ===== อาชีพดาบ (sword) — แก้ความสามารถสกิลของดาบที่ไฟล์นี้ =====
-// ฟันตรง (sw_slash)          | สกิลเริ่มต้น ดาเมจแรงขึ้น + เพิ่มพลังโจมตีชั่วคราว (เป็น %) ทุกครั้งที่ฟัน
-// สกิล 1 พุ่งทะยาน (sw_dash)  | พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง (แบบกลุ่ม) | ลากเลือกทิศได้
+// ฟันตรง (sw_slash)          | สกิลเริ่มต้น ฟันเป็นแนวสี่เหลี่ยม (ยาว range กว้าง halfW*2) + เพิ่มพลังโจมตีชั่วคราว (เป็น %)
+// สกิล 1 พุ่งทะยาน (sw_dash)  | พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง | บล็อกการโจมตี 1 ครั้ง (2 วิ) | ลากเลือกทิศได้
 // สกิล 2 ฟันสตั้น   (sw_cross) | ฟันตรงด้านหน้าเป็นแนวกว้าง สตั้นมอน | ลากเลือกทิศได้
-// สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง 2 ครั้ง + เพิ่มเกราะให้ตัวเอง (เป็น %)
+// สกิล 3 ฟันหมุน    (sw_spin)  | ฟันรอบตัววงกว้าง 2 ครั้ง + เพิ่มเกราะ (เป็น %) + บล็อกการโจมตี 1 ครั้ง (2 วิ)
 // อัลติ  ดาบสังหาร           | ฟันตรงเป็นแนวกว้างมาก สตั้นมอน | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
 // dmg = ค่าฐาน | range = ระยะ (ฟันตรง = ความยาว, ฟันหมุน = รัศมี) | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
+// blockMs = บล็อกการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (2000 = 2 วิ)
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส
 (function () {
   const Classes = window.Classes;
@@ -23,26 +24,27 @@
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('sword', { name: 'โจมตี', dmg: 10, range: 60, cd: 650, type: 'melee', class: 'sword' });
 
-  // ฟันตรง: ดาเมจเดิม 12 -> 20 | ทุกครั้งที่ฟัน เพิ่มพลังโจมตี atkBuffPct (0.25 = +25%) นาน atkBuffMs มิลลิวินาที
+  // ฟันตรง: ฟันเป็นแนวสี่เหลี่ยม ยาว range (เดิม 60 -> 140) กว้าง halfW*2 (halfW 55 = กว้าง 110)
+  // ทุกครั้งที่ฟัน เพิ่มพลังโจมตี atkBuffPct (0.25 = +25%) นาน atkBuffMs มิลลิวินาที
   Classes.skill('sw_slash', {
-    name: 'ฟันตรง', class: 'sword', type: 'melee',
-    dmg: 20, range: 60, cd: 4000, mp: 8,
+    name: 'ฟันตรง', class: 'sword', type: 'sslash',
+    dmg: 20, range: 140, halfW: 55, cd: 4000, mp: 8,
     atkBuffPct: 0.25, atkBuffMs: 3000,
   }, {
     scale: { patk: 1 },
     noInfo: true,
-    info: (def, lv, S) => 'ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+    info: (def, lv, S) => 'ฟันตรงเป็นแนวยาวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
       ' • ฟันแล้วเพิ่มพลังโจมตี +' + Math.round(def.atkBuffPct * 100) + '% นาน ' + (def.atkBuffMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // สกิล 1: พุ่งทะยาน (แบบกลุ่ม) — พุ่งทะลวงระยะ range ตีทุกตัวที่อยู่ในแนวทางพุ่ง กว้าง pathW*2 (รวมจุดเริ่มและจุดปลาย)
+  // สกิล 1: พุ่งทะยาน (แบบกลุ่ม) — พุ่งทะลวงระยะ range ตีทุกตัวที่อยู่ในแนวทางพุ่ง กว้าง pathW*2 | บล็อก 1 ครั้ง blockMs
   Classes.skill('sw_dash', {
     name: 'พุ่งทะยาน', class: 'sword', type: 'dash', noInfo: true,
-    dmg: 16, range: 150, cd: 3600, mp: 14, pathW: 55,
+    dmg: 16, range: 150, cd: 3600, mp: 14, pathW: 55, blockMs: 2000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'พุ่งทะลวงเป็นแนว โจมตีศัตรูทุกตัวที่ขวางทาง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' ต่อตัว • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' ต่อตัว • บล็อกการโจมตี 1 ครั้ง (นาน ' + (def.blockMs / 1000) + ' วิ) • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // สกิล 2: ฟันสตั้น — ฟันตรงด้านหน้า ยาว range กว้าง halfW*2 | สตั้น stunMs มิลลิวินาที
@@ -56,14 +58,15 @@
   });
 
   // สกิล 3: ฟันหมุน — ฟันรอบตัวรัศมี range จำนวน spins ครั้ง ห่างกัน spinGap มิลลิวินาที (ดาเมจต่อครั้ง = dmg)
-  // เพิ่มเกราะ armorPct (0.3 = +30%) นาน armorMs มิลลิวินาที
+  // เพิ่มเกราะ armorPct (0.3 = +30%) นาน armorMs มิลลิวินาที | บล็อก 1 ครั้ง blockMs
   Classes.skill('sw_spin', {
     name: 'ฟันหมุน', class: 'sword', type: 'sspin', noInfo: true,
-    dmg: 18, range: 150, cd: 5000, mp: 18, spins: 2, spinGap: 350, armorPct: 0.3, armorMs: 6000,
+    dmg: 18, range: 150, cd: 5000, mp: 18, spins: 2, spinGap: 350, armorPct: 0.3, armorMs: 6000, blockMs: 2000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ฟันรอบตัววงกว้าง ' + def.spins + ' ครั้ง ครั้งละ ≈' + Classes.power(def.id, def, lv, S) +
-      ' เพิ่มเกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' เพิ่มเกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ' +
+      ' • บล็อกการโจมตี 1 ครั้ง (นาน ' + (def.blockMs / 1000) + ' วิ) • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // อัลติ ดาบสังหาร — ฟันตรงยาว range กว้าง halfW*2 | สตั้น stunMs | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
@@ -99,8 +102,9 @@
     Classes.status(scene, e, 'stun', {}, e.isBoss ? ms * BOSS_STUN_MUL : ms);
   }
 
-  // ฟันตรงเป็นแนวสี่เหลี่ยม: ยาว def.range กว้าง def.halfW*2 ไปทางทิศ (fx,fy) แล้วสตั้นทุกตัวที่โดน
-  function slashBox(scene, def, dmg, fx, fy, color) {
+  // ฟันตรงเป็นแนวสี่เหลี่ยม: ยาว def.range กว้าง def.halfW*2 ไปทางทิศ (fx,fy)
+  // withStun = true จะสตั้นทุกตัวที่โดนด้วย (ฟันสตั้น/อัลติ) | false = ฟันเฉยๆ (ฟันตรง)
+  function slashBox(scene, def, dmg, fx, fy, color, withStun) {
     const p = scene.player;
     let ux = fx, uy = fy;
     const l = Math.hypot(ux, uy);
@@ -117,8 +121,8 @@
       const along = rx * ux + ry * uy, perp = Math.abs(-rx * uy + ry * ux);
       return along >= -15 && along <= len + 12 && perp <= hw + 12;
     });
-    list.forEach(e => { stun(scene, e, def.stunMs); scene.damage(e, dmg); });
-    if (list.length) scene.popText(p.x, p.y - 40, 'สตั้น!', '#ffe066');
+    list.forEach(e => { if (withStun) stun(scene, e, def.stunMs); scene.damage(e, dmg); });
+    if (withStun && list.length) scene.popText(p.x, p.y - 40, 'สตั้น!', '#ffe066');
   }
 
   // บัพสเตตัสตัวเอง (ผ่านระบบบัพของ stats.js) คืน true ถ้าสำเร็จ
@@ -181,6 +185,35 @@
     } else warnOnce(scene, 'เพิ่มพลังโจมตีไม่ได้ (ไม่พบ addStatBuff) ดู stats.js');
   }
 
+  // ---------- บล็อกการโจมตี 1 ครั้ง ----------
+  // เปิดบล็อก: ไม่โดนดาเมจ 1 ครั้ง ภายใน ms มิลลิวินาที (ร่ายซ้ำ = ต่ออายุ ไม่สะสมเป็นหลายครั้ง)
+  function giveBlock(scene, ms) {
+    scene.swordBlock = { until: scene.time.now + (ms || 2000) };
+    const p = scene.player;
+    if (p) scene.popText(p.x, p.y - 62, '🛡 พร้อมบล็อก!', '#9be7ff');
+  }
+
+  // ดักที่ hurtPlayer: ครอบคลุมมอนชน กระสุน และสกิลวงแดงของบอส เพราะทุกอย่างเรียก hurtPlayer
+  const _hurtPlayer = P.hurtPlayer;
+  if (_hurtPlayer) {
+    P.hurtPlayer = function (raw) {
+      const b = this.swordBlock;
+      if (b) {
+        this.swordBlock = null;   // หมดอายุหรือใช้แล้ว ล้างทิ้งเสมอ
+        if (this.time.now < b.until) {
+          if (this.player) {
+            this.popText(this.player.x, this.player.y - 40, 'บล็อก!', '#9be7ff');
+            this.flash(this.player.x, this.player.y, 40, 0x9be7ff);
+          }
+          return;
+        }
+      }
+      return _hurtPlayer.apply(this, arguments);
+    };
+  } else {
+    console.error('sword.js: ไม่พบ hurtPlayer ระบบบล็อกจึงไม่ทำงาน (ตรวจว่า fixes.js โหลดก่อน sword.js)');
+  }
+
   // ระยะจากจุด (px,py) ถึงเส้นตรงช่วง (ax,ay)-(bx,by)
   function distToSeg(px, py, ax, ay, bx, by) {
     const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
@@ -203,6 +236,7 @@
   P.applySkillEffect = function (def, x, y, fx, fy, dmg, kind) {
     if (!def || !(def.id === 'sw_dash' || def === SKILL_DEFS.sw_dash) || !this.player) return _apply.apply(this, arguments);
     const scene = this, p = scene.player, args = arguments;
+    giveBlock(scene, def.blockMs);   // พุ่งทะยาน = บล็อก 1 ครั้ง
     const sx = p.x, sy = p.y;
     const nx = clamp(sx + (fx || 0) * def.range, 20, WORLD_W - 20);
     const ny = clamp(sy + (fy || 0) * def.range, 20, WORLD_H - 20);
@@ -220,11 +254,16 @@
   };
 
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
-  Classes.handlers.sstun = function (def, x, y, dmg, fx, fy) {
-    slashBox(this, def, dmg, fx, fy, 0xffd45e);
+  // ฟันตรง: ฟันเป็นแนวยาวกว้าง ไม่สตั้น (บัพโจมตีอยู่ใน useSkill ด้านล่าง)
+  Classes.handlers.sslash = function (def, x, y, dmg, fx, fy) {
+    slashBox(this, def, dmg, fx, fy, 0xffffff, false);
   };
 
-  // ฟันหมุน: ฟันรอบตัวหลายครั้ง (spins) | ครั้งแรกเพิ่มเกราะ + นัดต่อไปเรียกตัวเองซ้ำเพื่อให้ภาพหมุนเล่นใหม่ทุกครั้ง
+  Classes.handlers.sstun = function (def, x, y, dmg, fx, fy) {
+    slashBox(this, def, dmg, fx, fy, 0xffd45e, true);
+  };
+
+  // ฟันหมุน: ฟันรอบตัวหลายครั้ง (spins) | ครั้งแรกเพิ่มเกราะ + บล็อก + นัดต่อไปเรียกตัวเองซ้ำเพื่อให้ภาพหมุนเล่นใหม่ทุกครั้ง
   Classes.handlers.sspin = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player, col = CLASSES.sword ? CLASSES.sword.color : 0xffffff;
     const now = scene.time.now, cont = scene._swSpin;
@@ -235,7 +274,7 @@
     scene.flash(p.x, p.y, def.range, col);
     scene.time.delayedCall(110, () => scene.flash(p.x, p.y, def.range * 0.6, 0xffffff));
     Classes.enemiesIn(scene, p.x, p.y, def.range).forEach(e => scene.damage(e, dmg));
-    if (fresh) armorBuff(scene, def);
+    if (fresh) { armorBuff(scene, def); giveBlock(scene, def.blockMs); }   // บล็อกเฉพาะตอนร่ายจริง ไม่ใช่ทุกรอบหมุน
 
     if (left > 0) {
       scene.time.delayedCall(def.spinGap || 350, () => {
@@ -247,15 +286,15 @@
   };
 
   Classes.handlers.sult = function (def, x, y, dmg, fx, fy) {
-    slashBox(this, def, dmg, fx, fy, 0xff6b5e);
+    slashBox(this, def, dmg, fx, fy, 0xff6b5e, true);
   };
 
-  // ---------- ใช้สกิล: ตั้งทิศ (ฟันสตั้น) + บัพโจมตี (ฟันตรง) ----------
+  // ---------- ใช้สกิล: ตั้งทิศ (ฟันสตั้น/ฟันตรง) + บัพโจมตี (ฟันตรง) ----------
   const _useSkill = P.useSkill;
   P.useSkill = function (idx, gp) {
     const sid = this.slots && this.slots[idx];
     const def = sid && SKILL_DEFS[sid];
-    if (def && def.type === 'sstun' && !this.panel &&
+    if (def && (def.type === 'sstun' || def.type === 'sslash') && !this.panel &&
         this.time.now >= (this.cdEnd['slot' + idx] || 0) && this.stats.mp >= def.mp) {
       const d = aimDir(this, gp);
       this.facing.set(d.x, d.y);
@@ -300,7 +339,7 @@
   // ---------- ไอคอน ----------
   const _sik = skillIconKey;
   skillIconKey = function (type) {
-    if (type === 'sstun') return _sik('melee');
+    if (type === 'sstun' || type === 'sslash') return _sik('melee');
     if (type === 'sspin' || type === 'sult') return _sik('aoe');
     return _sik(type);
   };
