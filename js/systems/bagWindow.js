@@ -232,7 +232,7 @@
 
   // รายละเอียดหินตีบวก
   function stoneDetailHTML(it) {
-    return '<div class="d-top" style="--c:#6fc3ff"><div class="d-icon"><img src="' + iconSrc('icon_stone') + '" alt=""></div>'
+    return '<div class="d-top" style="--c:#6fc3ff"><div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
       + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">วัสดุตีบวก</div></div></div>'
       + '<div class="d-note">ได้จากการย่อยอุปกรณ์ ใช้ตีบวก (เลือกอุปกรณ์แล้วกด 🔨 ตีบวก)</div>'
       + '<div class="d-row"><span>รวมในกระเป๋า</span><span>' + scene.countStones() + ' ก้อน</span></div>';
