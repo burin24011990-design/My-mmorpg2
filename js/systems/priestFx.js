@@ -1,6 +1,6 @@
 // ===== เอฟเฟกต์สกิลสายพระ (สไปรต์ชีต) =====
 // วางไฟล์นี้ต่อจาก skillFx.js และก่อน main.js ใน index.html
-//   <script src="js/systems/priestFx.js?v=1"></script>
+//   <script src="js/systems/priestFx.js?v=2"></script>
 //
 // ภาพทุกแผ่นถูกจัดเฟรมใหม่ให้ขนาดเท่ากัน + จุดยึดตรงกันทุกเฟรม (เล่นแล้วไม่สั่น/ไม่กระตุก)
 // ring = ความกว้างวงเวทที่ฐานในภาพ (px) ใช้ปรับขนาดให้พอดีกับรัศมีสกิล
@@ -8,6 +8,7 @@
 //
 // ปรับขนาด: diam = เส้นผ่านศูนย์กลางวงเวทที่ต้องการ (px) | fit + fitMul = ตามรัศมีสกิล (def.range*2*fitMul)
 //           sy = บีบความสูงเสาแสง (ยิ่งน้อยยิ่งเตี้ย) | add = สีสว่างขึ้น (ADD) | follow = ตามตัวผู้เล่น
+//           lasting = เล่นวนต่อเนื่องที่จุดสกิลตลอด ticks x tickMs ของสกิล (แสงพิพากษา 6 x 1 วิ = 6 วิ)
 (function () {
   const P = Main.prototype;
   const GREEN = 0x7dff9a, GOLD = 0xfff2a8, CYAN = 0x9fe8ff, WHITE = 0xffffff;
@@ -20,11 +21,17 @@
     pr_haste: { file: 'img/fx/pr_haste.png', fw: 172, fh: 260, frames: 14, fps: 18, oy: 0.8462, ring: 151 },
   };
 
+  // ภาพลำแสงของ "พลังแห่งแสง" (ภาพแถบยาวภาพเดียว หันขวา → จุดกำเนิดแสงอยู่ซ้ายสุด) วางไว้ที่ img/fx/pr_beam.png
+  // heightMul = ความสูงของภาพเทียบกับความกว้างแนวสกิล (halfW*2) | ใหญ่/เล็กไป ปรับเลขนี้
+  // grow = เวลาลำแสงพุ่งออกจนสุดระยะ (ms) | hold = ค้างเต็มลำก่อนเฟด (ms) | fade = เวลาเฟดหาย (ms)
+  const IMAGES = { pr_beam: 'img/fx/pr_beam.png' };
+  const BEAM = { image: 'pr_beam', heightMul: 0.95, grow: 120, hold: 260, fade: 320, add: true };
+
   // เลือกตามชนิดสกิล (def.type ใน priest.js)
   const FX = {
-    heal1:   { sheet: 'pr_heal',  at: 'self',   diam: 80, follow: true, behind: true, dy: 20, alpha: 0.85, add: false },                         // ฮีลเดี่ยว
+    heal1:   { sheet: 'pr_heal',  at: 'self',   diam: 80, follow: true, behind: true, dy: 20, alpha: 0.85, add: false },                         // (สกิลเดิม ไม่ได้ใช้แล้ว)
     healaoe: { sheet: 'pr_mass',  at: 'ground', fit: true, fitMul: 0.85, sy: 0.6, add: false },              // ฮีลหมู่
-    holy:    { sheet: 'pr_smite', at: 'ground', fit: true, fitMul: 0.8,  sy: 0.6, add: true },               // แสงพิพากษา
+    holy:    { sheet: 'pr_smite', at: 'ground', fit: true, fitMul: 0.8,  sy: 0.6, add: true, lasting: true },   // แสงพิพากษา (เล่นวนต่อเนื่องตลอด ticks x tickMs)
     pulti:   { sheet: 'pr_ulti',  at: 'ground', fit: true, fitMul: 1.0,  add: true },                        // อัลติแสงสวรรค์
     haste:   { sheet: 'pr_haste', at: 'self',   diam: 64, sy: 0.75, loop: true, behind: true, dy: 20, alpha: 0.6, add: false },                          // พรแห่งลม (วนตามตัวตลอดบัพ)
   };
@@ -51,7 +58,17 @@
       scene.load.spritesheet(k, d.file + '?v=1', { frameWidth: d.fw, frameHeight: d.fh });
       need = true;
     });
-    if (need) scene.load.start();
+    Object.keys(IMAGES).forEach(k => {
+      if (scene.textures.exists(k)) return;
+      scene.load.image(k, IMAGES[k] + '?v=1');
+      need = true;
+    });
+    if (need) {
+      scene.load.once('complete', () => {
+        if (scene.textures.exists('pr_beam')) scene.textures.get('pr_beam').setFilter(Phaser.Textures.FilterMode.LINEAR);
+      });
+      scene.load.start();
+    }
   }
 
   const _sb = P.setupButtons;
@@ -102,6 +119,20 @@
     scene.tweens.add({ targets: s, alpha: 0, delay: Math.max(0, life - 130), duration: 130 });
   }
 
+  // เล่นวนต่อเนื่องที่จุดสกิล (แสงพิพากษา): ผุดขึ้น -> วนตลอด dur -> เฟดหาย | dur = ticks x tickMs ของสกิล
+  function playLasting(scene, cfg, x, y, def) {
+    const d = SHEETS[cfg.sheet];
+    const dur = Math.max(500, (def.ticks || 1) * (def.tickMs || 1000));
+    const sc = scaleOf(cfg, d, def), sy = sc * (cfg.sy || 1);
+    const top = cfg.alpha || 1;
+    const s = scene.add.sprite(x, y + (cfg.dy || 0), cfg.sheet).setOrigin(0.5, d.oy).setDepth(70)
+      .setScale(sc * 0.85, sy * 0.85).setAlpha(0);
+    if (cfg.add) s.setBlendMode(Phaser.BlendModes.ADD);
+    s.play(cfg.sheet + '_loop');
+    scene.tweens.add({ targets: s, alpha: top, scaleX: sc, scaleY: sy, duration: 200, ease: 'Quad.easeOut' });
+    scene.tweens.add({ targets: s, alpha: 0, delay: Math.max(300, dur - 300), duration: 300, onComplete: () => s.active && s.destroy() });
+  }
+
   // วนต่อเนื่องตามบัพ (พรแห่งลม): ผุดขึ้น -> วนตามตัว -> เฟดหายตอนบัพหมด
   function playAura(scene, cfg, x, y, def, nearPlayer) {
     const d = SHEETS[cfg.sheet];
@@ -119,6 +150,22 @@
     scene.tweens.add({ targets: s, alpha: 0, delay: Math.max(300, dur - 400), duration: 400, onComplete: () => s.active && s.destroy() });
   }
 
+  // ลำแสงพลังแห่งแสง: ภาพแถบยาวภาพเดียว ยืดให้ยาวเท่า range กว้างตาม halfW แล้วเฟดหาย
+  // เล่นเป็นลำพุ่งออกจากตัว (จุดกำเนิดแสงซ้ายสุดของภาพ) -> ค้างเต็มลำ -> เฟดหาย
+  function playBeam(scene, def, p, ang) {
+    const c = BEAM;
+    if (!scene.textures.exists(c.image)) return false;
+    const src = scene.textures.get(c.image).getSourceImage();
+    const len = def.range + 20, hh = (def.halfW || 80) * 2 * c.heightMul;
+    const s = scene.add.image(p.x, p.y, c.image).setOrigin(0, 0.5).setDepth(70).setRotation(ang);
+    if (c.add) s.setBlendMode(Phaser.BlendModes.ADD);
+    const sx = len / src.width, sy = hh / src.height;
+    s.setScale(sx * 0.12, sy).setAlpha(0.3);
+    scene.tweens.add({ targets: s, scaleX: sx, alpha: 1, duration: c.grow, ease: 'Quad.easeOut' });
+    scene.tweens.add({ targets: s, alpha: 0, delay: c.grow + c.hold, duration: c.fade, onComplete: () => s.destroy() });
+    return true;
+  }
+
   // ---- ต่อเข้ากับ applySkillEffect (ครอบนอกสุด: เล่นภาพก่อน แล้วค่อยให้ priest.js คิดฮีล/ดาเมจตามเดิม) ----
   const _flash = P.flash;
   P.flash = function (x, y, r, color) {
@@ -129,21 +176,32 @@
   };
 
   const _apply = P.applySkillEffect;
-  P.applySkillEffect = function (def, x, y) {
+  P.applySkillEffect = function (def, x, y, fx, fy) {
     try {
-      const cfg = def && FX[def.type];
-      if (cfg && this.player && ensure(this, cfg.sheet)) {
-        const p = this.player;
-        let px = p.x, py = p.y;
-        if (cfg.at === 'ground') { const g = peekGround(this, def, x, y); px = g.x; py = g.y; }
-        const near = Math.hypot(px - p.x, py - p.y) < 40;   // เกิดที่ตัวเรา = ของเราเอง (ตามตัวได้)
-        this._prFxSkip = { x: px, y: py, until: this.time.now + 400 };
-        if (cfg.loop) playAura(this, cfg, px, py, def, near);
-        else playOnce(this, cfg, px, py, def, near);
+      // พลังแห่งแสง: ใช้ภาพลำแสงใหม่
+      if (def && def.type === 'lightbeam' && this.player && this.textures.exists(BEAM.image)) {
+        const p = this.player, l = Math.hypot(fx || 0, fy || 0);
+        const ux = l > 0.001 ? fx / l : this.facing.x, uy = l > 0.001 ? fy / l : this.facing.y;
+        this._prFxSkip = { x: p.x, y: p.y, until: this.time.now + 400 };
+        playBeam(this, def, p, Math.atan2(uy, ux));
+      } else {
+        const cfg = def && FX[def.type];
+        if (cfg && this.player && ensure(this, cfg.sheet)) {
+          const p = this.player;
+          let px = p.x, py = p.y;
+          if (cfg.at === 'ground') { const g = peekGround(this, def, x, y); px = g.x; py = g.y; }
+          const near = Math.hypot(px - p.x, py - p.y) < 40;   // เกิดที่ตัวเรา = ของเราเอง (ตามตัวได้)
+          // แบบ lasting: ข้ามวงกลมวาบของ priest.js ตลอดเวลาที่ภาพเล่น (ไม่ใช่แค่ 400ms แรก)
+          const span = cfg.lasting ? Math.max(500, (def.ticks || 1) * (def.tickMs || 1000)) + 400 : 400;
+          this._prFxSkip = { x: px, y: py, until: this.time.now + span };
+          if (cfg.lasting) playLasting(this, cfg, px, py, def);
+          else if (cfg.loop) playAura(this, cfg, px, py, def, near);
+          else playOnce(this, cfg, px, py, def, near);
+        }
       }
     } catch (e) { console.error('priestFx', e); }
     return _apply.apply(this, arguments);
   };
 
-  window.PriestFx = { FX: FX, SHEETS: SHEETS };
+  window.PriestFx = { FX: FX, SHEETS: SHEETS, BEAM: BEAM };
 })();
