@@ -355,7 +355,8 @@ Object.assign(Main.prototype, {
     opts = opts || {};
     const ctx = (this._skillCtx && this.time.now < this._skillCtx.until) ? this._skillCtx.def : null;
     const skill = opts.skill || ctx;
-    showDamage(this, e.x, e.y - 20, dmg, opts.crit ? 'crit' : 'normal', skill ? { skill: skill } : undefined);   // ตัวเลขดาเมจ (ดู damageFx.js)
+    const isCrit = !!(opts.crit || this._critHit);       // _critHit ตั้งจาก stats.js ตอนสุ่มได้คริติคอล
+    showDamage(this, e.x, e.y - 20, dmg, isCrit ? 'crit' : 'normal', skill ? { skill: skill } : undefined);   // ตัวเลขดาเมจ (ดู damageFx.js)
     if (e.hp > 0) monsterHitFx(this, e);                 // กะพริบขาว + บีบตัว
     if (e.hp <= 0) {
       const x = e.x, y = e.y, zi = e.zoneIdx, z = ZONES[zi], lv = e.level;
