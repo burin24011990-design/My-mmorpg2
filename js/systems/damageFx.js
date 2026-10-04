@@ -42,8 +42,12 @@
     if (typeof c === 'number') return '#' + ('000000' + c.toString(16)).slice(-6);
     return c;
   }
+  // ดาเมจสกิลทุกสกิลใช้สีเดียว (ม่วง) จะได้ไม่คล้ายดาเมจมอน/ดาเมจปกติ
+  // อยากกลับไปใช้สีแยกตามสกิล: ตั้ง SINGLE_SKILL_COLOR = null
+  var SINGLE_SKILL_COLOR = '#c06bff';
   function skillColor(sk) {
     if (!sk) return null;
+    if (SINGLE_SKILL_COLOR) return SINGLE_SKILL_COLOR;
     var id = sk;
     if (typeof sk === 'object') {
       if (sk.color) return toHex(sk.color);
@@ -154,6 +158,35 @@
   // ถ้าไม่ต้องการ ตั้ง RESTYLE_PLUS_TEXT = false
   var RESTYLE_PLUS_TEXT = true;
   var HEAL_SIZE = 40, HEAL_COLOR = '#8dffa5', HEAL_STROKE = '#06401a';
+
+  // ชื่อตัวละครของเรา (ข้อความที่ตรงกับชื่อเราเป๊ะๆ จะถูกทำให้ใหญ่ ชัด มีขอบดำ)
+  var PLAYER_NAME_SIZE = 20;       // ขนาดชื่อตัวละคร (px) — ปรับตรงนี้
+  var PLAYER_NAME_STROKE = 6;      // ความหนาขอบดำ
+  var ownNames = null;
+  function getOwnNames() {
+    if (ownNames) return ownNames;
+    var list = [];
+    function add(v) { if (typeof v === 'string' && v.trim()) list.push(v.trim()); }
+    try {
+      add(window.localStorage.getItem('mmo_cloud_lastname'));
+      var raw = window.localStorage.getItem('my_mmorpg_save_v1');
+      if (raw) {
+        var d = JSON.parse(raw);
+        add(d.name); add(d.charName); add(d.playerName); add(d.nick);
+        if (d.stats) { add(d.stats.name); add(d.stats.charName); }
+        if (d.player) { add(d.player.name); }
+      }
+    } catch (e) {}
+    if (list.length) ownNames = list;   // ได้ชื่อแล้วค่อยจำไว้
+    return list;
+  }
+  function isOwnName(text) {
+    var s = String(text || '').trim();
+    if (!s || s.length > 14) return false;
+    var l = getOwnNames();
+    for (var i = 0; i < l.length; i++) if (l[i] === s) return true;
+    return false;
+  }
   try {
     var GOF = Phaser.GameObjects.GameObjectFactory;
     if (RESTYLE_PLUS_TEXT && GOF && !GOF.prototype._plusPatched) {
@@ -168,6 +201,14 @@
             t.setColor(HEAL_COLOR);
             t.setStroke(HEAL_STROKE, 7);
             t.setShadow(0, 3, '#000000', 4, true, true);
+            t.setResolution(2);
+          } else if (!(style && style._fxOwn) && isOwnName(text)) {
+            // ชื่อตัวละครของเรา: ใหญ่ขึ้น ขอบดำหนา เงา คมชัด (คงสีเดิมของเกมไว้)
+            t.setFontFamily('Mitr, sans-serif');
+            t.setFontSize(PLAYER_NAME_SIZE);
+            t.setFontStyle('700');
+            t.setStroke('#000000', PLAYER_NAME_STROKE);
+            t.setShadow(0, 2, '#000000', 3, true, true);
             t.setResolution(2);
           }
         } catch (e) {}
