@@ -17,14 +17,14 @@
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   // 1) เงาพุ่งฟัน: พุ่งไปฟัน hits ครั้ง ครั้งละ hitMul ของดาเมจ | ฟันโดนแล้วพุ่งต่อได้ recasts ครั้งภายใน recastMs
   //    recastMul = ความแรงของการพุ่งครั้งที่ 2 (2 = แรง 2 เท่า)
-  //    dodgeMs = ทุกครั้งที่พุ่ง (รวมพุ่งต่อ) หลบการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (2000 = 2 วิ)
+  //    dodgeMs = ทุกครั้งที่พุ่ง (รวมพุ่งต่อ) หลบการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (3000 = 3 วิ)
   //    กดค้างแล้วลากเพื่อเลือกทิศพุ่งได้ (ตั้งค่าที่ DIR_CFG ใน aimDash.js) | แตะเฉยๆ = พุ่งหาเป้า/ทิศที่หันอยู่
   Classes.skill('rg_dash', {
     name: 'เงาพุ่งฟัน', class: 'rogue', type: 'rdash', noInfo: true,
     dmg: 14, range: 170, cd: 6000, mp: 14,
     hits: 2, hitMul: 0.6, hitR: 75,
     recasts: 1, recastMs: 2500, recastRange: 280, recastMul: 2,
-    dodgeMs: 2000,
+    dodgeMs: 3000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'พุ่งฟัน ' + def.hits + ' ครั้ง ครั้งละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
@@ -35,7 +35,7 @@
 
   // 2) เงาหายตัว: หายตัว dur มิลลิวินาที | ฟันครั้งแรกจะออกจากการหายตัว
   //    bonus = ดาเมจครั้งแรกคูณกี่เท่า (1 = ไม่เพิ่ม) | armorBreak = ลดเกราะศัตรู (0.1 = 10%) นาน armorMs
-  //    critBonus = เพิ่มคริติคอล % (100 = 100%) นาน critMs
+  //    critBonus = เพิ่มคริติคอล % (100 = ติดคริแน่นอน) นาน critMs นับตั้งแต่กดใช้สกิล (ไม่ต้องรอฟันครั้งแรก)
   Classes.skill('rg_vanish', {
     name: 'เงาหายตัว', class: 'rogue', type: 'rvanish', noInfo: true,
     dmg: 0, range: 0, cd: 14000, mp: 16,
@@ -43,8 +43,8 @@
     critBonus: 100, critMs: 5000, mspd: 25,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'หายตัว ' + (def.dur / 1000) + ' วิ ฟันครั้งแรกจะออกจากการหายตัว ลดเกราะศัตรู ' + Math.round(def.armorBreak * 100) +
-      '% และเพิ่มคริติคอล ' + def.critBonus + '% นาน ' + (def.critMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => 'หายตัว ' + (def.dur / 1000) + ' วิ โจมตีติดคริแน่นอนนาน ' + (def.critMs / 1000) +
+      ' วิ • ฟันครั้งแรกจะออกจากการหายตัวและลดเกราะศัตรู ' + Math.round(def.armorBreak * 100) + '% • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // 3) ฟันตัดเอ็น: ฟันด้านหน้า แล้วลดความเร็วเคลื่อนที่ (slow 0.5 = เหลือครึ่งหนึ่ง) นาน slowMs
@@ -81,7 +81,7 @@
   if (window.DIR_CFG) window.DIR_CFG.rg_drain = { len: SKILL_DEFS.rg_drain.range, w: SKILL_DEFS.rg_drain.halfW };
 
   // ---------- ตัวช่วย ----------
-  // ฟัน 1 ครั้ง: ถ้ากำลังหายตัวอยู่ ครั้งแรกจะลดเกราะเป้าหมาย + เพิ่มคริ แล้วออกจากการหายตัว
+  // ฟัน 1 ครั้ง: ถ้ากำลังหายตัวอยู่ ครั้งแรกจะลดเกราะเป้าหมาย แล้วออกจากการหายตัว (คริ 100% เริ่มตอนกดใช้สกิลแล้ว ดู rvanish)
   function rogueHit(scene, e, dmg) {
     const s = scene.rogueStealth, now = scene.time.now;
     let d = dmg;
@@ -89,8 +89,6 @@
       if (!s.fired) {
         s.fired = true; s.until = now + 300;   // ทุกเป้าที่โดนในจังหวะเดียวกันได้ผลเหมือนกัน
         scene.popText(scene.player.x, scene.player.y - 40, 'ฟันจากเงา!', '#d9b3ff');
-        // เพิ่มคริติคอล (ใส่ก่อน scene.damage ด้านล่าง ฟันครั้งแรกจึงได้คริด้วย)
-        if (scene.addStatBuff && s.critBonus) scene.addStatBuff('vanishCrit', { crit: s.critBonus }, s.critMs);
       }
       Classes.status(scene, e, 'armor', { pct: s.armorBreak }, s.armorMs);
       d = Math.round(d * s.bonus);
@@ -130,7 +128,7 @@
   function doDash(scene, def, dmg, towards, left, dir, boosted) {
     const p = scene.player;
     // หลบการโจมตีได้ 1 ครั้ง ทุกครั้งที่พุ่ง (รวมพุ่งต่อ) หมดอายุตาม def.dodgeMs
-    scene.rogueDodge = { until: scene.time.now + (def.dodgeMs || 2000) };
+    scene.rogueDodge = { until: scene.time.now + (def.dodgeMs || 3000) };
     scene.popText(p.x, p.y - 62, 'พร้อมหลบ!', '#9be7ff');
 
     const chase = towards && !dir;
@@ -240,8 +238,10 @@
       critBonus: def.critBonus, critMs: def.critMs, fired: false,
     };
     if (this.addStatBuff && def.mspd) this.addStatBuff('vanish', { mspd: def.mspd }, def.dur);
+    // โจมตีติดคริแน่นอน: คริ +100% (เพดานคริคือ 100% = ติดทุกครั้ง) นับจากตอนกดใช้ นาน critMs
+    if (this.addStatBuff && def.critBonus) this.addStatBuff('vanishCrit', { crit: def.critBonus }, def.critMs);
     this.flash(this.player.x, this.player.y, 50, 0x9b6bff);
-    this.toastMsg('🌑 หายตัว! ฟันครั้งแรกจะลดเกราะและเพิ่มคริ');
+    this.toastMsg('🌑 หายตัว! โจมตีติดคริแน่นอน ');
   };
 
   // หายตัว = มอนที่อยู่ไกลกว่า 110 มองไม่เห็น (ใช้ระบบเดียวกับพุ่มหญ้า)
