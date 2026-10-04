@@ -358,13 +358,13 @@
     _setupButtons.call(this);
     this.initAim();
     const base = (typeof ROV !== 'undefined') ? ROV : { ax: W - 96, ay: H - 92 };
-    const x = base.ax - 70, y = base.ay + 58, r = 22;   // ใต้-ซ้ายของปุ่มโจมตี
+    const x = base.ax - 95, y = base.ay + 68, r = 32;   // ใต้-ซ้ายของปุ่มโจมตี (r = ขนาดปุ่มแดช)
     const c = this.add.circle(x, y, r, 0x3a7bd5, 0.9).setScrollFactor(0).setDepth(100).setInteractive();
     c.setStrokeStyle(3, 0xffffff, 0.85);
-    const icon = this.add.image(x, y - 5, 'ic_dash').setDisplaySize(18, 18).setScrollFactor(0).setDepth(101);
-    const t = this.add.text(x, y + 11, 'แดช', { fontSize: '9px', color: '#fff', stroke: '#000', strokeThickness: 3 })
+    const icon = this.add.image(x, y - 7, 'ic_dash').setDisplaySize(26, 26).setScrollFactor(0).setDepth(101);
+    const t = this.add.text(x, y + 16, 'แดช', { fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 })
       .setOrigin(0.5).setScrollFactor(0).setDepth(101);
-    const cd = this.add.text(x, y, '', { fontSize: '16px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
+    const cd = this.add.text(x, y, '', { fontSize: '22px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
       .setOrigin(0.5).setScrollFactor(0).setDepth(102);
     // กดค้างแล้วลากเลือกทิศ | แตะเฉยๆ = แดชแบบเดิม
     c.on('pointerdown', pointer => {
