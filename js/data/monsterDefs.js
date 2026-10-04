@@ -11,7 +11,7 @@ const MONSTER_SHEETS_READY = ['all'];   // ด่านที่มี sprite �
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
 // (hitbox และระยะตีจะขยายตามขนาดอัตโนมัติ)
 const MONSTER_SIZE_NORMAL = [1.0, 1.0, 1.0, 1.0, 1.25, 1.4, 1.55, 1.7, 1.85];  // ธรรมดา + ยิงไกล
-const MONSTER_SIZE_BOSS   = [1.5, 1.5, 1.5, 1.5, 1.9,  2.1, 2.3,  2.5, 2.8];   // มินิบอส
+const MONSTER_SIZE_BOSS   = [2.2, 2.2, 2.2, 2.2, 2.6, 2.9, 3.2, 3.5, 3.8];     // มินิบอส (ใหญ่ขึ้น)
 
 const MONSTER_ANIM_RANGES = { idle: [0, 3], attack: [4, 7], walk: [8, 11] };
 const MONSTER_ANIM_FPS = { idle: 6, attack: 12, walk: 8 };
@@ -166,10 +166,14 @@ function ensureMonsterTextures(scene) {
 }
 
 // กะพริบขาว + บีบตัวเมื่อโดนตี (ไม่ต้องวาดเฟรมเพิ่ม)
+// ถ้ามอนมีสีย้อม (_tint เช่น epic) จะย้อมกลับสีเดิมหลังกะพริบ
 function monsterHitFx(scene, e) {
   if (!e.active) return;
   e.setTintFill(0xffffff);
-  scene.time.delayedCall(80, () => { if (e.active) e.clearTint(); });
+  scene.time.delayedCall(80, () => {
+    if (!e.active) return;
+    if (e._tint) e.setTint(e._tint); else e.clearTint();
+  });
   if (!e._hitTween || !e._hitTween.isPlaying()) {
     const b = (e.def && e.def.scale) || 1;
     e._hitTween = scene.tweens.add({ targets: e, scaleX: b * 1.15, scaleY: b * 0.85, duration: 60, yoyo: true });
@@ -198,6 +202,7 @@ function playMonsterDeath(scene, e) {
 
   const ghost = scene.add.sprite(x, y, e.texture.key, e.frame.name)
     .setScale(e.scaleX, e.scaleY).setFlipX(e.flipX).setDepth(e.depth || 5);
+  if (e._tint) ghost.setTint(e._tint);
   const sx = ghost.scaleX, sy = ghost.scaleY;
   const done = () => ghost.destroy();
   switch (fx.tween) {
