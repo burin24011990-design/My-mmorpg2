@@ -144,7 +144,7 @@
   // ---------- ส่วนแสดงผล ----------
   function cellHTML(it, act, id, selected, ticked) {
     if (!it) return '<button class="cell"></button>';
-    const lv = (it.kind === 'equip' || it.kind === 'optstone') ? 'Lv' + it.level : '';
+    const lv = it.kind === 'equip' ? 'Lv' + it.level : '';
     const pl = it.kind === 'equip' && it.plus > 0 ? '+' + it.plus : '';
     const st = it.kind === 'equip' && it.star > 0 ? it.star + '★' : '';
     const stackable = it.kind === 'box' || it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone' || isBook(it);
@@ -246,7 +246,7 @@
       + '<div class="d-row"><span>รวมในกระเป๋า</span><span>' + scene.bag.reduce((n, s) => n + (s && s.kind === 'cleanstone' ? s.count : 0), 0) + ' เม็ด</span></div>';
   }
 
-  // รายละเอียดหินสุ่มออฟ
+  // รายละเอียดหินสุ่มออฟ (ไม่มีเลเวลแล้ว มี 4 สี)
   function optStoneDetailHTML(it) {
     const c = OPT_COLORS[it.color] || OPT_COLORS.red;
     const pool = c.pool.map(k => STAT_DEFS[k].short).join(' / ');
@@ -255,8 +255,8 @@
       + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">หินสุ่มออฟชั่น (สี' + c.name + ')</div></div></div>'
       + '<div class="d-note">เลือกอุปกรณ์ แล้วกดปุ่ม 💎 ฝัง ในหน้ารายละเอียดอุปกรณ์ จะสุ่มได้ 1-2 ออฟ สุ่มซ้ำได้ไม่จำกัด (ออฟเดิมจะถูกแทนที่) ถ้าอยากลบออฟใช้หินลบออฟ</div>'
       + '<div class="d-row"><span>ออฟที่สุ่มได้</span><span>' + pool + '</span></div>'
-      + '<div class="d-row"><span>ย่อยได้หินตีบวก</span><span>' + window.optStoneYield(it.level) + ' ก้อน/เม็ด</span></div>'
-      + '<div class="d-row"><span>ขายได้</span><span>' + window.optStonePrice(it.level) + ' ทอง/เม็ด</span></div>'
+      + '<div class="d-row"><span>ย่อยได้หินตีบวก</span><span>' + window.optStoneYield() + ' ก้อน/เม็ด</span></div>'
+      + '<div class="d-row"><span>ขายได้</span><span>' + window.optStonePrice() + ' ทอง/เม็ด</span></div>'
       + '<div class="d-actions">'
       + '<button class="btn danger" data-act="dismantle-opt">♻ ย่อย <span class="ql">×' + q + '</span></button>'
       + '<button class="btn info" data-act="sell-opt">💰 ขาย <span class="ql">×' + q + '</span></button></div>';
