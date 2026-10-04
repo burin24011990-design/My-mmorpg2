@@ -2,7 +2,8 @@
 // ยาเก็บในกระเป๋าเป็นไอเทม { kind:'potion', pid, count } ซ้อนได้ -> เซฟ/คลาวด์ทำงานเหมือนไอเทมอื่น
 // บัฟเป็นชั่วคราว ไม่เซฟ (รีเฟรชหน้าแล้วหาย)
 
-const POTION_MAX_STACK = 99;
+const POTION_MAX_STACK = 999;   // ยาซ้อนได้ช่องละ 999
+const BUY_MAX_QTY = 999;        // ซื้อได้สูงสุดต่อครั้ง
 const POTION_USE_CD = 1000;   // ms คูลดาวน์การกินยาฟื้นฟู
 
 // แก้ราคา/ค่าต่างๆ ตรงนี้ได้เลย
@@ -26,6 +27,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   let lastUse = 0;
   let panel, quick, quickR;
   let lastSig = '';
+  let qty = 1;                                  // จำนวนที่จะซื้อ (ใช้ร่วมทุกแถว)
   const HP_PICK_KEY = 'shop_hp_pick_v1';
   const HP_ORDER = ['hp_s', 'hp_m', 'hp_l'];   // ลำดับสลับเมื่อกดค้าง: เล็ก -> กลาง -> ใหญ่
   const LONG_PRESS_MS = 500;
@@ -71,13 +73,26 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   }
 
   // ---------- ซื้อ / ใช้ ----------
+  // พื้นที่ว่างสำหรับยาชนิดนั้น (กองเดิมที่ยังไม่เต็ม + ช่องว่างทั้งหมด)
+  function bagSpace(pid) {
+    let n = 0;
+    scene.bag.forEach(s => {
+      if (s === null) n += POTION_MAX_STACK;
+      else if (s && s.kind === 'potion' && s.pid === pid) n += POTION_MAX_STACK - s.count;
+    });
+    return n;
+  }
+
   function buy(pid) {
     const p = POTIONS[pid]; if (!scene || !p) return;
-    if (scene.stats.gold < p.price) { toast('ทองไม่พอ'); return; }
-    if (!canAddPotion(pid)) { toast('กระเป๋าเต็ม'); return; }
-    scene.stats.gold -= p.price;
-    addPotion(pid, 1);
-    toast('ซื้อ ' + p.name + ' (มี ' + countPotion(pid) + ')');
+    const n = Math.max(1, Math.min(BUY_MAX_QTY, qty | 0));
+    const cost = p.price * n;
+    if (scene.stats.gold < cost) { toast('ทองไม่พอ (ต้องใช้ ' + cost.toLocaleString() + ')'); return; }
+    const space = bagSpace(pid);
+    if (space < n) { toast(space > 0 ? 'กระเป๋าใส่ได้อีก ' + space + ' ชิ้น' : 'กระเป๋าเต็ม'); return; }
+    scene.stats.gold -= cost;
+    addPotion(pid, n);
+    toast('ซื้อ ' + p.name + ' x' + n + ' (มี ' + countPotion(pid) + ')');
     if (scene.saveSoon) scene.saveSoon();
     render();
   }
@@ -340,7 +355,32 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     window.addEventListener('resize', layoutQuick);
 
     panel = document.createElement('div'); panel.id = 'shop-panel'; panel.hidden = true;
+    panel.innerHTML =
+      '<div class="sp-head"><span>🛒 ร้านค้า</span><span class="sp-gold" id="sp-gold"></span>' +
+      '<button data-act="close">✕</button></div>' +
+      '<div class="sp-tabs">' +
+        '<button data-act="tab" data-id="heal">ยาฟื้นฟู</button>' +
+        '<button data-act="tab" data-id="buff">ยาบัฟสถานะ</button>' +
+      '</div>' +
+      '<div class="sp-qty"><span class="sp-qlab">จำนวนที่ซื้อ</span>' +
+        '<button data-act="qadd" data-id="-1">−</button>' +
+        '<input id="sp-qty" type="number" inputmode="numeric" min="1" max="' + BUY_MAX_QTY + '" value="1">' +
+        '<button data-act="qadd" data-id="1">+</button>' +
+        '<div class="sp-chips">' +
+          '<button data-act="qset" data-id="1">1</button>' +
+          '<button data-act="qset" data-id="10">10</button>' +
+          '<button data-act="qset" data-id="100">100</button>' +
+          '<button data-act="qset" data-id="' + BUY_MAX_QTY + '">MAX</button>' +
+        '</div></div>' +
+      '<div class="sp-list" id="sp-list"></div>';
     document.body.appendChild(panel);
+
+    const qi = panel.querySelector('#sp-qty');
+    const setQty = v => {
+      v = Math.floor(Number(v));
+      qty = isFinite(v) ? Math.max(1, Math.min(BUY_MAX_QTY, v)) : 1;
+      return qty;
+    };
     panel.addEventListener('click', e => {
       const t = e.target.closest('[data-act]'); if (!t) return;
       const a = t.dataset.act, id = t.dataset.id;
@@ -348,7 +388,20 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
       else if (a === 'tab') { tab = id; render(); }
       else if (a === 'buy') buy(id);
       else if (a === 'use') use(id);
+      else if (a === 'qadd') { qi.value = setQty(qty + Number(id)); render(); }
+      else if (a === 'qset') { qi.value = setQty(id); render(); }
     });
+    // พิมพ์เลขเอง: คิดราคาใหม่ทันทีโดยไม่แตะช่องกรอก / พอออกจากช่องค่อยจัดค่าให้อยู่ใน 1-999
+    qi.addEventListener('input', () => {
+      if (qi.value === '') return;
+      const v = Math.floor(Number(qi.value));
+      if (isFinite(v) && v > BUY_MAX_QTY) qi.value = BUY_MAX_QTY;
+      setQty(qi.value); render();
+    });
+    qi.addEventListener('change', () => { qi.value = setQty(qi.value); render(); });
+    qi.addEventListener('blur', () => { qi.value = setQty(qi.value); render(); });
+    qi.addEventListener('focus', () => { try { qi.select(); } catch (e) {} });
+    ['keydown', 'keyup', 'keypress'].forEach(ev => qi.addEventListener(ev, e => e.stopPropagation()));   // กันเกมแย่งปุ่มคีย์บอร์ด
 
     setInterval(tick, 500);
     setInterval(syncQuickVisibility, 120);
@@ -363,23 +416,22 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
 
   function render() {
     if (!panel || panel.hidden || !scene) return;
+    const gold = scene.stats.gold;
+    panel.querySelector('#sp-gold').textContent = '💰 ' + gold.toLocaleString();
+    panel.querySelectorAll('.sp-tabs button').forEach(b => b.classList.toggle('on', b.dataset.id === tab));
+    panel.querySelectorAll('.sp-chips button').forEach(b => b.classList.toggle('on', Number(b.dataset.id) === qty));
     const rows = Object.keys(POTIONS).filter(id => POTIONS[id].tab === tab).map(id => {
-      const p = POTIONS[id], own = countPotion(id), afford = scene.stats.gold >= p.price;
+      const p = POTIONS[id], own = countPotion(id), total = p.price * qty, afford = gold >= total;
       return '<div class="sp-row">' +
         '<div class="sp-ico" style="border-color:' + p.color + '">' + p.icon + '</div>' +
-        '<div class="sp-info"><b>' + p.name + '</b><small>' + p.desc + '</small><small>มี ' + own + ' ชิ้น</small></div>' +
+        '<div class="sp-info"><b>' + p.name + '</b><small>' + p.desc + '</small><small>มี ' + own.toLocaleString() + ' ชิ้น</small></div>' +
         '<div class="sp-btns">' +
-          '<button class="sp-buy' + (afford ? '' : ' off') + '" data-act="buy" data-id="' + id + '">ซื้อ<br>' + p.price + '💰</button>' +
+          '<button class="sp-buy' + (afford ? '' : ' off') + '" data-act="buy" data-id="' + id + '">ซื้อ x' + qty + '<br>' + total.toLocaleString() + '💰</button>' +
           '<button class="sp-use' + (own ? '' : ' off') + '" data-act="use" data-id="' + id + '">ใช้</button>' +
         '</div></div>';
     }).join('');
-    panel.innerHTML =
-      '<div class="sp-head"><span>🛒 ร้านค้า</span><span class="sp-gold">💰 ' + scene.stats.gold + '</span>' +
-      '<button data-act="close">✕</button></div>' +
-      '<div class="sp-tabs">' +
-        '<button class="' + (tab === 'heal' ? 'on' : '') + '" data-act="tab" data-id="heal">ยาฟื้นฟู</button>' +
-        '<button class="' + (tab === 'buff' ? 'on' : '') + '" data-act="tab" data-id="buff">ยาบัฟสถานะ</button>' +
-      '</div><div class="sp-list">' + rows + '</div>';
+    const list = panel.querySelector('#sp-list');
+    if (list.innerHTML !== rows) list.innerHTML = rows;
   }
 
   // ทำงานทุก 0.5 วิ: ลบบัฟหมดเวลา, อัปเดตแถบบัฟ/ปุ่มกินยาด่วน
@@ -393,7 +445,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     updateQuick();
 
     if (!panel.hidden) {
-      const sig = scene.stats.gold + '|' + Object.keys(POTIONS).map(countPotion).join(',');
+      const sig = scene.stats.gold + '|' + qty + '|' + Object.keys(POTIONS).map(countPotion).join(',');
       if (sig !== lastSig) { lastSig = sig; render(); }
     }
   }
