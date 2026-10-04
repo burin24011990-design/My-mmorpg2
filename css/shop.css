@@ -1,8 +1,10 @@
 /* ===== ร้านค้า / ยา / บัฟ ===== */
 /* ปุ่มร้านค้าอยู่ในแถบเมนูบน (shop.js) ส่วนไฟล์นี้คือหน้าต่างร้าน / ปุ่มกินยาด่วน / แถบบัฟ */
-#shop-panel, #potion-quick, #potion-quick button, #shop-panel button {
+#shop-panel, #potion-quick, #potion-quick-r, .qs, #shop-panel button {
   font-family: 'Mitr', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
+#potion-quick-r { --qs: 46px; position: fixed; right: 14px; top: 27%; z-index: 900; }
+
 /* ช่องยาด่วนแนวตั้ง (ตำแหน่ง/ขนาดถูกตั้งจาก shop.js ให้ตรงกับกรอบเกม) */
 #potion-quick {
   --qs: 46px;
