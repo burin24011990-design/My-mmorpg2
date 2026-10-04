@@ -50,6 +50,7 @@ Main.prototype.makeUltiBtn = function (x, y, r) {
   this.tweens.add({ targets: glow, alpha: 0.25, scale: 1.12, yoyo: true, repeat: -1, duration: 700 });
   const c = this.add.circle(x, y, r, 0xd4af37, 0.92).setScrollFactor(0).setDepth(100).setInteractive().setVisible(false);
   c.setStrokeStyle(5, 0xfff3c4, 0.95);
+  const icon = this.add.image(x, y - 4, 'ic_aoe').setScrollFactor(0).setDepth(100.5).setVisible(false);
   const label = this.add.text(x, y - 15, '★ ULTI', { fontSize: '10px', color: '#3a2a00', fontStyle: 'bold' })
     .setOrigin(0.5).setScrollFactor(0).setDepth(101).setVisible(false);
   const t = this.add.text(x, y + 5, 'ULTI', { fontSize: '11px', color: '#3a2a00', fontStyle: 'bold', align: 'center' })
@@ -57,7 +58,7 @@ Main.prototype.makeUltiBtn = function (x, y, r) {
   const cd = this.add.text(x, y, '', { fontSize: '24px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
     .setOrigin(0.5).setScrollFactor(0).setDepth(102).setVisible(false);
   c.on('pointerdown', () => this.useUlti());
-  return { c, t, label, cd, glow, slotRing };
+  return { c, t, label, cd, glow, slotRing, icon };
 };
 
 Main.prototype.rovPos = function (i) {
@@ -81,6 +82,65 @@ Main.prototype.setupButtons = function () {
   // แถบเมนูด้านบน (กระเป๋า สกิล บอท อุปกรณ์ เลือกด่าน สเตตัส) อยู่ใน js/systems/topbar.js
   this.setupTopBar();
   this.loadSkillIcons();
+  this.makeActionIcons();
+  // รูปบนปุ่มโจมตีปกติ: ชื่อปุ่มย้ายลงล่าง ตัวเล็กลง
+  this.attackIcon = this.add.image(ROV.ax, ROV.ay - 8, 'atk_sword').setScrollFactor(0).setDepth(100.6);
+  this.attackBtn.t.setPosition(ROV.ax, ROV.ay + ROV.attackR * 0.58).setFontSize(14);
+};
+
+// ไอคอนโจมตีปกติ (ดาบ/คทา/ธนู/พระ/โจร) และแดช: วาดเอง ไม่ต้องมีไฟล์รูป
+// ถ้าต้องการรูปของตัวเอง ใส่ไฟล์ที่ assets/skills/basic_<อาชีพ>.png (เช่น basic_sword.png) และ assets/skills/dash.png
+Main.prototype.makeActionIcons = function () {
+  if (this.textures.exists('atk_sword')) return;
+  const g = this.make.graphics({ x: 0, y: 0, add: false });
+  const mk = (key, fn) => { g.clear(); fn(g); g.generateTexture(key, 64, 64); };
+
+  mk('atk_sword', g => {
+    g.lineStyle(9, 0x5b6573); g.lineBetween(49, 11, 24, 36);              // เงาใบดาบ
+    g.lineStyle(7, 0xe3ebf4); g.lineBetween(48, 12, 24, 36);              // ใบดาบ
+    g.fillStyle(0xe3ebf4); g.fillTriangle(54, 6, 52, 16, 44, 8);          // ปลายดาบ
+    g.lineStyle(2, 0xffffff); g.lineBetween(46, 14, 26, 34);              // ประกายขอบดาบ
+    g.lineStyle(6, 0xd9a441); g.lineBetween(18, 29, 34, 45);              // ด้ามกั้น
+    g.lineStyle(6, 0x7a4a21); g.lineBetween(26, 40, 14, 52);              // ด้ามจับ
+    g.fillStyle(0xf2c94c); g.fillCircle(12, 54, 4);                       // หัวด้าม
+  });
+  mk('atk_mage', g => {
+    g.lineStyle(7, 0x5a3a1c); g.lineBetween(14, 54, 42, 26);              // ไม้คทา
+    g.lineStyle(3, 0x9a6a38); g.lineBetween(16, 52, 40, 28);
+    g.fillStyle(0xb98cff, 0.35); g.fillCircle(46, 20, 15);                // รัศมีเรืองแสง
+    g.fillStyle(0x9fe8ff); g.fillCircle(46, 20, 9);                       // ลูกแก้ว
+    g.fillStyle(0xffffff); g.fillCircle(43, 17, 3);
+    g.lineStyle(2, 0xffffff); g.lineBetween(46, 4, 46, 9); g.lineBetween(58, 20, 63, 20); g.lineBetween(46, 31, 46, 36);
+  });
+  mk('atk_archer', g => {
+    g.lineStyle(6, 0xb5763a); g.beginPath(); g.arc(24, 32, 22, -1.2, 1.2, false); g.strokePath();   // คันธนู
+    g.lineStyle(2, 0xffffff); g.lineBetween(32, 12, 32, 52);              // สาย
+    g.lineStyle(3, 0xf2e2b3); g.lineBetween(10, 32, 54, 32);              // ลูกศร
+    g.fillStyle(0xdfe6ee); g.fillTriangle(60, 32, 51, 26, 51, 38);        // หัวลูกศร
+    g.fillStyle(0xff7a7a); g.fillTriangle(10, 32, 4, 26, 14, 32); g.fillTriangle(10, 32, 4, 38, 14, 32);   // ขนนก
+  });
+  mk('atk_priest', g => {
+    g.fillStyle(0xfff2a8, 0.3); g.fillCircle(32, 32, 28);                 // รัศมี
+    g.fillStyle(0xf5d76e); g.fillRoundedRect(27, 8, 10, 48, 3); g.fillRoundedRect(14, 20, 36, 10, 3);   // ไม้กางเขน
+    g.fillStyle(0xffffff, 0.8); g.fillRect(30, 11, 3, 42); g.fillRect(17, 23, 30, 3);
+  });
+  mk('atk_rogue', g => {
+    g.lineStyle(6, 0xc9d3e0); g.lineBetween(50, 10, 28, 32);              // มีดสั้นเล่มหลัก
+    g.fillStyle(0xc9d3e0); g.fillTriangle(56, 4, 54, 14, 46, 6);
+    g.lineStyle(5, 0x6a3a8a); g.lineBetween(24, 36, 14, 46);
+    g.lineStyle(5, 0x9b6bff); g.lineBetween(30, 22, 40, 32);              // ด้ามกั้น
+    g.lineStyle(5, 0xc9d3e0); g.lineBetween(12, 12, 28, 28);              // มีดเล่มรอง
+    g.fillStyle(0xc9d3e0); g.fillTriangle(8, 8, 18, 10, 10, 18);
+  });
+  mk('gen_dash', g => {
+    g.lineStyle(7, 0xbfe3ff); g.lineJoin = 'round';
+    [8, 24, 40].forEach((x, i) => {                                       // ลูกศรพุ่งซ้อนกัน
+      g.lineStyle(7, i === 2 ? 0xffffff : 0x9fd0ff);
+      g.beginPath(); g.moveTo(x, 14); g.lineTo(x + 16, 32); g.lineTo(x, 50); g.strokePath();
+    });
+    g.lineStyle(3, 0x9fd0ff); g.lineBetween(2, 24, 12, 24); g.lineBetween(2, 40, 12, 40);   // เส้นลม
+  });
+  g.destroy();
 };
 
 // โหลดรูปสกิลจาก assets/skills/<รหัสสกิล>.png (ไฟล์เดียวกับหน้าต่างสกิล) มาใช้บนปุ่มกด
@@ -91,6 +151,15 @@ Main.prototype.loadSkillIcons = function () {
   Object.keys(SKILL_DEFS).forEach(id => {
     const k = 'sk_' + id;
     if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/' + id + '.png?v=' + SKILL_ICON_VER); n++; }
+  });
+  Object.keys(BASIC_ATTACKS).forEach(cls => {       // โจมตีปกติ: assets/skills/basic_<อาชีพ>.png (ไม่มีไฟล์ = ใช้ไอคอนที่วาดเอง)
+    const k = 'sk_basic_' + cls;
+    if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/basic_' + cls + '.png?v=' + SKILL_ICON_VER); n++; }
+  });
+  if (!this.textures.exists('sk_dash')) { this.load.image('sk_dash', 'assets/skills/dash.png?v=' + SKILL_ICON_VER); n++; }   // แดช
+  Object.keys(ULTI_DEFS).forEach(cls => {          // อัลติ: assets/skills/ulti_<อาชีพ>.png
+    const k = 'sk_ulti_' + cls;
+    if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/ulti_' + cls + '.png?v=' + SKILL_ICON_VER); n++; }
   });
   if (n) this.load.start();
 };
@@ -124,7 +193,33 @@ Main.prototype.loadSkillIcons = function () {
         .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setVisible(true);
       b.t.setPosition(b.c.x, b.c.y + 27).setFontSize(10);
     });
+    // ปุ่มโจมตีปกติ: รูปตามอาชีพที่ถืออยู่ตอนนี้
+    if (this.attackIcon) {
+      const cls = this.currentClass();
+      const k = this.textures.exists('sk_basic_' + cls) ? 'sk_basic_' + cls
+        : (this.textures.exists('atk_' + cls) ? 'atk_' + cls : 'atk_sword');
+      const cdLeft = (this.cdEnd.basic || 0) - time;
+      this.attackIcon.setTexture(k).setDisplaySize(58, 58).setPosition(ROV.ax, ROV.ay - 8).setAlpha(cdLeft > 0 ? 0.5 : 1);
+    }
+    // ปุ่มแดช: ใช้ assets/skills/dash.png ถ้ามี ไม่มีใช้ไอคอนที่วาดเอง
+    const dB = this.dashBtn;
+    if (dB && dB.icon) {
+      const k = this.textures.exists('sk_dash') ? 'sk_dash' : 'gen_dash';
+      const dl = (this.cdEnd.dash || 0) - time;
+      dB.icon.setTexture(k).setDisplaySize(38, 38).setPosition(dB.c.x, dB.c.y - 6).setAlpha(dl > 0 ? 0.45 : 1);
+    }
     const u = this.ultiBtn;
+    // ปุ่มอัลติ: ใช้รูป ulti_<อาชีพ>.png (ไม่มีรูปก็ใช้ปุ่มทองเดิม)
+    if (u && u.icon) {
+      const ukey = this.ultiClass && ('sk_ulti_' + this.ultiClass);
+      if (ukey && this.textures.exists(ukey)) {
+        const busy = (this.cdEnd.ulti || 0) > time || this.stats.mp < ULTI_DEFS[this.ultiClass].mp;
+        u.icon.setTexture(ukey).setDisplaySize(54, 54).setPosition(u.c.x, u.c.y - 4)
+          .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setVisible(true);
+        u.t.setPosition(u.c.x, u.c.y + 28).setFontSize(9);
+        if (u.label) u.label.setVisible(false);
+      } else u.icon.setVisible(false);
+    }
     if (!u || !this.ultiClass || !u.cd) return;
     const left = Math.max(0, (this.cdEnd.ulti || 0) - time);
     u.cd.setText(left > 0 ? String(Math.ceil(left / 1000)) : '');
