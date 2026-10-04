@@ -29,6 +29,8 @@ const NAME_SIZE_EPIC = '17px';     // ขนาดชื่อ Epic
 const NAME_SIZE_BOSS = '19px';     // ขนาดชื่อมินิบอส
 const HPBAR_ONLY_WHEN_HURT = false; // true = โชว์หลอดเลือดเฉพาะตอนมอนเสียเลือดแล้ว
 const HPBAR_W_NORMAL = 50, HPBAR_W_EPIC = 66, HPBAR_W_BOSS = 90;   // ความกว้างหลอด (px)
+// ขนาดของที่ดรอปบนพื้น (px) เมื่อใช้รูปใหม่จาก assets/items/
+const LOOT_DISPLAY_SIZE = 30;
 
 Object.assign(Main.prototype, {
   // โหลดด่าน: ล้างของเก่า วาดพื้นใหม่ สร้างพุ่ม/หิน เสกมอนของด่านนี้เท่านั้น
@@ -384,6 +386,15 @@ Object.assign(Main.prototype, {
     }
   },
 
+  // สร้างของบนพื้น: ใช้รูปใหม่ (เหมือนในกระเป๋า) ถ้ามี ไม่มีก็ใช้รูปเดิม
+  // name = 'box' (กล่องอุปกรณ์) หรือ 'scroll' (หนังสือสกิล)
+  makeLoot(x, y, name) {
+    const key = name === 'scroll' ? itemImgKey('skillbook', 'scroll') : itemImgKey('box', 'box');
+    const s = this.loot.create(x, y, key);
+    if (key.indexOf('img_') === 0) s.setDisplaySize(LOOT_DISPLAY_SIZE, LOOT_DISPLAY_SIZE);   // ปรับขนาดที่ค่าคงที่ด้านบนไฟล์
+    return s;
+  },
+
   dropLoot(x, y, monsterLv, boxLevel, isBoss, isEpic) {
     // เงินเข้ากระเป๋าทันที ไม่ต้องเดินเก็บ
     const mult = isBoss ? BOSS_MULT : (isEpic ? EPIC_MULT : 1);
@@ -394,20 +405,20 @@ Object.assign(Main.prototype, {
 
     // Epic: มีโอกาสดรอปกล่องแดง
     if (isEpic && Math.random() < EPIC_RED_BOX_CHANCE) {
-      const rb = this.loot.create(x + 30, y + 10, 'box');
+      const rb = this.makeLoot(x + 30, y + 10, 'box');
       rb.setData('kind', 'box'); rb.setData('level', boxLevel); rb.setData('tier', 'red');   // lootOptions.js อ่าน tier ตอนเก็บ
       this.toastMsg('🟥 มอนสเตอร์ Epic ดรอปกล่องแดง!');
     }
 
     if (isBoss) {
       for (let i = 0; i < 3; i++) {
-        const it = this.loot.create(x + 20 + i * 18, y + 14, 'box');
+        const it = this.makeLoot(x + 20 + i * 18, y + 14, 'box');
         it.setData('kind', 'box'); it.setData('level', boxLevel);
       }
       // หนังสือสกิล: มินิบอสโอกาส BOSS_SKILL_DROP_CHANCE (60%) สุ่มสกิลใดสกิลหนึ่ง
       if (Math.random() < BOSS_SKILL_DROP_CHANCE) {
         const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
-        const sc = this.loot.create(x - 22, y + 14, 'scroll');
+        const sc = this.makeLoot(x - 22, y + 14, 'scroll');
         sc.setData('kind', 'skill'); sc.setData('sid', sid);
         this.toastMsg('📕 มินิบอสดรอปหนังสือสกิล: ' + SKILL_DEFS[sid].name);
       }
@@ -415,12 +426,12 @@ Object.assign(Main.prototype, {
     }
     // มอนธรรมดา/Epic: กล่อง ~15% (เท่าโอกาสเดิม 28% x 55%) และหนังสือสกิล 5% (สุ่มแยกกัน)
     if (Phaser.Math.Between(1, 100) <= 15) {
-      const it = this.loot.create(x + 14, y, 'box');
+      const it = this.makeLoot(x + 14, y, 'box');
       it.setData('kind', 'box'); it.setData('level', boxLevel);
     }
     if (Math.random() < NORMAL_SKILL_DROP_CHANCE) {
       const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
-      const sc = this.loot.create(x - 14, y + 6, 'scroll');
+      const sc = this.makeLoot(x - 14, y + 6, 'scroll');
       sc.setData('kind', 'skill'); sc.setData('sid', sid);
       this.toastMsg('📕 ดรอปหนังสือสกิล: ' + SKILL_DEFS[sid].name);
     }
