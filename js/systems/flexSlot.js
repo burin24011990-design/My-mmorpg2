@@ -4,11 +4,13 @@
 //   - ช่องว่าง: แตะเพื่อเลือกสกิลใส่ | ช่องที่ใส่แล้ว: แตะ = ใช้สกิล, แตะปุ่ม ✎ มุมขวาบน = เปลี่ยน/ถอดสกิล
 //   - พอใส่สายเดียวกันครบ 3 ช่องอีกครั้ง ปุ่มกลับเป็นอันติ และสกิลที่ใส่ไว้ในช่องพิเศษจะถูกเก็บไว้ ไม่หาย
 // สกิลช่องพิเศษถูกเซฟไปกับเซฟเกม (save.js) และขึ้นหน้าต่างสกิลได้ (skillLevelPatch.js)
+// รูปบนปุ่ม: ใช้รูป sk_<รหัสสกิล> (โหลดโดย hudLayout.js จาก assets/skills/) เหมือนปุ่มสกิลปกติ ถ้าไม่มีรูปใช้ไอคอนเดิม
 // โหลดต่อจากไฟล์สกิล/เอฟเฟกต์ทั้งหมด และ "ก่อน" main.js (ต้องอยู่หลังสุดเพื่อให้กติกาของแต่ละอาชีพทำงานกับสกิลช่องนี้ด้วย)
 (function () {
   const P = Main.prototype;
   const IDX = 4;                           // ช่องพิเศษใช้ดัชนี 4 (cdEnd.slot4) แต่ไม่ได้อยู่ใน this.slots จึงไม่กระทบการนับคอมโบ
   const SELF_TYPES = ['heal1', 'healaoe', 'haste'];   // สกิลใช้กับตัวเอง บอทใช้ได้โดยไม่ต้องมีเป้า
+  const ICON_SIZE = 46;                    // ขนาดรูปสกิลบนปุ่ม (เท่ากับปุ่มสกิลปกติใน hudLayout.js)
 
   const hex = c => '#' + ('000000' + (c || 0).toString(16)).slice(-6);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -39,8 +41,8 @@
     const c = scene.add.circle(x, y, r, 0x3a3a3a, 0.55).setScrollFactor(0).setDepth(100).setInteractive();
     c.setStrokeStyle(3, 0xd4af37, 0.95);
     const icon = scene.add.image(x, y - 4, 'ic_melee').setDisplaySize(22, 22).setScrollFactor(0).setDepth(101).setVisible(false);
-    const t = scene.add.text(x, y + Math.round(r * 0.55), '', { fontSize: '9px', color: '#fff', align: 'center' }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
-    const cdText = scene.add.text(x, y, '+', { fontSize: '14px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
+    const t = scene.add.text(x, y + Math.round(r * 0.55), '', { fontSize: '9px', color: '#fff', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    const cdText = scene.add.text(x, y, '+', { fontSize: '14px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
     const edit = scene.add.circle(x + r * 0.72, y - r * 0.72, 13, 0x1d1d1d, 0.95).setScrollFactor(0).setDepth(103).setInteractive();
     edit.setStrokeStyle(2, 0xd4af37, 1);
     const editT = scene.add.text(edit.x, edit.y, '✎', { fontSize: '14px', color: '#ffe28a' }).setOrigin(0.5).setScrollFactor(0).setDepth(104);
@@ -75,8 +77,6 @@
     const flex = !scene.ultiClass;
     const x = ub.c.x, y = ub.c.y, r = b.r;
     b.c.setPosition(x, y);
-    b.icon.setPosition(x, y - 4);
-    b.t.setPosition(x, y + Math.round(r * 0.55));
     b.cdText.setPosition(x, y);
     b.edit.setPosition(x + r * 0.72, y - r * 0.72);
     b.editT.setPosition(b.edit.x, b.edit.y);
@@ -84,13 +84,25 @@
     const sid = scene.flexSid, def = sid && SKILL_DEFS[sid];
     if (!def) {
       b.c.setFillStyle(0x3a3a3a, 0.55);
-      b.t.setText('ช่องพิเศษ');
+      b.t.setPosition(x, y + Math.round(r * 0.55)).setFontSize(9).setText('ช่องพิเศษ');
       b.cdText.setText('+');
     } else {
       const left = Math.max(0, (scene.cdEnd['slot' + IDX] || 0) - time);
       const noMana = scene.stats.mp < def.mp;
-      b.c.setFillStyle(CLASSES[def.class] ? CLASSES[def.class].color : 0x888888, (left > 0 || noMana) ? 0.3 : 0.85);
-      b.icon.setTexture(skillIconKey(def.type)).setTint(0xffffff);
+      const busy = left > 0 || noMana;
+      b.c.setFillStyle(CLASSES[def.class] ? CLASSES[def.class].color : 0x888888, busy ? 0.3 : 0.85);
+      const key = 'sk_' + sid;
+      if (scene.textures.exists(key)) {
+        // มีรูปสกิล: แสดงรูปเดียวกับปุ่มสกิลปกติและหน้าต่างสกิล
+        b.icon.setTexture(key).setDisplaySize(ICON_SIZE, ICON_SIZE).setPosition(x, y - 6)
+          .setTint(0xffffff).setAlpha(busy ? 0.45 : 1);
+        b.t.setPosition(x, y + 27).setFontSize(10);
+      } else {
+        // ยังไม่มีรูป: ใช้ไอคอนเดิมตามชนิดสกิล
+        b.icon.setTexture(skillIconKey(def.type)).setDisplaySize(22, 22).setPosition(x, y - 4)
+          .setTint(0xffffff).setAlpha(1);
+        b.t.setPosition(x, y + Math.round(r * 0.55)).setFontSize(9);
+      }
       b.t.setText(def.name);
       b.cdText.setText(left > 0 ? (left / 1000).toFixed(1) : '');
     }
