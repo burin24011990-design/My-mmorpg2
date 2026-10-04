@@ -24,7 +24,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
   let scene = null;
   let tab = 'heal';
   let lastUse = 0;
-  let panel, quick;
+  let panel, quick, quickR;
   let lastSig = '';
   const HP_PICK_KEY = 'shop_hp_pick_v1';
   const HP_ORDER = ['hp_s', 'hp_m', 'hp_l'];   // ลำดับสลับเมื่อกดค้าง: เล็ก -> กลาง -> ใหญ่
@@ -259,7 +259,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
           updateQuick();
         } else { tab = d.tab; toggle(true); }   // ช่องว่าง = เปิดร้านที่แท็บนั้น
       });
-      quick.appendChild(el);
+      (d.cycle ? quickR : quick).appendChild(el);
       qslots.push(q);
     });
   }
@@ -296,6 +296,11 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     quick.style.setProperty('--qs', sz + 'px');
     quick.style.left = (r.left + 8) + 'px';
     quick.style.top = (r.top + r.height * 0.47) + 'px';
+    if (quickR) {
+      quickR.style.setProperty('--qs', sz + 'px');
+      quickR.style.right = (window.innerWidth - r.right + 14) + 'px';
+      quickR.style.top = (r.top + r.height * 0.27) + 'px';   // เหนือปุ่ม ULTI / สกิล
+    }
   }
 
   // ---------- UI ----------
@@ -304,6 +309,8 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
 
     quick = document.createElement('div'); quick.id = 'potion-quick';
     document.body.appendChild(quick);
+    quickR = document.createElement('div'); quickR.id = 'potion-quick-r';
+    document.body.appendChild(quickR);
     buildQuick();
     window.addEventListener('resize', layoutQuick);
 
