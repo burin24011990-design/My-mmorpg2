@@ -282,12 +282,16 @@
     if (crit) final *= S.critdmg / 100;
     final = Math.max(1, Math.round(final));
 
-    const px = e.x, py = e.y;
-    _damage.call(this, e, final);
+    // ส่งธงคริติคอลไปให้ monsters.js (damage) เพื่อแสดงตัวเลขแบบมีดาวระเบิดสีแดง
+    this._critHit = crit;
+    try {
+      _damage.call(this, e, final, { crit: crit });
+    } finally {
+      this._critHit = false;
+    }
 
     const vamp = type === 'magic' ? S.spellvamp : S.lifesteal;
     if (vamp > 0) vampHeal(this, final * vamp / 100);
-    if (crit) this.statPop(px, py - 38, 'คริติคอล!', '#ff6a5a');
   };
 
   // ---------- ดาเมจที่ผู้เล่นโดน: เกราะกายภาพ/เกราะเวท ----------
