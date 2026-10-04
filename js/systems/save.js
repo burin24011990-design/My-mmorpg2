@@ -2,6 +2,7 @@
 // เซฟทุก 3 วินาที (เขียนเฉพาะตอนข้อมูลเปลี่ยน) + ตอนปิด/ซ่อนหน้าเว็บ | โหลดอัตโนมัติตอนเริ่มเกม
 // เหตุการณ์สำคัญ (เลเวลอัป/เปลี่ยนอุปกรณ์/เรียนสกิล/ตีบวก/รวมดาว ฯลฯ) จะสั่งอัปโหลดขึ้นคลาวด์เร็วขึ้นผ่าน CloudSave.soon()
 // ล้างเซฟ: เปิด Console แล้วพิมพ์ localStorage.removeItem('my_mmorpg_save_v1')
+// เซฟสกิลช่องพิเศษ (flex) ด้วย: ช่องอันติที่ใส่สกิลอะไรก็ได้เมื่อไม่มีคอมโบ (ดู flexSlot.js)
 
 const SAVE_KEY = 'my_mmorpg_save_v1';
 
@@ -32,6 +33,7 @@ Object.assign(Main.prototype, {
         learned: [...this.learnedSkills],
         skillLv: this.skillLv || {},
         slots: this.slots,
+        flex: this.flexSid || null,         // สกิลช่องพิเศษ (ช่องอันติเมื่อไม่มีคอมโบ)
         kills: this.kills,
         stageIdx: this.stageIdx || 0,
         botCfg: this.botCfg || {},
@@ -136,6 +138,10 @@ Object.assign(Main.prototype, {
         const sid = Array.isArray(d.slots) ? d.slots[i] : null;
         return sid && this.learnedSkills.has(sid) ? sid : null;
       });
+
+      // สกิลช่องพิเศษ: ต้องเป็นสกิลที่เรียนแล้ว และไม่ซ้ำกับช่องหลัก
+      const fx = d.flex;
+      this.flexSid = (fx && SKILL_DEFS[fx] && this.learnedSkills.has(fx) && this.slots.indexOf(fx) < 0) ? fx : null;
 
       this.kills = Number.isFinite(d.kills) ? d.kills : 0;
       this.botCfg = d.botCfg && typeof d.botCfg === 'object' ? d.botCfg : {};
