@@ -17,28 +17,34 @@
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   // 1) เงาพุ่งฟัน: พุ่งไปฟัน hits ครั้ง ครั้งละ hitMul ของดาเมจ | ฟันโดนแล้วพุ่งต่อได้ recasts ครั้งภายใน recastMs
   //    recastMul = ความแรงของการพุ่งครั้งที่ 2 (2 = แรง 2 เท่า)
+  //    dodgeMs = ทุกครั้งที่พุ่ง (รวมพุ่งต่อ) หลบการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (2000 = 2 วิ)
   //    กดค้างแล้วลากเพื่อเลือกทิศพุ่งได้ (ตั้งค่าที่ DIR_CFG ใน aimDash.js) | แตะเฉยๆ = พุ่งหาเป้า/ทิศที่หันอยู่
   Classes.skill('rg_dash', {
     name: 'เงาพุ่งฟัน', class: 'rogue', type: 'rdash', noInfo: true,
     dmg: 14, range: 170, cd: 6000, mp: 14,
     hits: 2, hitMul: 0.6, hitR: 75,
     recasts: 1, recastMs: 2500, recastRange: 280, recastMul: 2,
+    dodgeMs: 2000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'พุ่งฟัน ' + def.hits + ' ครั้ง ครั้งละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
+      ' • หลบการโจมตี 1 ครั้ง (นาน ' + (def.dodgeMs / 1000) + ' วิ) ทุกครั้งที่พุ่ง' +
       ' • ฟันโดนแล้วพุ่งต่อได้ ' + def.recasts + ' ครั้ง แรง x' + def.recastMul + ' (≈' +
       Math.round(Classes.power(def.id, def, lv, S) * def.hitMul * def.recastMul) + ' ต่อครั้ง) • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // 2) เงาหายตัว: หายตัว dur มิลลิวินาที | ฟันครั้งแรกแรงขึ้น bonus เท่า และลดเกราะ armorBreak (0.35 = 35%) นาน armorMs
+  // 2) เงาหายตัว: หายตัว dur มิลลิวินาที | ฟันครั้งแรกจะออกจากการหายตัว
+  //    bonus = ดาเมจครั้งแรกคูณกี่เท่า (1 = ไม่เพิ่ม) | armorBreak = ลดเกราะศัตรู (0.1 = 10%) นาน armorMs
+  //    critBonus = เพิ่มคริติคอล % (100 = 100%) นาน critMs
   Classes.skill('rg_vanish', {
     name: 'เงาหายตัว', class: 'rogue', type: 'rvanish', noInfo: true,
     dmg: 0, range: 0, cd: 14000, mp: 16,
-    dur: 5000, bonus: 1.4, armorBreak: 0.35, armorMs: 6000, mspd: 25,
+    dur: 5000, bonus: 1.4, armorBreak: 0.1, armorMs: 5000,
+    critBonus: 100, critMs: 5000, mspd: 25,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'หายตัว ' + (def.dur / 1000) + ' วิ ฟันครั้งแรกแรงขึ้น ' + Math.round((def.bonus - 1) * 100) +
-      '% และลดเกราะ ' + Math.round(def.armorBreak * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => 'หายตัว ' + (def.dur / 1000) + ' วิ ฟันครั้งแรกจะออกจากการหายตัว ลดเกราะศัตรู ' + Math.round(def.armorBreak * 100) +
+      '% และเพิ่มคริติคอล ' + def.critBonus + '% นาน ' + (def.critMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // 3) ฟันตัดเอ็น: ฟันด้านหน้า แล้วลดความเร็วเคลื่อนที่ (slow 0.5 = เหลือครึ่งหนึ่ง) นาน slowMs
@@ -75,7 +81,7 @@
   if (window.DIR_CFG) window.DIR_CFG.rg_drain = { len: SKILL_DEFS.rg_drain.range, w: SKILL_DEFS.rg_drain.halfW };
 
   // ---------- ตัวช่วย ----------
-  // ฟัน 1 ครั้ง: ถ้ากำลังหายตัวอยู่ ครั้งแรกจะแรงขึ้น + ลดเกราะเป้าหมาย แล้วออกจากการหายตัว
+  // ฟัน 1 ครั้ง: ถ้ากำลังหายตัวอยู่ ครั้งแรกจะลดเกราะเป้าหมาย + เพิ่มคริ แล้วออกจากการหายตัว
   function rogueHit(scene, e, dmg) {
     const s = scene.rogueStealth, now = scene.time.now;
     let d = dmg;
@@ -83,6 +89,8 @@
       if (!s.fired) {
         s.fired = true; s.until = now + 300;   // ทุกเป้าที่โดนในจังหวะเดียวกันได้ผลเหมือนกัน
         scene.popText(scene.player.x, scene.player.y - 40, 'ฟันจากเงา!', '#d9b3ff');
+        // เพิ่มคริติคอล (ใส่ก่อน scene.damage ด้านล่าง ฟันครั้งแรกจึงได้คริด้วย)
+        if (scene.addStatBuff && s.critBonus) scene.addStatBuff('vanishCrit', { crit: s.critBonus }, s.critMs);
       }
       Classes.status(scene, e, 'armor', { pct: s.armorBreak }, s.armorMs);
       d = Math.round(d * s.bonus);
@@ -121,6 +129,10 @@
   // boosted = true เมื่อเป็นการพุ่งต่อ (ครั้งที่ 2) ใช้ข้อความ x2 | dmg ที่ส่งเข้ามาถูกคูณ recastMul แล้ว
   function doDash(scene, def, dmg, towards, left, dir, boosted) {
     const p = scene.player;
+    // หลบการโจมตีได้ 1 ครั้ง ทุกครั้งที่พุ่ง (รวมพุ่งต่อ) หมดอายุตาม def.dodgeMs
+    scene.rogueDodge = { until: scene.time.now + (def.dodgeMs || 2000) };
+    scene.popText(p.x, p.y - 62, 'พร้อมหลบ!', '#9be7ff');
+
     const chase = towards && !dir;
     let dx, dy;
     if (dir) { dx = dir.x; dy = dir.y; }
@@ -161,6 +173,29 @@
     else doDash(this, def, dmg, pickTarget(this, def.range + 90), def.recasts);
   };
 
+  // ---------- ระบบหลบ 1 ครั้ง ----------
+  // ดักที่ hurtPlayer: ถ้ามี rogueDodge ที่ยังไม่หมดอายุ -> ไม่โดนดาเมจ 1 ครั้ง แล้วใช้หมด
+  // (ครอบคลุมทั้งมอนชน กระสุน และสกิลวงแดงของบอส เพราะทุกอย่างเรียก hurtPlayer)
+  const _hurtPlayer = P.hurtPlayer;
+  if (_hurtPlayer) {
+    P.hurtPlayer = function (raw) {
+      const dg = this.rogueDodge;
+      if (dg) {
+        this.rogueDodge = null;   // หมดอายุหรือใช้แล้ว ล้างทิ้งเสมอ
+        if (this.time.now < dg.until) {
+          if (this.player) {
+            this.popText(this.player.x, this.player.y - 40, 'หลบ!', '#9be7ff');
+            this.flash(this.player.x, this.player.y, 36, 0x9be7ff);
+          }
+          return;
+        }
+      }
+      return _hurtPlayer.apply(this, arguments);
+    };
+  } else {
+    console.error('rogue.js: ไม่พบ hurtPlayer ระบบหลบจึงไม่ทำงาน (ตรวจว่า fixes.js โหลดก่อน rogue.js)');
+  }
+
   // กดสกิลพุ่งซ้ำระหว่างช่วงพุ่งต่อ = พุ่งอีกครั้งโดยไม่เสีย MP/คูลดาวน์ (ดาเมจคูณ recastMul) | บอท: หายตัวเฉพาะตอนมีเป้า และไม่หายตัวซ้อน
   // gp = {dir:true, x, y} เมื่อผู้เล่นลากเลือกทิศจากปุ่มสกิล (aimDash.js)
   const _useSkill = P.useSkill;
@@ -200,10 +235,13 @@
   // ---------- เงาหายตัว ----------
   Classes.handlers.rvanish = function (def) {
     const now = this.time.now;
-    this.rogueStealth = { until: now + def.dur, bonus: def.bonus, armorBreak: def.armorBreak, armorMs: def.armorMs, fired: false };
+    this.rogueStealth = {
+      until: now + def.dur, bonus: def.bonus, armorBreak: def.armorBreak, armorMs: def.armorMs,
+      critBonus: def.critBonus, critMs: def.critMs, fired: false,
+    };
     if (this.addStatBuff && def.mspd) this.addStatBuff('vanish', { mspd: def.mspd }, def.dur);
     this.flash(this.player.x, this.player.y, 50, 0x9b6bff);
-    this.toastMsg('🌑 หายตัว! ฟันครั้งแรกจะลดเกราะ');
+    this.toastMsg('🌑 หายตัว! ฟันครั้งแรกจะลดเกราะและเพิ่มคริ');
   };
 
   // หายตัว = มอนที่อยู่ไกลกว่า 110 มองไม่เห็น (ใช้ระบบเดียวกับพุ่มหญ้า)
