@@ -141,11 +141,14 @@
       if (l < 0.001) { ux = 1; uy = 0; } else { ux /= l; uy /= l; }
       const len = def.range, hw = def.halfW;
 
-      const beam = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, GOLD, 0.4)
-        .setRotation(Math.atan2(uy, ux)).setDepth(60);
-      const core = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 0.4, 0xffffff, 0.9)
-        .setRotation(Math.atan2(uy, ux)).setDepth(61);
-      scene.tweens.add({ targets: [beam, core], alpha: 0, duration: 380, onComplete: () => { beam.destroy(); core.destroy(); } });
+      // มีภาพลำแสง (priestFx.js: pr_beam.png) -> ไม่วาดแถบสี่เหลี่ยมซ้อน
+      if (!(scene.textures && scene.textures.exists('pr_beam'))) {
+        const beam = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, GOLD, 0.4)
+          .setRotation(Math.atan2(uy, ux)).setDepth(60);
+        const core = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 0.4, 0xffffff, 0.9)
+          .setRotation(Math.atan2(uy, ux)).setDepth(61);
+        scene.tweens.add({ targets: [beam, core], alpha: 0, duration: 380, onComplete: () => { beam.destroy(); core.destroy(); } });
+      }
       scene.flash(p.x, p.y, 50, GOLD);
 
       scene.enemies.getChildren().slice().forEach(e => {
