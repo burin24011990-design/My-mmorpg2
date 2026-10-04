@@ -238,6 +238,12 @@
         }
       }
     } catch (e) { console.error('skillFx', e); }
+
+    // จำสกิลที่เพิ่งร่าย เพื่อให้ตัวเลขดาเมจ (monsters.js: damage) ใช้สีของสกิลนั้น
+    if (def) {
+      const span = 250 + (def.chargeMs || 0) + (def.ticks > 1 ? def.ticks * (def.tickMs || 0) : 0);
+      this._skillCtx = { def: def, until: this.time.now + span };
+    }
     return _apply.apply(this, arguments);
   };
 
