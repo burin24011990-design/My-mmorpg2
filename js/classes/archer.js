@@ -1,9 +1,9 @@
 // ===== อาชีพธนู (archer) — แก้ความสามารถสกิลของธนูที่ไฟล์นี้ =====
-// สกิล 1 ยิงคู่ลดพลัง (ar_shot)   | ยิง 2 ดอก ศัตรูที่โดนตีเบาลง | ลากเลือกทิศได้
-// สกิล 2 ธนูตรึงขา   (ar_multi)  | ยิง 1 ดอก ล็อกขาศัตรู (เดินไม่ได้) | ลากเลือกทิศได้
-// สกิล 3 ธนูเจาะเกราะ (ar_pierce) | ดาเมจรุนแรง ระยะไกลขึ้น | ลากเลือกทิศได้
-// สกิล 4 ฝนลูกศร     (ar_rain)   | วางลงพื้นที่ที่ลากเล็ง ดาเมจ 3 ช่วง
-// อัลติ  ธนูทลวงฟ้า              | ชาร์จธนูแล้วยิงเป็นแนวกว้าง ดาเมจรุนแรง ไกล ทะลุทุกตัว | ลากเลือกทิศได้
+// สกิล 1 ยิงคู่ลดพลัง (ar_shot)   | ยิง 2 ดอก ศัตรูที่โดนตีเบาลง + ใช้แล้วเพิ่มดาเมจ/ความเร็วโจมตี 3 วิ (12% + 1% ต่อเลเวลสกิล)
+// สกิล 2 ธนูตรึงขา   (ar_multi)  | ยิง 1 ดอก ล็อกขาศัตรู + ใช้แล้วเจาะเกราะ 100% และเพิ่มคริ 50% นาน 3 วิ
+// สกิล 3 ธนูเจาะเกราะ (ar_pierce) | ดาเมจรุนแรงมาก เจาะเกราะ 100% ลำกว้าง ทะลุโดนเป็นกลุ่มใหญ่
+// สกิล 4 ฝนลูกศร     (ar_rain)   | วางลงพื้นที่ที่ลากเล็ง ดาเมจ 3 ช่วง + ฟื้น HP/MP ทุกช่วง
+// อัลติ  ธนูทลวงฟ้า              | ชาร์จแล้วยิงแนวกว้าง "2 ที" ดาเมจรุนแรง ทะลุทุกตัว | ลากเลือกทิศได้
 // dmg = ค่าฐาน | range = ระยะ | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส
 (function () {
@@ -18,6 +18,12 @@
   const CHARGE_ROOTS_PLAYER = true;   // true = ขณะชาร์จอัลติ ตัวละครเดินไม่ได้
   const ATK_FIELDS = ['atk', 'dmg', 'attack'];   // ชื่อฟิลด์พลังโจมตีของมอน (ใช้กับสถานะ "ตีเบาลง" ดู monsters.js)
 
+  // ตัวคูณความแรงสกิลธนูทุกสกิลรวมอัลติ: 2 = แรงขึ้น 1 เท่า (x2) | ตั้ง 1 = ค่าเดิม
+  const DMG_MUL = 2;
+  // ตัวคูณมานาของสกิลธนูทุกสกิลรวมอัลติ: 0.5 = ใช้มานาครึ่งเดียว | ตั้ง 1 = ค่าเดิม
+  const MP_COST_MUL = 0.5;
+  const mpc = n => Math.max(1, Math.round(n * MP_COST_MUL));
+
   // คูลดาวน์อัลติ: ใช้ค่ากลางจาก _shared.js ถ้ามี ไม่มีก็ใช้ 60 วินาที (กันไฟล์พังทั้งไฟล์ถ้าไม่มีตัวแปร ULTI_CD)
   const ULTI_COOLDOWN = (typeof window.ULTI_CD === 'number') ? window.ULTI_CD
     : (typeof ULTI_CD === 'number' ? ULTI_CD : 60000);
@@ -26,50 +32,60 @@
   Classes.basic('archer', { name: 'โจมตี', dmg: 9, range: 360, cd: 650, type: 'proj', class: 'archer' });
 
   // สกิล 1: ยิงคู่ — ยิง shots ดอก ห่างกัน gap มิลลิวินาที ดอกละ hitMul ของดาเมจ | ศัตรูที่โดนตีเบาลง weakPct นาน weakMs
+  // บัพตัวเอง: เพิ่มดาเมจ + ความเร็วโจมตี selfBuffPct (0.12 = 12%) นาน selfBuffMs | +selfBuffPerLv ต่อเลเวลสกิล (0.01 = 1%)
   Classes.skill('ar_shot', {
     name: 'ยิงคู่ลดพลัง', class: 'archer', type: 'ashot2', noInfo: true,
-    dmg: 11, range: 420, hw: 12, cd: 3000, mp: 12,
+    dmg: 11 * DMG_MUL, range: 420, hw: 12, cd: 3000, mp: mpc(12),
     shots: 2, gap: 140, hitMul: 0.7, weakPct: 0.25, weakMs: 5000,
+    selfBuffPct: 0.12, selfBuffPerLv: 0.01, selfBuffMs: 3000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ยิง ' + def.shots + ' ดอก ดอกละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
-      ' ศัตรูที่โดนตีเบาลง ' + Math.round(def.weakPct * 100) + '% นาน ' + (def.weakMs / 1000) + ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' ศัตรูที่โดนตีเบาลง ' + Math.round(def.weakPct * 100) + '% นาน ' + (def.weakMs / 1000) + ' วิ' +
+      ' • ใช้แล้วเพิ่มดาเมจและความเร็วโจมตี ' + Math.round((def.selfBuffPct + (lv - 1) * def.selfBuffPerLv) * 100) + '% นาน ' + (def.selfBuffMs / 1000) +
+      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // สกิล 2: ธนูตรึงขา — ยิง 1 ดอก ล็อกขาศัตรู rootMs มิลลิวินาที (ศัตรูเดินไม่ได้ แต่ยังตีได้ถ้าอยู่ในระยะ)
+  // บัพตัวเอง นาน buffMs: เจาะเกราะ 100% (โจมตีทุกอย่างไม่คิดเกราะมอน) + เพิ่มคริ critBonus %
   Classes.skill('ar_multi', {
     name: 'ธนูตรึงขา', class: 'archer', type: 'aroot', noInfo: true,
-    dmg: 13, range: 480, hw: 12, cd: 5000, mp: 14, rootMs: 2200,
+    dmg: 13 * DMG_MUL, range: 480, hw: 12, cd: 5000, mp: mpc(14), rootMs: 2200,
+    critBonus: 50, buffMs: 3000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ยิง 1 ดอก ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' ล็อกขาศัตรู ' + (def.rootMs / 1000) + ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' ล็อกขาศัตรู ' + (def.rootMs / 1000) + ' วิ • ใช้แล้วเจาะเกราะ 100% และเพิ่มคริ ' + def.critBonus + '% นาน ' + (def.buffMs / 1000) +
+      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // สกิล 3: ธนูเจาะเกราะ — ดาเมจรุนแรง ระยะไกล (เดิม 24 / 420)
+  // สกิล 3: ธนูเจาะเกราะ — ดาเมจรุนแรงมาก เจาะเกราะ 100% | ลำกว้าง hw*2 ยาว range ทะลุโดนทุกตัวในแนว (เดิม ดาเมจ 40 / hw 16)
   Classes.skill('ar_pierce', {
     name: 'ธนูเจาะเกราะ', class: 'archer', type: 'aheavy', noInfo: true,
-    dmg: 40, range: 650, hw: 16, cd: 6000, mp: 22,
+    dmg: 60 * DMG_MUL, range: 650, hw: 70, cd: 6000, mp: mpc(22),
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ยิงดอกใหญ่ ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' ระยะไกล ' + def.range + ' • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => 'ยิงลำใหญ่ทะลุเป็นแนวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+      ' ต่อตัว เจาะเกราะ 100% ระยะ ' + def.range + ' • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // สกิล 4: ฝนลูกศร — วางโซนรัศมี range ที่จุดลากเล็ง ลงดาเมจ ticks ครั้ง ห่างกัน tickMs | ดาเมจต่อครั้ง = tickMul ของดาเมจ
+  // ฟื้นทุกช่วง (ticks): hpPctTick / mpPctTick = % ของ HP / MP สูงสุดต่อครั้ง
   Classes.skill('ar_rain', {
     name: 'ฝนลูกศร', class: 'archer', type: 'arain', noInfo: true,
-    dmg: 14, range: 120, cd: 6500, mp: 20,
-    ticks: 3, tickMs: 700, tickMul: 0.6,
+    dmg: 14 * DMG_MUL, range: 120, cd: 6500, mp: mpc(20),
+    ticks: 3, tickMs: 700, tickMul: 0.6, hpPctTick: 0.08, mpPctTick: 0.1,
   }, {
     scale: { patk: 1 }, ground: { cast: 340 },
     info: (def, lv, S) => 'วางฝนลูกศรลงพื้นที่ ดาเมจ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.tickMul) +
-      ' x ' + def.ticks + ' ครั้ง ห่างกัน ' + (def.tickMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' x ' + def.ticks + ' ครั้ง ห่างกัน ' + (def.tickMs / 1000) + ' วิ • ฟื้น HP ' + Math.round(def.hpPctTick * 100) + '% และ MP ' +
+      Math.round(def.mpPctTick * 100) + '% ทุกครั้ง • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // อัลติ ธนูทลวงฟ้า — ชาร์จ chargeMs มิลลิวินาที แล้วยิงแนวยาว range กว้าง halfW*2 ทะลุทุกตัว
+  // อัลติ ธนูทลวงฟ้า — ชาร์จ chargeMs มิลลิวินาที แล้วยิงแนวยาว range กว้าง halfW*2 ทะลุทุกตัว ยิง shots ทีห่างกัน shotGap (เดิม ดาเมจ 120 ยิง 1 ที)
   Classes.ulti('archer', {
-    name: 'ธนูทลวงฟ้า', dmg: 120, range: 650, halfW: 95, cd: ULTI_COOLDOWN, mp: 50, type: 'ault', chargeMs: 800,
+    name: 'ธนูทลวงฟ้า', dmg: 150 * DMG_MUL, range: 650, halfW: 95, cd: ULTI_COOLDOWN, mp: mpc(50), type: 'ault', chargeMs: 800,
+    shots: 2, shotGap: 350,
   }, { scale: { patk: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(AR_IDS);
@@ -122,6 +138,44 @@
     return { x: x, y: y };
   }
 
+  // ---------- เจาะเกราะ 100% ----------
+  // ผูกกับ window.enemyDefMul (stats.js เรียกตอนคิดเกราะมอน) คืน 0 = เกราะมอนเป็นศูนย์ = ดาเมจเต็ม
+  // ใช้ 2 แบบ: __arPierce (เฉพาะดาเมจที่ส่งผ่าน pierceHit) และ _arPierceUntil (ช่วงบัพของธนูตรึงขา)
+  const _edm = window.enemyDefMul;
+  window.enemyDefMul = function (e) {
+    const sc = window.__mainScene;
+    if (window.__arPierce || (sc && sc._arPierceUntil && sc.time.now < sc._arPierceUntil)) return 0;
+    return _edm ? _edm.apply(this, arguments) : 1;
+  };
+  function pierceHit(scene, e, dmg) {
+    window.__arPierce = true;
+    try { scene.damage(e, dmg); } finally { window.__arPierce = false; }
+  }
+
+  // ---------- บัพตัวเอง ----------
+  function statBuff(scene, id, mods, ms) {
+    try {
+      if (scene.addStatBuff) { scene.addStatBuff(id, mods, ms); return true; }
+    } catch (e) { console.error('archer statBuff', id, e); }
+    return false;
+  }
+  // บัพแบบ % ของสเตตัส: คิดจากค่าตอนยังไม่มีบัพนี้ (จดไว้ตลอดที่บัพยังอยู่) กันการทบซ้ำเวลาร่ายต่อ
+  function pctFlat(scene, id, key, pct, ms) {
+    const now = scene.time.now;
+    const book = scene._arPct = scene._arPct || {};
+    let rec = book[id];
+    if (!rec || now >= rec.until) {
+      let base = 0;
+      try {
+        const S = scene.getStats ? scene.getStats() : null;
+        if (S && typeof S[key] === 'number') base = S[key];
+      } catch (e) { console.error('archer pctFlat', id, e); }
+      rec = book[id] = { base: base, until: 0 };
+    }
+    rec.until = now + ms;
+    return Math.max(1, Math.round(rec.base * pct));
+  }
+
   // ยิงลูกศร 1 ดอกไปตามทิศ: โดนศัตรูตัวแรกในแนวยิง (ระยะ def.range, กว้าง def.hw) | onHit(ศัตรู) ทำงานตอนลูกศรถึง
   // ใช้ภาพสไปรต์จาก skillFx.js (SkillFx.arrow) ถ้าไม่มีภาพ จะใช้สี่เหลี่ยมแทน
   function shootArrow(scene, ux, uy, def, big, onHit) {
@@ -149,9 +203,18 @@
   }
 
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
-  // สกิล 1: ยิงคู่ + ตีเบาลง
+  // สกิล 1: ยิงคู่ + ตีเบาลง + บัพดาเมจ/ความเร็วโจมตีตัวเอง
   Classes.handlers.ashot2 = function (def, x, y, dmg, fx, fy) {
     const scene = this, u = unit(fx, fy), per = Math.round(dmg * def.hitMul);
+
+    // บัพตัวเอง: 12% + 1% ต่อเลเวลสกิล (ดาเมจ = พลังโจมตี x %, ความเร็วโจมตี = +% ตรงๆ)
+    const lv = Math.max(1, (scene.skillLv && scene.skillLv[def.id]) || 1);
+    const pct = def.selfBuffPct + (lv - 1) * def.selfBuffPerLv;
+    const flat = pctFlat(scene, 'ar_shot_atk', 'patk', pct, def.selfBuffMs);
+    if (statBuff(scene, 'ar_shot_atk', { patk: flat, aspd: Math.round(pct * 100) }, def.selfBuffMs)) {
+      scene.popText(scene.player.x, scene.player.y - 50, '🏹 ดาเมจ/ตีเร็ว +' + Math.round(pct * 100) + '%', '#ffd45e');
+    }
+
     for (let i = 0; i < def.shots; i++) {
       scene.time.delayedCall(i * def.gap, () => {
         shootArrow(scene, u.x, u.y, def, false, e => {
@@ -162,24 +225,49 @@
     }
   };
 
-  // สกิล 2: ยิง 1 ดอก ล็อกขา (มีเถาวัลย์พันขาตลอดเวลาที่ล็อก)
+  // สกิล 2: ยิง 1 ดอก ล็อกขา + บัพเจาะเกราะ 100% และคริ +50% นาน 3 วิ
   Classes.handlers.aroot = function (def, x, y, dmg, fx, fy) {
     const scene = this, u = unit(fx, fy);
+    scene._arPierceUntil = scene.time.now + def.buffMs;   // เจาะเกราะ 100% ทุกการโจมตีในช่วงบัพ
+    if (statBuff(scene, 'ar_multi_crit', { crit: def.critBonus }, def.buffMs)) {
+      scene.popText(scene.player.x, scene.player.y - 50, '🎯 เจาะเกราะ 100% คริ +' + def.critBonus + '%', '#7dff9a');
+    }
     shootArrow(scene, u.x, u.y, def, false, e => {
       const ms = e.isBoss ? def.rootMs * BOSS_ROOT_MUL : def.rootMs;
       Classes.status(scene, e, 'root', {}, ms);
-      scene.damage(e, dmg);
+      pierceHit(scene, e, dmg);
       scene.popText(e.x, e.y - 30, 'ล็อกขา!', '#7dff9a');
       if (window.SkillFx && window.SkillFx.hit) window.SkillFx.hit(scene, 'ar_multi', e, ms);
     });
   };
 
-  // สกิล 3: ดอกใหญ่ ดาเมจแรง ระยะไกล
+  // สกิล 3: ลำใหญ่ทะลุเป็นแนวกว้าง โดนทุกตัวในแนว เจาะเกราะ 100% ดาเมจรุนแรง
   Classes.handlers.aheavy = function (def, x, y, dmg, fx, fy) {
-    const scene = this, u = unit(fx, fy);
-    shootArrow(scene, u.x, u.y, def, true, e => {
-      scene.flash(e.x, e.y, 38, 0xffe9a8);
-      scene.damage(e, dmg);
+    const scene = this, u = unit(fx, fy), p = scene.player, sx = p.x, sy = p.y;
+    const len = def.range, hw = def.hw, ang = Math.atan2(u.y, u.x);
+    const dur = Math.max(60, len / ARROW_SPEED * 1000);
+
+    // ภาพ: แถบแนวยิงกว้าง + ลูกศรใหญ่พุ่งสุดระยะ
+    const lane = scene.add.rectangle(sx + u.x * len / 2, sy + u.y * len / 2, len, hw * 2, 0xffe9a8, 0.2)
+      .setRotation(ang).setDepth(55);
+    scene.tweens.add({ targets: lane, alpha: 0, duration: 450, onComplete: () => lane.destroy() });
+    let a = null;
+    try { a = window.SkillFx && window.SkillFx.arrow ? window.SkillFx.arrow(scene, def, sx, sy, u.x, u.y, len, dur, true) : null; }
+    catch (err) { console.error('archer.arrow', err); a = null; }
+    if (!a) a = scene.add.rectangle(sx, sy, 70, 12, 0xffe9a8).setRotation(ang).setDepth(61);
+    scene.tweens.add({ targets: a, x: sx + u.x * len, y: sy + u.y * len, duration: dur, onComplete: () => a.destroy() });
+
+    // ดาเมจ: ทุกตัวในแนว (ลำกว้าง) เข้าตามระยะที่ลูกศรไปถึง
+    scene.enemies.getChildren().slice().forEach(e => {
+      if (!e.active) return;
+      const rx = e.x - sx, ry = e.y - sy;
+      const along = rx * u.x + ry * u.y, perp = Math.abs(-rx * u.y + ry * u.x);
+      if (along < -10 || along > len + 15 || perp > hw + 12) return;
+      scene.time.delayedCall(Math.max(0, along) / ARROW_SPEED * 1000, () => {
+        if (!e.active) return;
+        scene.flash(e.x, e.y, 44, 0xffe9a8);
+        pierceHit(scene, e, dmg);
+      });
     });
   };
 
@@ -221,9 +309,30 @@
     });
   }
 
+  // ฟื้น HP/MP ทุกช่วงของฝนลูกศร (% ของค่าสูงสุด)
+  function rainRegen(scene, def) {
+    if (!scene.player || !scene.stats) return;
+    const p = scene.player;
+    if (def.hpPctTick && scene.healPlayer) {
+      const hp = Math.round(scene.maxHp() * def.hpPctTick);
+      scene.healPlayer(hp);
+      scene.popText(p.x, p.y - 62, '💚 +' + hp, '#7dff9b');
+    }
+    if (def.mpPctTick) {
+      const mp = Math.round(scene.maxMp() * def.mpPctTick);
+      scene.stats.mp = Math.min(scene.maxMp(), scene.stats.mp + mp);
+      scene.popText(p.x, p.y - 80, '💧 +' + mp, '#7db8ff');
+    }
+  }
+
   Classes.handlers.arain = function (def, x, y, dmg) {
     const scene = this, pt = takeGround(scene, def, x, y);
     const R = def.range, per = Math.round(dmg * def.tickMul), GOLD = 0xffc94a;
+
+    // ฟื้น HP/MP ทุกครั้งที่ฝนตก (ทำงานทั้งแบบมีภาพสไปรต์และแบบวาดด้วยโค้ด)
+    for (let i = 0; i < def.ticks; i++) {
+      scene.time.delayedCall(i * def.tickMs, () => rainRegen(scene, def));
+    }
 
     // มีภาพสไปรต์ฝนลูกศร (skillFx.js เล่นให้เอง) -> คิดแค่ดาเมจ
     if (hasAnim(scene, 'ar_rain')) {
@@ -261,15 +370,16 @@
     });
   };
 
-  // อัลติ: ชาร์จ แล้วยิงแนวกว้างทะลุทุกตัว
+  // อัลติ: ชาร์จ แล้วยิงแนวกว้างทะลุทุกตัว "def.shots ที" (ห่างกัน def.shotGap)
   // ถ้ามีภาพลำแสง (ar_ult.png จาก skillFx.js) จะไม่วาดลำแสงสี่เหลี่ยมซ้ำ
   Classes.handlers.ault = function (def, x, y, dmg, fx, fy) {
     const scene = this, u = unit(fx, fy), col = archerColor();
     const len = def.range, hw = def.halfW, ang = Math.atan2(u.y, u.x);
     const p0 = scene.player;
+    const shots = def.shots || 1, gap = def.shotGap || 350;
 
-    // ช่วงชาร์จ: แถบบอกแนวยิงกะพริบ + วงรวมพลัง
-    scene._archerCharge = { until: scene.time.now + def.chargeMs };
+    // ช่วงชาร์จ: แถบบอกแนวยิงกะพริบ + วงรวมพลัง (ชาร์จครั้งเดียว แล้วยิงรัวตามจำนวนที)
+    scene._archerCharge = { until: scene.time.now + def.chargeMs + (shots - 1) * gap };
     const prev = scene.add.rectangle(p0.x + u.x * len / 2, p0.y + u.y * len / 2, len, hw * 2, col, 0.12)
       .setRotation(ang).setDepth(55);
     const pulse = scene.tweens.add({ targets: prev, alpha: 0.35, yoyo: true, repeat: -1, duration: 160 });
@@ -277,10 +387,9 @@
     scene.tweens.add({ targets: ring, scale: 0.2, duration: def.chargeMs });
     scene.toastMsg('🏹 กำลังชาร์จ...');
 
-    scene.time.delayedCall(def.chargeMs, () => {
-      pulse.stop(); prev.destroy(); ring.destroy();
-      scene._archerCharge = null;
+    function fireBeam(n) {
       const p = scene.player;
+      if (!p) return;
       if (!hasTex(scene, 'ar_ult')) {
         const cx = p.x + u.x * len / 2, cy = p.y + u.y * len / 2;
         const beam = scene.add.rectangle(cx, cy, len, hw * 2, col, 0.5).setRotation(ang).setDepth(60);
@@ -289,12 +398,22 @@
       }
       scene.flash(p.x, p.y, 60, 0xffffff);
       if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(150, 0.004);
+      if (shots > 1) scene.popText(p.x, p.y - 60, 'ยิงที่ ' + n + '!', '#ffe9a8');
       scene.enemies.getChildren().slice().forEach(e => {
         if (!e.active) return;
         const rx = e.x - p.x, ry = e.y - p.y;
         const along = rx * u.x + ry * u.y, perp = Math.abs(-rx * u.y + ry * u.x);
         if (along >= -20 && along <= len + 15 && perp <= hw + 12) scene.damage(e, dmg);
       });
+    }
+
+    scene.time.delayedCall(def.chargeMs, () => {
+      pulse.stop(); prev.destroy(); ring.destroy();
+      for (let i = 0; i < shots; i++) {
+        if (i === 0) fireBeam(1);
+        else scene.time.delayedCall(i * gap, () => fireBeam(i + 1));
+      }
+      scene.time.delayedCall((shots - 1) * gap, () => { scene._archerCharge = null; });
     });
   };
 
@@ -363,7 +482,7 @@
 
   const _ue = P.updateEnemies;
   P.updateEnemies = function (time) {
-    window.__mainScene = this;   // ให้ enemyAtkMul ใช้งานได้เสมอ
+    window.__mainScene = this;   // ให้ enemyAtkMul / enemyDefMul ใช้งานได้เสมอ
     _ue.call(this, time);
     this.enemies.getChildren().forEach(e => {
       const fx = e._fx;
