@@ -37,7 +37,7 @@ const OPT_COLORS = {
   purple: { name: 'ม่วง',   color: 0xa25cff, pool: ['mp', 'mpregen', 'cdr', 'mspd'] },
   yellow: { name: 'เหลือง', color: 0xf2c94c, pool: ['crit', 'critdmg', 'aspd', 'ppen', 'mpen'] },
 };
-const OPT_STONE_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90];   // หินสุ่มออฟมีเฉพาะเลเวลเหล่านี้
+const OPT_STONE_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90];   // (ไม่ใช้แล้ว: หินสุ่มออฟไม่มีเลเวล)
 const OPT_STONE_MAX_LV = 90;
 
 // ---- รูปไอเทมจากไฟล์ (assets/items/*.png) ----
@@ -86,7 +86,7 @@ function itemLabel(item) {
   if (item.kind === 'stone') return 'หินตีบวก' + (item.count > 1 ? '  x' + item.count : '');
   if (item.kind === 'cleanstone') return 'หินลบออฟ' + (item.count > 1 ? '  x' + item.count : '');
   if (item.kind === 'optstone') {
-    return 'หินสุ่มออฟ' + (OPT_COLORS[item.color] || OPT_COLORS.red).name + ' Lv.' + item.level + (item.count > 1 ? '  x' + item.count : '');
+    return 'หินสุ่มออฟ' + (OPT_COLORS[item.color] || OPT_COLORS.red).name + (item.count > 1 ? '  x' + item.count : '');
   }
   const base = item.baseSlot === 'weapon'
     ? weaponClassLabel(item.class)
