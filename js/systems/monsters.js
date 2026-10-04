@@ -13,8 +13,15 @@ const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
 // มอนสเตอร์ Epic
 const EPIC_COUNT = 30;             // จำนวนต่อแผนที่
-const EPIC_MULT = 5;               // แรงกว่ามอนธรรมดา (HP / ดาเมจ / EXP / ทอง)
-const EPIC_RED_BOX_CHANCE = 0.10;  // โอกาสดรอปกล่องแดง
+const EPIC_MULT = 8;               // Epic แรงกว่ามอนฐาน (HP / ดาเมจ / EXP / ทอง)
+const EPIC_RED_BOX_CHANCE = 0.02;  // โอกาสดรอปกล่องแดง (2%)
+// มอนธรรมดา + ยิงไกล
+const NORMAL_HP_MULT = 2;          // เลือดเพิ่ม 1 เท่า (x2)
+const NORMAL_DMG_MULT = 1.5;       // พลังโจมตีเพิ่ม 50%
+// มินิบอส
+const BOSS_SPEED = 130;            // ความเร็วบอส (มอนธรรมดา 70)
+const BOSS_TELEPORT_MIN_MINUTES = 5;   // บอสวาปย้ายที่ทุก 5-10 นาที (สุ่ม)
+const BOSS_TELEPORT_MAX_MINUTES = 10;
 const RANGED_SHOT_SCALE = 2.2;     // ขนาดลูกกระสุนมอนยิงไกล (ใหญ่ขึ้น = โดนง่ายขึ้น)
 
 Object.assign(Main.prototype, {
@@ -88,7 +95,7 @@ Object.assign(Main.prototype, {
     e.def = def;
     e.kind = kind; e.ranged = ranged; e.isBoss = false;
     e.level = lv;
-    e.hp = 30 + lv * 8; e.maxHp = e.hp; e.dmg = 5 + Math.floor(lv * 1.5);
+    e.hp = (30 + lv * 8) * NORMAL_HP_MULT; e.maxHp = e.hp; e.dmg = Math.round((5 + Math.floor(lv * 1.5)) * NORMAL_DMG_MULT);
     e.aggro = ranged ? 350 : 130; e.lose = ranged ? 480 : 320; e.leash = 450;
     e.speed = 70; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
@@ -107,7 +114,8 @@ Object.assign(Main.prototype, {
     e.level = lv;
     e.hp = (30 + lv * 8) * BOSS_MULT; e.maxHp = e.hp; e.dmg = (5 + Math.floor(lv * 1.5)) * BOSS_MULT;
     e.aggro = 220; e.lose = 520; e.leash = 700;
-    e.speed = 85; e.hitRange = 40 * def.scale; e.nextShot = 0;
+    e.speed = BOSS_SPEED; e.hitRange = 40 * def.scale; e.nextShot = 0;
+    e.nextTeleport = this.time.now + Phaser.Math.Between(BOSS_TELEPORT_MIN_MINUTES * 60000, BOSS_TELEPORT_MAX_MINUTES * 60000);
     e.setScale(def.scale);
     this.initEnemyCommon(e, zi, pt, '#ff8888', '👑 ' + def.name + ' Lv.' + lv, '12px');
     return e;
@@ -132,6 +140,22 @@ Object.assign(Main.prototype, {
     e._tint = 0xff66ff; e.setTint(0xff66ff);
     this.initEnemyCommon(e, zi, pt, '#d98cff', '💎 ' + def.name + ' Lv.' + lv, '11px');
     return e;
+  },
+
+  // บอสวาปไปจุดใหม่ (กระจายมอนไม่ให้มากระจุกที่บอส) ถ้ากำลังสู้อยู่จะเลื่อนไป 15 วิ
+  bossTeleport(e, time) {
+    if (e.state === 'chase') { e.nextTeleport = time + 15000; return; }
+    const flash = (x, y) => {
+      const c = this.add.circle(x, y, 30, 0xaa66ff, 0.6).setDepth(44);
+      this.tweens.add({ targets: c, scale: 3, alpha: 0, duration: 500, onComplete: () => c.destroy() });
+    };
+    flash(e.x, e.y);
+    const pt = this.randomSpawnPoint(400);
+    e.setPosition(pt.x, pt.y); e.setVelocity(0, 0);
+    e.homeX = pt.x; e.homeY = pt.y; e.wanderX = pt.x; e.wanderY = pt.y;
+    e.state = 'idle';
+    e.nextTeleport = time + Phaser.Math.Between(BOSS_TELEPORT_MIN_MINUTES * 60000, BOSS_TELEPORT_MAX_MINUTES * 60000);
+    flash(pt.x, pt.y);
   },
 
   initEnemyCommon(e, zi, pt, color, label, fontSize) {
@@ -182,16 +206,27 @@ Object.assign(Main.prototype, {
       return;
     }
     e.nextSkill = time + Phaser.Math.Between(2500, 4000);
-    const r = Phaser.Math.Between(0, 2);
+    const r = Phaser.Math.Between(0, 3);
     if (r === 0) {
       for (let i = 0; i < 12; i++) this.fireShot(e, i * Math.PI / 6, 200, 2.5, 0.4);
     } else if (r === 1) {
       [-0.5, -0.25, 0, 0.25, 0.5].forEach(o => this.fireShot(e, a + o, 260, 2.2, 0.4));
-    } else {
+    } else if (r === 2) {
       const R = 140, x = e.x, y = e.y, d = Math.round(e.dmg * 0.8);
       const ring = this.add.circle(x, y, R, 0xff2222, 0.25).setStrokeStyle(2, 0xff2222).setDepth(6);
       this.time.delayedCall(800, () => {
         ring.destroy();
+        if (Phaser.Math.Distance.Between(p.x, p.y, x, y) < R) this.hurtPlayer(d);
+      });
+    } else {
+      // สกิลวงกว้างมาก: เตือนวงแดงใหญ่ 1.3 วิ แล้วระเบิด (ต้องวิ่งออกนอกวง)
+      const R = 340, x = e.x, y = e.y, d = Math.round(e.dmg * 1.0);
+      const ring = this.add.circle(x, y, R, 0xff2222, 0.2).setStrokeStyle(3, 0xff2222).setDepth(6);
+      this.tweens.add({ targets: ring, alpha: 0.45, duration: 300, yoyo: true, repeat: 2 });
+      this.time.delayedCall(1300, () => {
+        ring.destroy();
+        const boom = this.add.circle(x, y, R, 0xffffff, 0.5).setDepth(44);
+        this.tweens.add({ targets: boom, alpha: 0, duration: 300, onComplete: () => boom.destroy() });
         if (Phaser.Math.Distance.Between(p.x, p.y, x, y) < R) this.hurtPlayer(d);
       });
     }
@@ -220,6 +255,7 @@ Object.assign(Main.prototype, {
     const hidden = this.updatePlayerHidden ? this.updatePlayerHidden(time) : false;
 
     this.enemies.getChildren().forEach(e => {
+      if (e.isBoss && time > (e.nextTeleport || 0)) this.bossTeleport(e, time);
       const distPlayer = Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y);
       if (e.state === 'idle' && distPlayer > 900) { e.setVelocity(0, 0); return; }
       const distHome = Phaser.Math.Distance.Between(e.x, e.y, e.homeX, e.homeY);
