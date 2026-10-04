@@ -90,3 +90,7 @@
 .sp-buy { background: #b8860b; }
 .sp-use { background: #2e7d4f; }
 .sp-btns button.off { opacity: .35; }
+
+/* ซ่อนช่องยาตอนมีหน้าต่างอื่นเปิด */
+#potion-quick, #potion-quick-r { transition: opacity .12s; }
+#potion-quick.hide, #potion-quick-r.hide { opacity: 0; visibility: hidden; pointer-events: none; }
