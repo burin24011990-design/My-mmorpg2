@@ -405,7 +405,7 @@ Object.assign(Main.prototype, {
   openBotPanel() {
     this.closePanel();
     const page = this.botPage || 0, z = ZONES[this.stageIdx || 0];
-    const items = this.panelFrame('ตั้งค่าบอท - ' + (page === 0 ? z.name : 'สกิล / เลือด'));
+    const items = this.panelFrame('ตั้งค่าบอท v2 - ' + (page === 0 ? z.name : 'สกิล / เลือด'));
     this.panel = items;   // ผูกไว้ก่อน เผื่อสร้างหน้าไม่สำเร็จ จะยังปิดหน้าต่างได้
     try {
       if (page === 0) this.botPageTargets(items); else this.botPageSkills(items);
@@ -425,8 +425,8 @@ Object.assign(Main.prototype, {
       zn.on('pointerdown', cb);
       items.push(zn);
     };
-    tab(W / 2 - 150, 'เป้าหมาย', page === 0, () => { this.botPage = 0; this.openBotPanel(); });
-    tab(W / 2, 'สกิล/เลือด', page === 1, () => { this.botPage = 1; this.openBotPanel(); });
+    tab(W / 2 - 150, 'เป้าหมาย', page === 0, () => { this.botPage = 0; if (this.toastMsg) this.toastMsg('หน้า: เป้าหมาย'); this.openBotPanel(); });
+    tab(W / 2, 'สกิล/เลือด', page === 1, () => { this.botPage = 1; if (this.toastMsg) this.toastMsg('หน้า: สกิล/เลือด'); this.openBotPanel(); });
     tab(W / 2 + 150, this.autoMode ? 'ปิดบอท' : 'เปิดบอท', !!this.autoMode, () => { this.closePanel(); this.toggleAuto(); });
   },
 
