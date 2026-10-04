@@ -3,20 +3,18 @@
 // ไม่ครบ = ปุ่มนี้กลายเป็น "ช่องสกิลพิเศษ" ใส่สกิลสายไหนก็ได้ (ใช้งานได้เหมือนช่องสกิลปกติ ทั้งคูลดาวน์/มานา/ลากเล็ง/บอท)
 //   - ช่องว่าง: แตะเพื่อเลือกสกิลใส่ | ช่องที่ใส่แล้ว: แตะ = ใช้สกิล, แตะปุ่ม ✎ มุมขวาบน = เปลี่ยน/ถอดสกิล
 //   - พอใส่สายเดียวกันครบ 3 ช่องอีกครั้ง ปุ่มกลับเป็นอันติ และสกิลที่ใส่ไว้ในช่องพิเศษจะถูกเก็บไว้ ไม่หาย
+// สกิลช่องพิเศษถูกเซฟไปกับเซฟเกม (save.js) และขึ้นหน้าต่างสกิลได้ (skillLevelPatch.js)
 // โหลดต่อจากไฟล์สกิล/เอฟเฟกต์ทั้งหมด และ "ก่อน" main.js (ต้องอยู่หลังสุดเพื่อให้กติกาของแต่ละอาชีพทำงานกับสกิลช่องนี้ด้วย)
 (function () {
   const P = Main.prototype;
   const IDX = 4;                           // ช่องพิเศษใช้ดัชนี 4 (cdEnd.slot4) แต่ไม่ได้อยู่ใน this.slots จึงไม่กระทบการนับคอมโบ
-  const STORE = 'mmo_flex_skill_v1';       // จำสกิลช่องพิเศษไว้ในเครื่อง
   const SELF_TYPES = ['heal1', 'healaoe', 'haste'];   // สกิลใช้กับตัวเอง บอทใช้ได้โดยไม่ต้องมีเป้า
 
   const hex = c => '#' + ('000000' + (c || 0).toString(16)).slice(-6);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
   const inMain = (scene, sid) => { const s = scene.slots || []; for (let i = 0; i < 4; i++) if (s[i] === sid) return true; return false; };
-  const store = {
-    get() { try { return localStorage.getItem(STORE) || ''; } catch (e) { return ''; } },
-    set(v) { try { v ? localStorage.setItem(STORE, v) : localStorage.removeItem(STORE); } catch (e) { /* ignore */ } },
-  };
+  // เซฟสกิลช่องพิเศษทันที (ไปกับระบบเซฟ/คลาวด์ใน save.js)
+  const persist = scene => { try { if (scene.saveSoon) scene.saveSoon(); } catch (e) { /* ignore */ } };
 
   // ใส่สกิลช่องพิเศษลง this.slots[4] ชั่วคราวระหว่างเรียกฟังก์ชัน (ให้โค้ดเดิมที่อ่าน this.slots[idx] ทำงานได้) แล้วคืนค่า
   function withFlex(scene, fn) {
@@ -112,15 +110,9 @@
   const _usb = P.updateSkillButtons;
   P.updateSkillButtons = function (time) {
     _usb.call(this, time);
-    // คืนสกิลที่จำไว้ (รอให้ระบบเซฟโหลดข้อมูลสกิลที่เรียนแล้วก่อน)
-    if (!this._flexLoaded && time > 2000) {
-      this._flexLoaded = true;
-      const sid = store.get();
-      if (sid && !this.flexSid && SKILL_DEFS[sid] && this.learnedSkills && this.learnedSkills.has(sid) && !inMain(this, sid)) this.flexSid = sid;
-    }
     // ใส่สกิลเดียวกันลงช่องหลักแล้ว = ถอดออกจากช่องพิเศษ (กันใช้ซ้ำสองช่อง)
     if (this.flexSid && inMain(this, this.flexSid)) {
-      this.flexSid = null; store.set('');
+      this.flexSid = null; persist(this);
       this.toastMsg('ถอดสกิลช่องพิเศษ (ซ้ำกับช่องหลัก)');
     }
     drawBtn(this, time);
@@ -198,11 +190,11 @@
         const sc = curScene;
         if (t.dataset.act === 'close') { closePicker(); return; }
         if (t.dataset.act === 'clear') {
-          sc.flexSid = null; store.set(''); sc.toastMsg('ถอดสกิลช่องพิเศษแล้ว'); closePicker(); return;
+          sc.flexSid = null; persist(sc); sc.toastMsg('ถอดสกิลช่องพิเศษแล้ว'); closePicker(); return;
         }
         const sid = t.dataset.sid;
         if (!SKILL_DEFS[sid]) return;
-        sc.flexSid = sid; store.set(sid);
+        sc.flexSid = sid; persist(sc);
         sc.toastMsg('ใส่ ' + SKILL_DEFS[sid].name + ' ที่ช่องพิเศษ');
         closePicker();
       });
