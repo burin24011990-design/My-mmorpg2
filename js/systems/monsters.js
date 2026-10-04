@@ -1,8 +1,8 @@
-// ===== มอนสเตอร์: ธรรมดา / ยิงไกล / มินิบอส, AI, รับดาเมจ, เลือกเป้าหมาย, ดรอป =====
+// ===== มอนสเตอร์: ธรรมดา / ยิงไกล / Epic / มินิบอส, AI, สกิล, รับดาเมจ, เลือกเป้าหมาย, ดรอป =====
 // ด่าน 1-4: มอนไม่โจมตีก่อน (สู้กลับเมื่อโดนตี) | ด่าน 5 ขึ้นไป: โจมตีก่อนทั้งหมด
 // ผู้เล่นอยู่ในพุ่มหญ้า: มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น (ดู obstacles.js)
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
-// หมายเหตุ: หนังสือสกิลดรอปจากมินิบอสเท่านั้น (5%) เป็นไอเทมบนพื้น -> เก็บเข้ากระเป๋า (ดู pickup ใน inventory.js)
+// หมายเหตุ: หนังสือสกิลดรอปจากมินิบอส/มอนธรรมดา เป็นไอเทมบนพื้น -> เก็บเข้ากระเป๋า (ดู pickup ใน inventory.js)
 // หมายเหตุ: ชื่อ/สี/แอนิเมชันของมอนอยู่ใน js/data/monsterDefs.js
 // หมายเหตุ: ตัวเลขดาเมจอยู่ใน js/systems/damageFx.js (showDamage)
 const AGGRESSIVE_FROM_ZONE = 5;
@@ -11,6 +11,11 @@ const BUSH_REVEAL_AFTER_ATTACK = 1500;
 // โอกาสดรอปหนังสือสกิล (ปรับตรงนี้)
 const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
+// มอนสเตอร์ Epic
+const EPIC_COUNT = 30;             // จำนวนต่อแผนที่
+const EPIC_MULT = 5;               // แรงกว่ามอนธรรมดา (HP / ดาเมจ / EXP / ทอง)
+const EPIC_RED_BOX_CHANCE = 0.10;  // โอกาสดรอปกล่องแดง
+const RANGED_SHOT_SCALE = 2.2;     // ขนาดลูกกระสุนมอนยิงไกล (ใหญ่ขึ้น = โดนง่ายขึ้น)
 
 Object.assign(Main.prototype, {
   // โหลดด่าน: ล้างของเก่า วาดพื้นใหม่ สร้างพุ่ม/หิน เสกมอนของด่านนี้เท่านั้น
@@ -55,6 +60,7 @@ Object.assign(Main.prototype, {
 
     for (let i = 0; i < z.count; i++) this.spawnEnemyInZone(idx, 'normal');
     for (let i = 0; i < z.rangedCount; i++) this.spawnEnemyInZone(idx, 'ranged');
+    for (let i = 0; i < EPIC_COUNT; i++) this.spawnEpic(idx);
     this.spawnDueBosses();
     this.drawMinimapFrame();
   },
@@ -107,6 +113,27 @@ Object.assign(Main.prototype, {
     return e;
   },
 
+  // มอนสเตอร์ Epic: ใช้ร่างของมอนธรรมดาด่านนั้น ย้อมสีม่วง ตัวใหญ่ขึ้น 30% แรงกว่า 5 เท่า มีสกิลยิง 3 ทิศ
+  spawnEpic(zi) {
+    const z = ZONES[zi];
+    const base = getMonsterDef(zi, 'normal');
+    const def = Object.assign({}, base, { scale: base.scale * 1.3 });
+    const pt = this.randomSpawnPoint();
+    const lv = Phaser.Math.Between(z.minLv, z.maxLv);
+    const e = this.enemies.create(pt.x, pt.y, def.key);
+    e.def = def;
+    e.kind = 'epic'; e.ranged = false; e.isBoss = false; e.isEpic = true;
+    e.level = lv;
+    e.hp = (30 + lv * 8) * EPIC_MULT; e.maxHp = e.hp;
+    e.dmg = (5 + Math.floor(lv * 1.5)) * EPIC_MULT;
+    e.aggro = 200; e.lose = 420; e.leash = 500;
+    e.speed = 75; e.hitRange = 26 * def.scale; e.nextShot = 0;
+    e.setScale(def.scale);
+    e._tint = 0xff66ff; e.setTint(0xff66ff);
+    this.initEnemyCommon(e, zi, pt, '#d98cff', '💎 ' + def.name + ' Lv.' + lv, '11px');
+    return e;
+  },
+
   initEnemyCommon(e, zi, pt, color, label, fontSize) {
     e.setCollideWorldBounds(true);
     e.zoneIdx = zi; e.state = 'idle';
@@ -134,16 +161,47 @@ Object.assign(Main.prototype, {
     return best;
   },
 
+  // ยิงกระสุนศัตรู 1 ลูก (ang = ทิศเป็นเรเดียน, scale = ขนาดลูก, dmgMul = ตัวคูณดาเมจของมอน)
+  fireShot(e, ang, speed, scale, dmgMul) {
+    const sh = this.enemyShots.create(e.x, e.y, 'eshot');
+    sh.setScale(scale);
+    sh.setData('dmg', Math.round(e.dmg * dmgMul)); sh.setData('ox', e.x); sh.setData('oy', e.y);
+    sh.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
+    this.time.delayedCall(2000, () => sh.active && sh.destroy());
+  },
+
+  // สกิลของ epic (ยิง 3 ทิศ) และบอส (วงแหวน 12 ทิศ / พัด 5 ทิศ / ทุบพื้นวงแดง)
+  enemySkill(e, time, dist, canSee) {
+    if (!(e.isBoss || e.isEpic) || !canSee || dist > 380 || time < (e.nextSkill || 0)) return;
+    const p = this.player;
+    const a = Math.atan2(p.y - e.y, p.x - e.x);
+    e.atkUntil = time + 500;
+    if (e.isEpic) {
+      e.nextSkill = time + Phaser.Math.Between(4000, 6000);
+      [-0.3, 0, 0.3].forEach(o => this.fireShot(e, a + o, 220, RANGED_SHOT_SCALE, 0.5));
+      return;
+    }
+    e.nextSkill = time + Phaser.Math.Between(2500, 4000);
+    const r = Phaser.Math.Between(0, 2);
+    if (r === 0) {
+      for (let i = 0; i < 12; i++) this.fireShot(e, i * Math.PI / 6, 200, 2.5, 0.4);
+    } else if (r === 1) {
+      [-0.5, -0.25, 0, 0.25, 0.5].forEach(o => this.fireShot(e, a + o, 260, 2.2, 0.4));
+    } else {
+      const R = 140, x = e.x, y = e.y, d = Math.round(e.dmg * 0.8);
+      const ring = this.add.circle(x, y, R, 0xff2222, 0.25).setStrokeStyle(2, 0xff2222).setDepth(6);
+      this.time.delayedCall(800, () => {
+        ring.destroy();
+        if (Phaser.Math.Distance.Between(p.x, p.y, x, y) < R) this.hurtPlayer(d);
+      });
+    }
+  },
+
   enemyShoot(e) {
     const p = this.player;
-    const v = new Phaser.Math.Vector2(p.x - e.x, p.y - e.y);
-    if (v.length() < 1) return;
-    v.normalize();
+    if (Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) < 1) return;
     e.atkUntil = this.time.now + 400;                    // เล่นท่าโจมตี
-    const sh = this.enemyShots.create(e.x, e.y, 'eshot');
-    sh.setData('dmg', e.dmg); sh.setData('ox', e.x); sh.setData('oy', e.y);
-    sh.setVelocity(v.x * 240, v.y * 240);
-    this.time.delayedCall(1800, () => sh.active && sh.destroy());
+    this.fireShot(e, Math.atan2(p.y - e.y, p.x - e.x), 240, RANGED_SHOT_SCALE, 1);
   },
 
   // เลือกแอนิเมชัน idle / walk / attack ตามการเคลื่อนไหว (ทำงานเฉพาะตัวที่มี sprite sheet)
@@ -203,6 +261,8 @@ Object.assign(Main.prototype, {
         e.atkUntil = time + 400;                         // เล่นท่าโจมตี
         this.hurtPlayer(e.dmg || 8);
       }
+      // สกิลของ epic / บอส (ใช้ตอนไล่ตี)
+      if (e.state === 'chase') this.enemySkill(e, time, distPlayer, canSee);
       this.updateEnemyAnim(e, time);
       if (e.levelText) e.levelText.setPosition(e.x, e.y - (e.isBoss ? 40 : 22) * ((e.def && e.def.scale) || 1));
     });
@@ -218,14 +278,14 @@ Object.assign(Main.prototype, {
     if (e.hp > 0) monsterHitFx(this, e);                 // กะพริบขาว + บีบตัว
     if (e.hp <= 0) {
       const x = e.x, y = e.y, zi = e.zoneIdx, z = ZONES[zi], lv = e.level;
-      const kind = e.kind, isBoss = !!e.isBoss, slot = e.bossSlot;
+      const kind = e.kind, isBoss = !!e.isBoss, isEpic = !!e.isEpic, slot = e.bossSlot;
       if (this.target === e) this.target = null;
       if (this.manualTarget === e) this.manualTarget = null;
       if (e.levelText) e.levelText.destroy();
       playMonsterDeath(this, e);                         // ท่าตาย + อนุภาคตามธีมด่าน (ต้องเรียกก่อน destroy)
       e.destroy(); this.kills++;
-      this.gainExp((5 + lv * 3) * (isBoss ? BOSS_MULT : 1));
-      this.dropLoot(x, y, lv, z.boxLevel, isBoss);
+      this.gainExp((5 + lv * 3) * (isBoss ? BOSS_MULT : (isEpic ? EPIC_MULT : 1)));
+      this.dropLoot(x, y, lv, z.boxLevel, isBoss, isEpic);
       if (isBoss) {
         const ms = Phaser.Math.Between(BOSS_RESPAWN_MIN_MINUTES * 60000, BOSS_RESPAWN_MAX_MINUTES * 60000);
         const st = this.bossState[zi][slot];
@@ -233,16 +293,30 @@ Object.assign(Main.prototype, {
         this.toastMsg('สังหารมินิบอส! เกิดใหม่ในอีก ' + Math.round(ms / 60000) + ' นาที');
       } else {
         const token = this.stageToken;
-        this.time.delayedCall(RESPAWN_DELAY, () => { if (this.enemies && this.stageToken === token) this.spawnEnemyInZone(zi, kind); });
+        this.time.delayedCall(RESPAWN_DELAY, () => {
+          if (this.enemies && this.stageToken === token) {
+            if (kind === 'epic') this.spawnEpic(zi); else this.spawnEnemyInZone(zi, kind);
+          }
+        });
       }
     }
   },
 
-  dropLoot(x, y, monsterLv, boxLevel, isBoss) {
-    const gold = this.loot.create(x, y, 'gold');
-    const mult = isBoss ? BOSS_MULT : 1;
-    gold.setData('kind', 'gold'); gold.setData('amount', Phaser.Math.Between(2 + monsterLv, 5 + monsterLv * 2) * mult);
-    this.tweens.add({ targets: gold, y: y - 6, yoyo: true, repeat: -1, duration: 500 });
+  dropLoot(x, y, monsterLv, boxLevel, isBoss, isEpic) {
+    // เงินเข้ากระเป๋าทันที ไม่ต้องเดินเก็บ
+    const mult = isBoss ? BOSS_MULT : (isEpic ? EPIC_MULT : 1);
+    const amount = Phaser.Math.Between(2 + monsterLv, 5 + monsterLv * 2) * mult;
+    this.stats.gold += amount;
+    const t = this.add.text(x, y - 30, '+' + amount + ' G', { fontSize: '12px', color: '#ffd45c' }).setOrigin(0.5).setDepth(50);
+    this.tweens.add({ targets: t, y: y - 60, alpha: 0, duration: 900, onComplete: () => t.destroy() });
+
+    // Epic: มีโอกาสดรอปกล่องแดง
+    if (isEpic && Math.random() < EPIC_RED_BOX_CHANCE) {
+      const rb = this.loot.create(x + 30, y + 10, 'box');
+      rb.setData('kind', 'box'); rb.setData('level', boxLevel); rb.setData('tier', 'red');   // lootOptions.js อ่าน tier ตอนเก็บ
+      this.toastMsg('🟥 มอนสเตอร์ Epic ดรอปกล่องแดง!');
+    }
+
     if (isBoss) {
       for (let i = 0; i < 3; i++) {
         const it = this.loot.create(x + 20 + i * 18, y + 14, 'box');
@@ -257,7 +331,7 @@ Object.assign(Main.prototype, {
       }
       return;
     }
-    // มอนธรรมดา: กล่อง ~15% (เท่าโอกาสเดิม 28% x 55%) และหนังสือสกิล 5% (สุ่มแยกกัน)
+    // มอนธรรมดา/Epic: กล่อง ~15% (เท่าโอกาสเดิม 28% x 55%) และหนังสือสกิล 5% (สุ่มแยกกัน)
     if (Phaser.Math.Between(1, 100) <= 15) {
       const it = this.loot.create(x + 14, y, 'box');
       it.setData('kind', 'box'); it.setData('level', boxLevel);
