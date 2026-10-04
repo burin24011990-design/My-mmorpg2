@@ -304,13 +304,18 @@ Object.assign(Main.prototype, {
     });
   },
 
-  damage(e, dmg) {
+  // opts (ไม่ใส่ก็ได้): { skill: def ของสกิล, crit: true }
+  // ถ้าไม่ส่ง skill มา จะใช้สกิลที่เพิ่งร่าย (this._skillCtx ตั้งใน skillFx.js) เพื่อให้ตัวเลขได้สีของสกิล
+  damage(e, dmg, opts) {
     if (!e.active) return;
     e.hp -= dmg;
     e.provoked = true;                                   // โดนตี = โกรธ สู้กลับ
     if (e.state === 'idle') e.state = 'chase';
     this.revealUntil = this.time.now + BUSH_REVEAL_AFTER_ATTACK; // โจมตีแล้วโผล่จากพุ่มชั่วคราว
-    showDamage(this, e.x, e.y - 20, dmg, 'normal');      // ตัวเลขดาเมจ (ดู damageFx.js)
+    opts = opts || {};
+    const ctx = (this._skillCtx && this.time.now < this._skillCtx.until) ? this._skillCtx.def : null;
+    const skill = opts.skill || ctx;
+    showDamage(this, e.x, e.y - 20, dmg, opts.crit ? 'crit' : 'normal', skill ? { skill: skill } : undefined);   // ตัวเลขดาเมจ (ดู damageFx.js)
     if (e.hp > 0) monsterHitFx(this, e);                 // กะพริบขาว + บีบตัว
     if (e.hp <= 0) {
       const x = e.x, y = e.y, zi = e.zoneIdx, z = ZONES[zi], lv = e.level;
