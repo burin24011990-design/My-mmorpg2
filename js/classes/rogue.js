@@ -12,6 +12,10 @@
   // คูลดาวน์อัลติโจร (มิลลิวินาที): 20000 = 20 วินาที
   const ULTI_COOLDOWN = 20000;
 
+  // ตัวคูณมานาของสกิลโจรทุกสกิล (รวมอัลติ): 0.3 = ใช้มานาแค่ 30% (ลดลง 70%) | ตั้ง 1 = ค่าเดิม
+  const MP_COST_MUL = 0.3;
+  const mpc = n => Math.max(1, Math.round(n * MP_COST_MUL));
+
   Classes.defineClass('rogue', { color: 0x9b6bff, name: 'โจร', label: 'โจร' });
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
@@ -21,7 +25,7 @@
   //    กดค้างแล้วลากเพื่อเลือกทิศพุ่งได้ (ตั้งค่าที่ DIR_CFG ใน aimDash.js) | แตะเฉยๆ = พุ่งหาเป้า/ทิศที่หันอยู่
   Classes.skill('rg_dash', {
     name: 'เงาพุ่งฟัน', class: 'rogue', type: 'rdash', noInfo: true,
-    dmg: 14, range: 170, cd: 6000, mp: 14,
+    dmg: 14, range: 170, cd: 6000, mp: mpc(14),
     hits: 2, hitMul: 0.6, hitR: 75,
     recasts: 1, recastMs: 2500, recastRange: 280, recastMul: 2,
     dodgeMs: 3000,
@@ -38,7 +42,7 @@
   //    critBonus = เพิ่มคริติคอล % (100 = ติดคริแน่นอน) นาน critMs นับตั้งแต่กดใช้สกิล (ไม่ต้องรอฟันครั้งแรก)
   Classes.skill('rg_vanish', {
     name: 'เงาหายตัว', class: 'rogue', type: 'rvanish', noInfo: true,
-    dmg: 0, range: 0, cd: 14000, mp: 16,
+    dmg: 0, range: 0, cd: 14000, mp: mpc(16),
     dur: 5000, bonus: 1.4, armorBreak: 0.1, armorMs: 5000,
     critBonus: 100, critMs: 5000, mspd: 25,
   }, {
@@ -48,20 +52,22 @@
   });
 
   // 3) ฟันตัดเอ็น: ฟันด้านหน้า แล้วลดความเร็วเคลื่อนที่ (slow 0.5 = เหลือครึ่งหนึ่ง) นาน slowMs
+  //    healPct / mpPct = ฟื้น HP / MP ทันทีที่ใช้ เป็น % ของค่าสูงสุด (0.15 = 15%)
   Classes.skill('rg_slow', {
     name: 'ฟันตัดเอ็น', class: 'rogue', type: 'rslow', noInfo: true,
-    dmg: 20, range: 95, cd: 3000, mp: 12,
-    slow: 0.5, slowMs: 3000,
+    dmg: 20, range: 95, cd: 3000, mp: mpc(12),
+    slow: 0.5, slowMs: 3000, healPct: 0.15, mpPct: 0.2,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' ลดความเร็วเคลื่อนที่ ' + Math.round((1 - def.slow) * 100) +
-      '% นาน ' + (def.slowMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+      '% นาน ' + (def.slowMs / 1000) + ' วิ • ฟื้น HP ' + Math.round(def.healPct * 100) + '% และ MP ' +
+      Math.round(def.mpPct * 100) + '% • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // 4) ฟันดูดเลือด: ฟันตรงเป็นแนวยาว range กว้าง halfW*2 ไปทางที่เลือก | ดูดเลือด vamp ของดาเมจต่อเป้า (นับสูงสุด 5 เป้า)
   Classes.skill('rg_drain', {
     name: 'ฟันดูดเลือด', class: 'rogue', type: 'rdrain', noInfo: true,
-    dmg: 24, range: 220, halfW: 45, cd: 5000, mp: 16, vamp: 0.5,
+    dmg: 24, range: 220, halfW: 45, cd: 5000, mp: mpc(16), vamp: 0.5,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ฟันตรงเป็นแนว ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' ดูดเลือด ' + Math.round(def.vamp * 100) +
@@ -71,7 +77,7 @@
   // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้ | คูลดาวน์ 20 วิ
   // (ภาพพายุใน skillFx.js เล่น 640ms = hits x gap ถ้าเปลี่ยน hits/gap ให้ปรับ fps ของ rg_ult ใน skillFx.js ตาม)
   Classes.ulti('rogue', {
-    name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_COOLDOWN, mp: 50, type: 'rult',
+    name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_COOLDOWN, mp: mpc(50), type: 'rult',
     hits: 4, hitMul: 0.4, gap: 160, vamp: 0.4,
   }, { scale: { patk: 1 } });
 
@@ -276,6 +282,17 @@
       Classes.status(this, e, 'slow', { mul: def.slow }, def.slowMs);
       rogueHit(this, e, dmg);
     });
+    // ฟื้นเลือดและมานาทันทีที่ใช้ (% ของค่าสูงสุด)
+    if (def.healPct && this.healPlayer) {
+      const hp = Math.round(this.maxHp() * def.healPct);
+      this.healPlayer(hp);
+      this.popText(p.x, p.y - 62, '💚 +' + hp, '#7dff9b');
+    }
+    if (def.mpPct && this.stats) {
+      const mp = Math.round(this.maxMp() * def.mpPct);
+      this.stats.mp = Math.min(this.maxMp(), this.stats.mp + mp);
+      this.popText(p.x, p.y - 80, '💧 +' + mp, '#7db8ff');
+    }
   };
 
   // ---------- ฟันดูดเลือด ----------
