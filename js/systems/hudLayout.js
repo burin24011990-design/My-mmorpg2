@@ -80,6 +80,19 @@ Main.prototype.setupButtons = function () {
 
   // แถบเมนูด้านบน (กระเป๋า สกิล บอท อุปกรณ์ เลือกด่าน สเตตัส) อยู่ใน js/systems/topbar.js
   this.setupTopBar();
+  this.loadSkillIcons();
+};
+
+// โหลดรูปสกิลจาก assets/skills/<รหัสสกิล>.png (ไฟล์เดียวกับหน้าต่างสกิล) มาใช้บนปุ่มกด
+// ถ้าไฟล์ไหนไม่มี จะใช้ไอคอนเดิมของปุ่มแทนอัตโนมัติ
+const SKILL_ICON_VER = '1';   // ตรงกับ IMG_VER ใน skillPanelData.js (เปลี่ยนรูปแล้วมือถือยังโชว์ของเก่า ให้เพิ่มเลขทั้งสองที่)
+Main.prototype.loadSkillIcons = function () {
+  let n = 0;
+  Object.keys(SKILL_DEFS).forEach(id => {
+    const k = 'sk_' + id;
+    if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/' + id + '.png?v=' + SKILL_ICON_VER); n++; }
+  });
+  if (n) this.load.start();
 };
 
 // สลับการแสดงผลส่วนเสริมของปุ่มอัลติตามคอมโบสกิล
@@ -98,6 +111,19 @@ Main.prototype.setupButtons = function () {
   const _updateSkillButtons = Main.prototype.updateSkillButtons;
   Main.prototype.updateSkillButtons = function (time) {
     _updateSkillButtons.call(this, time);
+    // ปุ่มสกิล: ใช้รูปเดียวกับหน้าต่างสกิล ขนาดเล็กลง (ICON_SIZE) ถ้าไม่มีรูปใช้ไอคอนเดิม
+    const ICON_SIZE = 46;
+    (this.slots || []).forEach((sid, i) => {
+      const b = this.slotBtns && this.slotBtns[i];
+      if (!b || !sid || !SKILL_DEFS[sid]) return;
+      const key = 'sk_' + sid;
+      if (!this.textures.exists(key)) return;
+      const def = SKILL_DEFS[sid];
+      const busy = (this.cdEnd['slot' + i] || 0) > time || this.stats.mp < def.mp;
+      b.icon.setTexture(key).setDisplaySize(ICON_SIZE, ICON_SIZE).setPosition(b.c.x, b.c.y - 6)
+        .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setVisible(true);
+      b.t.setPosition(b.c.x, b.c.y + 27).setFontSize(10);
+    });
     const u = this.ultiBtn;
     if (!u || !this.ultiClass || !u.cd) return;
     const left = Math.max(0, (this.cdEnd.ulti || 0) - time);
