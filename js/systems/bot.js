@@ -22,6 +22,8 @@ const BOT_AVOID_DIST = 380;   // ไม่เก็บของ/ไม่เล�
 const BOT_LOOT_RANGE = 200;   // เก็บของเฉพาะที่อยู่ในระยะนี้จากตัวผู้เล่น (ปรับตรงนี้)
 const BOT_ATTACKER_RANGE = 400; // มอนที่กำลังไล่ตีและอยู่ในระยะนี้ = กำลังโดนโจมตี
 const BOT_SPEED = 190;
+const BOT_WARP_DIST = 180;    // ระยะวาปโดยประมาณ ถ้าสกิลไม่ระบุ range/dist เอง
+const BOT_WARP_MIN_MP = 40;   // วาปเพื่อเดินทาง เฉพาะตอน MP เหลือมากกว่า % นี้ (เก็บ MP ไว้โจมตี) | วาปหนีบอสไม่จำกัด
 
 // อาวุธ/คลาสใหม่ที่ยังไม่ได้ลงทะเบียนใน BASIC_ATTACKS จะไม่ทำให้บอทค้าง: ใช้ค่าของดาบแทนไปก่อน
 const _botWarned = {};
@@ -45,6 +47,16 @@ function botIsHeal(sid) {
   return /heal|ฮิล|ฮีล|รักษา/i.test(String(sid) + ' ' + String(d.name || ''));
 }
 
+// สกิลนี้เป็นสกิลวาป/เทเลพอร์ตหรือไม่ (เดาจากข้อมูลใน SKILL_DEFS -- ถ้าไม่ตรงกับเกมจริง แก้ตรงนี้ที่เดียว)
+function botIsWarp(sid) {
+  const d = (typeof SKILL_DEFS !== 'undefined') ? SKILL_DEFS[sid] : null;
+  if (!d) return false;
+  if (d.warp || d.blink || d.teleport) return true;
+  const t = String(d.type || d.kind || d.effect || '').toLowerCase();
+  if (/warp|blink|teleport/.test(t)) return true;
+  return /warp|blink|teleport|วาป|วูป|เทเลพอร์ต/i.test(String(sid) + ' ' + String(d.name || ''));
+}
+
 // ระยะจากจุด (px,py) ถึงเส้นตรง (x1,y1)-(x2,y2)
 function botSegDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
@@ -53,11 +65,44 @@ function botSegDist(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
+// aimDash.js มีบอทยิงสกิลวางพื้น (ลูกไฟ/ธารน้ำแข็ง/ฝนลูกศร) ของตัวเอง ซึ่งไม่สนช่องติ๊กสกิลและยิงแม้ตอนกำลังหนีบอส
+// แทนที่ด้วยเวอร์ชันที่เคารพการตั้งค่าบอท (เรียกครั้งเดียวตอนสร้างฉาก หลังทุกไฟล์โหลดครบแล้ว)
+function botPatchGroundCasts() {
+  const P = Main.prototype;
+  if (P._botGCPatched || !P.botGroundCasts) return;
+  P._botGCPatched = true;
+  P.botGroundCasts = function () {
+    if (this.botFleeing) return;                       // กำลังหนีบอส ห้ามหยุดยิง
+    const t = this.target && this.target.active ? this.target : null;
+    if (!t) return;
+    const g = this.botGlobal(), GC = window.GROUND_CFG || {}, GU = window.GROUND_ULTI || {};
+    const p = this.player, now = this.time.now, d = Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y);
+
+    (this.slots || []).forEach((sid, i) => {
+      const cfg = sid && GC[sid];
+      if (!cfg || !g.skillOn[i] || d > cfg.cast) return;
+      if (now < (this.cdEnd['slot' + i] || 0)) return;
+      if (this.stats.mp < SKILL_DEFS[sid].mp) return;
+      this.useSkill(i, { x: t.x, y: t.y });
+    });
+
+    const uc = this.ultiClass, ucfg = uc && GU[uc];
+    if (g.useUlti && ucfg && d <= ucfg.cast && now >= (this.cdEnd.ulti || 0) && this.stats.mp >= ULTI_DEFS[uc].mp) {
+      let n = 0;
+      this.enemies.getChildren().forEach(e => {
+        if (e.active && Phaser.Math.Distance.Between(e.x, e.y, t.x, t.y) < ULTI_DEFS[uc].range) n++;
+      });
+      if (t.isBoss || n >= 3) this.useUlti({ x: t.x, y: t.y });
+    }
+  };
+}
+
 // ---- ต่อท้ายฟังก์ชันเดิม (ไม่ต้องแก้ไฟล์อื่น) ----
 (function () {
   const _setupButtons = Main.prototype.setupButtons;
   Main.prototype.setupButtons = function () {
     _setupButtons.call(this);
+    botPatchGroundCasts();
     // ปุ่ม "ตั้งค่าบอท" ย้ายไปอยู่แถบเมนูด้านบนแล้ว (js/systems/topbar.js)
     // ข้อความสถานะบอท วางใต้แถบเมนู
     this.botStatusText = this.add.text(W / 2, 60, '', { fontSize: '12px', color: '#9fd98a', stroke: '#000', strokeThickness: 3 })
@@ -251,6 +296,8 @@ Object.assign(Main.prototype, {
       }
       this.botFleeRef = { x: p.x, y: p.y, t: now };
     }
+    // บอสประชิดตัวมาก: วาปออกไปตามทิศที่หนี
+    if (len < 200) this.botWarp({ x: Math.cos(ang), y: Math.sin(ang) }, { flee: true });
     p.setVelocity(Math.cos(ang) * BOT_SPEED, Math.sin(ang) * BOT_SPEED);
   },
 
@@ -324,7 +371,7 @@ Object.assign(Main.prototype, {
         this.useBasicAttack();
         // ใช้เฉพาะสกิลโจมตีในช่องที่ติ๊กไว้ (สกิลฮีลจัดการใน botAutoHeal ตาม % เลือด)
         this.slots.forEach((sid, i) => {
-          if (!sid || !g.skillOn[i] || botIsHeal(sid)) return;
+          if (!sid || !g.skillOn[i] || botIsHeal(sid) || botIsWarp(sid)) return;
           const def = SKILL_DEFS[sid];
           if (def && this.stats.mp >= def.mp) this.useSkill(i);
         });
@@ -336,13 +383,73 @@ Object.assign(Main.prototype, {
     // 4) ไม่มีเป้าในระยะ: เดินไปหามอนที่ตีได้ (มอนที่ไล่ตีเราอยู่ได้สิทธิ์ก่อน)
     const far = this.nearestEnemy();
     if (far) { say('เดินหามอน'); this.botMove(far.x, far.y); }
-    else { say('ไม่มีเป้าหมายที่เลือกไว้'); this.botStuckRef = null; p.setVelocity(0, 0); }
+    else { say('ลาดตระเวนหามอน'); this.botPatrol(dangers); }
+  },
+
+  // ---- วาป: ใช้สกิลวาปในช่องที่ติ๊กไว้ ไปตามทิศ dir (เวกเตอร์หน่วย) ----
+  // opts.flee = วาปหนีบอส | opts.saveMp = เก็บ MP ไว้ (เดินทาง) | opts.toDist = ระยะถึงจุดหมาย (ไม่วาปถ้าใกล้กว่าระยะวาป)
+  botWarp(dir, opts) {
+    opts = opts || {};
+    const g = this.botGlobal(), now = this.time.now, p = this.player;
+    if (now < (this.botNextWarp || 0)) return false;
+    const dangers = this.botDangers(this.botCfgNow());
+    for (let i = 0; i < (this.slots || []).length; i++) {
+      const sid = this.slots[i];
+      if (!sid || !g.skillOn[i] || !botIsWarp(sid)) continue;
+      const def = SKILL_DEFS[sid];
+      if (!def || this.stats.mp < def.mp) continue;
+      if (now < (this.cdEnd['slot' + i] || 0)) continue;               // ติดคูลดาวน์ (ใช้ key เดียวกับ mage.js / aimDash.js)
+      if (opts.saveMp && this.stats.mp < this.maxMp() * BOT_WARP_MIN_MP / 100) continue;
+      const dist = def.range || def.dist || def.distance || def.warpDist || BOT_WARP_DIST;
+      if (opts.toDist !== undefined && opts.toDist < dist * 0.8) continue;
+      const x2 = p.x + dir.x * dist, y2 = p.y + dir.y * dist;
+      if (x2 < 60 || x2 > WORLD_W - 60 || y2 < 60 || y2 > WORLD_H - 60) continue;
+      if (this.pointInRock && this.pointInRock(x2, y2, 30)) continue;
+      if (dangers.length && !this.botSafe(x2, y2, dangers, opts.flee ? BOT_FLEE_DIST - 80 : BOT_AVOID_DIST)) continue;
+      if (this.facing && this.facing.set) this.facing.set(dir.x, dir.y);
+      this.botNextWarp = now + 500;
+      // mage.js ตั้งไว้ว่า "ถ้า autoMode เปิด ห้ามใช้เวทวาป" (กันบอทวาปมั่ว) -- ปิดแฟล็กชั่วขณะเฉพาะตอนที่บอทตั้งใจวาปเอง
+      const am = this.autoMode;
+      this.autoMode = false;
+      try { this.useSkill(i, { dir: true, x: dir.x, y: dir.y }); }         // gp.dir = ทิศวาป (mage.js อ่านจากตรงนี้)
+      finally { this.autoMode = am; }
+      return true;
+    }
+    return false;
+  },
+
+  // ---- ลาดตระเวน: ไม่มีเป้า/มุมอับ ให้เดินไปจุดสุ่มทั่วแมพเรื่อยๆ ไม่ยืนนิ่ง ----
+  botPatrol(dangers) {
+    const p = this.player, now = this.time.now;
+    let pt = this.botPatrolPt;
+    const reached = pt && Phaser.Math.Distance.Between(p.x, p.y, pt.x, pt.y) < 70;
+    const bad = pt && (now - pt.t > 9000 ||
+      (dangers.length && (!this.botSafe(pt.x, pt.y, dangers, BOT_AVOID_DIST) || !this.botPathSafe(pt.x, pt.y, dangers))));
+    if (!pt || reached || bad) pt = this.botPatrolPt = this.botPickPatrolPoint(dangers);
+    this.botMove(pt.x, pt.y);
+  },
+
+  botPickPatrolPoint(dangers) {
+    const p = this.player, M = 160, now = this.time.now;
+    for (let i = 0; i < 25; i++) {
+      const x = Phaser.Math.Between(M, WORLD_W - M), y = Phaser.Math.Between(M, WORLD_H - M);
+      if (Phaser.Math.Distance.Between(x, y, p.x, p.y) < 350) continue;
+      if (this.pointInRock && this.pointInRock(x, y, 50)) continue;
+      if (dangers.length && (!this.botSafe(x, y, dangers, BOT_AVOID_DIST) || !this.botPathSafe(x, y, dangers))) continue;
+      return { x, y, t: now };
+    }
+    return { x: WORLD_W / 2, y: WORLD_H / 2, t: now };   // หาไม่ได้จริงๆ: เดินไปกลางแมพ
   },
 
   // เดินไปจุดหมาย: ถ้าเส้นตรงชนหิน ใช้ A* เดินอ้อม (คำนวณใหม่ทุก 0.6 วิ) | ถ้ายังติด ค่อยเลี้ยวข้างเป็นแผนสำรอง
   botMove(x, y) {
     const p = this.player, now = this.time.now;
     let tx = x, ty = y;
+    // จุดหมายไกลและเส้นตรงโล่ง: วาปย่นระยะ (ถ้ามีสกิลวาปในช่องที่ติ๊กไว้)
+    const dTo = Phaser.Math.Distance.Between(p.x, p.y, x, y);
+    if (dTo > 420 && !(this.segmentBlocked && this.segmentBlocked(p.x, p.y, x, y, 18))) {
+      this.botWarp(new Phaser.Math.Vector2(x - p.x, y - p.y).normalize(), { saveMp: true, toDist: dTo });
+    }
     if (this.segmentBlocked && this.segmentBlocked(p.x, p.y, x, y, 18)) {
       let pr = this.botPath;
       if (!pr || Phaser.Math.Distance.Between(pr.gx, pr.gy, x, y) > 60 || now - pr.t > 600) {
@@ -363,6 +470,8 @@ Object.assign(Main.prototype, {
         const ang = Math.atan2(ty - p.y, tx - p.x) + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
         this.botUnstickVec = new Phaser.Math.Vector2(Math.cos(ang), Math.sin(ang));
         this.botUnstickUntil = now + 600;
+        // ติดแล้ว: ลองวาปออกไปทางจุดหมาย
+        this.botWarp(new Phaser.Math.Vector2(tx - p.x, ty - p.y).normalize(), { toDist: Phaser.Math.Distance.Between(p.x, p.y, tx, ty) });
       }
       this.botStuckRef = { x: p.x, y: p.y, t: now };
     }
@@ -503,7 +612,7 @@ Object.assign(Main.prototype, {
       const heal = botIsHeal(sid);
       const on = !!g.skillOn[i];
       if (heal) row('ช่อง ' + (i + 1) + ': ' + def.name + ' ❤ ฮีลเมื่อ ≤', on, () => this.botToggleG(g.skillOn, i), { obj: g.healAt, key: i });
-      else row('ช่อง ' + (i + 1) + ': ' + def.name, on, () => this.botToggleG(g.skillOn, i));
+      else row('ช่อง ' + (i + 1) + ': ' + def.name + (botIsWarp(sid) ? ' 🌀 วาป (ตอนหนี/เดินทาง)' : ''), on, () => this.botToggleG(g.skillOn, i));
     }
   },
 });
