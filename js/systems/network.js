@@ -1,10 +1,32 @@
 // ===== ระบบออนไลน์ (Socket.IO) =====
+
+// ชื่อตัวละครเหนือหัว (ปรับตรงนี้)
+const NET_NAME_SIZE = '20px';    // ขนาดชื่อ (เดิม 12px)
+const NET_NAME_STROKE = 6;       // ความหนาขอบดำ
+const NET_NAME_Y = 32;           // ระยะชื่อเหนือตัวละคร (px)
+
+function netNameStyle(color) {
+  return {
+    fontFamily: 'Mitr, sans-serif',
+    fontSize: NET_NAME_SIZE,
+    fontStyle: '700',
+    color: color,
+    stroke: '#000000',
+    strokeThickness: NET_NAME_STROKE
+  };
+}
+function netNameFx(t) {   // เงา + ความคมชัดบนมือถือ
+  t.setShadow(0, 2, '#000000', 3, true, true);
+  t.setResolution(2);
+  return t;
+}
+
 Object.assign(Main.prototype, {
   initNetwork() {
     this.others = {}; this.online = false; this.lastSend = 0;
     if (typeof io === 'undefined' || SERVER_URL.includes('YOUR-SERVER')) return;
     const name = (window.prompt('ตั้งชื่อตัวละคร (ไม่เกิน 12 ตัวอักษร)', '') || 'Player').slice(0, 12);
-    this.myLabel = this.add.text(0, 0, name, { fontSize: '12px', color: '#ffffff' }).setOrigin(0.5).setDepth(50);
+    this.myLabel = netNameFx(this.add.text(0, 0, name, netNameStyle('#ffffff')).setOrigin(0.5).setDepth(50));
     this.statusText = this.add.text(W - 10, H - 10, 'กำลังเชื่อมต่อ...', { fontSize: '11px', color: '#ffe9a0' })
       .setOrigin(1, 1).setScrollFactor(0).setDepth(100);
     this.socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
@@ -53,7 +75,7 @@ Object.assign(Main.prototype, {
   addOther(p) {
     if (this.others[p.id]) return;
     const s = this.add.sprite(p.x, p.y, 'player').setTint(0xffaa44);
-    const t = this.add.text(p.x, p.y - 26, p.name, { fontSize: '12px', color: '#ffd9a0' }).setOrigin(0.5).setDepth(50);
+    const t = netNameFx(this.add.text(p.x, p.y - NET_NAME_Y, p.name, netNameStyle('#ffd9a0')).setOrigin(0.5).setDepth(50));
     this.others[p.id] = { s, t, tx: p.x, ty: p.y };
   },
 
@@ -61,10 +83,10 @@ Object.assign(Main.prototype, {
 
   updateNetwork(time) {
     const p = this.player;
-    if (this.myLabel) this.myLabel.setPosition(p.x, p.y - 26);
+    if (this.myLabel) this.myLabel.setPosition(p.x, p.y - NET_NAME_Y);
     Object.values(this.others || {}).forEach(o => {
       o.s.x += (o.tx - o.s.x) * 0.25; o.s.y += (o.ty - o.s.y) * 0.25;
-      o.t.setPosition(o.s.x, o.s.y - 26);
+      o.t.setPosition(o.s.x, o.s.y - NET_NAME_Y);
       const vis = o.stage === undefined || o.stage === this.stageIdx; // เห็นเฉพาะคนในด่านเดียวกัน
       o.s.setVisible(vis); o.t.setVisible(vis);
     });
