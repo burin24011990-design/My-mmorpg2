@@ -40,6 +40,15 @@ const OPT_COLORS = {
 const OPT_STONE_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90];   // หินสุ่มออฟมีเฉพาะเลเวลเหล่านี้
 const OPT_STONE_MAX_LV = 90;
 
+// ---- รูปไอเทมจากไฟล์ (assets/items/*.png) ----
+// ITEM_IMG_OK จะถูกเติมโดย js/systems/itemImages.js เมื่อรูปโหลดสำเร็จ
+// รูปไหนยังไม่มี/โหลดไม่ขึ้น เกมจะใช้ไอคอนเดิมแทนอัตโนมัติ
+const ITEM_IMG_OK = {};
+function itemImgKey(name, fallback) {
+  const key = 'img_' + name;
+  return ITEM_IMG_OK[key] ? key : fallback;
+}
+
 function weaponClassLabel(cls) {
   if (typeof WEAPON_CLASS_LABEL !== 'undefined' && WEAPON_CLASS_LABEL[cls]) return WEAPON_CLASS_LABEL[cls];
   return EXTRA_WEAPON_LABELS[cls] || cls;
@@ -86,12 +95,19 @@ function itemLabel(item) {
 }
 
 function iconKeyForItem(item) {
-  if (item.kind === 'box') return 'box';
-  if (item.kind === 'stone') return 'icon_stone';
-  if (item.kind === 'optstone') return 'icon_opt_' + (item.color || 'red');
-  if (item.kind === 'cleanstone') return 'icon_cleanstone';
-  if (item.baseSlot === 'weapon') return weaponIconKeyForClass(item.class);
-  return { helmet: 'icon_helmet', armor: 'icon_armor', gloves: 'icon_gloves', shoes: 'icon_shoes', ring: 'icon_ring', necklace: 'icon_necklace' }[item.baseSlot];
+  if (item.kind === 'box') return itemImgKey('box', 'box');
+  if (item.kind === 'stone') return itemImgKey('stone', 'icon_stone');
+  if (item.kind === 'optstone') {
+    const c = item.color || 'red';
+    return itemImgKey('opt_' + c, 'icon_opt_' + c);
+  }
+  if (item.kind === 'cleanstone') return itemImgKey('cleanstone', 'icon_cleanstone');
+  if (item.baseSlot === 'weapon') return itemImgKey('weapon_' + item.class, weaponIconKeyForClass(item.class));
+
+  const old = { helmet: 'icon_helmet', armor: 'icon_armor', gloves: 'icon_gloves', shoes: 'icon_shoes', ring: 'icon_ring', necklace: 'icon_necklace' }[item.baseSlot];
+  const normal = itemImgKey(item.baseSlot, old);
+  if (item.variant === 'light') return itemImgKey(item.baseSlot + '_light', normal);
+  return normal;
 }
 
 // tier = สีของอุปกรณ์ที่สุ่มได้ (มาจากสีของกล่อง) ไม่ใส่ = ขาว
