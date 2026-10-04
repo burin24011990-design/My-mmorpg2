@@ -73,7 +73,7 @@
   flex: 1; padding: 8px 0; font-size: 14px; background: #120609; color: #aaa; border: 0; border-bottom: 2px solid transparent;
 }
 .sp-tabs button.on { color: #ffe28a; border-bottom-color: #ffd45c; background: #1a0a0e; }
-.sp-list { overflow-y: auto; touch-action: pan-y; padding: 6px; }
+.sp-list { flex: 1; min-height: 0; overflow-y: auto; touch-action: pan-y; padding: 6px; }
 .sp-row {
   display: flex; align-items: center; gap: 8px; padding: 6px; margin-bottom: 6px;
   background: #26090f; border-radius: 10px;
@@ -94,3 +94,25 @@
 /* ซ่อนช่องยาตอนมีหน้าต่างอื่นเปิด */
 #potion-quick, #potion-quick-r { transition: opacity .12s; }
 #potion-quick.hide, #potion-quick-r.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+
+/* แถบระบุจำนวนที่ซื้อ */
+.sp-qty {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px;
+  background: #120609; border-top: 1px solid #3a1a22; border-bottom: 1px solid #3a1a22;
+}
+.sp-qlab { font-size: 13px; color: #ffe28a; margin-right: 2px; }
+.sp-qty > button, .sp-chips button {
+  min-width: 36px; height: 36px; padding: 0 8px; border-radius: 8px; border: 1px solid #6b4a2a;
+  background: #26090f; color: #fff; font-size: 18px;
+}
+.sp-qty input {
+  width: 74px; height: 36px; box-sizing: border-box; text-align: center; border-radius: 8px;
+  border: 2px solid #ffd45c; background: #0d0406; color: #fff; font-family: 'Mitr', sans-serif;
+  font-size: 18px; /* 16px ขึ้นไปกันมือถือซูมเอง */ -moz-appearance: textfield; appearance: textfield;
+}
+.sp-qty input::-webkit-outer-spin-button, .sp-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.sp-chips { display: flex; gap: 4px; margin-left: auto; }
+.sp-chips button { font-size: 13px; }
+.sp-chips button.on { background: #b8860b; border-color: #ffd45c; }
+.sp-qty button:active { transform: scale(.94); }
+.sp-buy { white-space: nowrap; }
