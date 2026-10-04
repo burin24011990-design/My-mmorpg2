@@ -4,30 +4,30 @@
   const P = Main.prototype;
 
   // ---------- ค่าที่ปรับได้ ----------
+  // หมายเหตุ: 1 = 100%, 0.01 = 1%, 0.0005 = 0.05%, 0.0001 = 0.01%
   const DROP = {
-    optStoneNormal: 0.01,   // มอนทั่วไป ดรอปหินสุ่มออฟ 10%
-    optStoneBoss: 0.20,     // บอส ดรอปหินสุ่มออฟ 20%
-    goldBoxBoss: 0.05,      // บอสเท่านั้น: กล่องทอง 1%
+    optStoneNormal: 0.0005, // มอนทั่วไป ดรอปหินสุ่มออฟ 0.05%
+    optStoneBoss: 0.0005,   // บอส ดรอปหินสุ่มออฟ 0.05% (อยากให้บอสดรอปง่ายกว่า เพิ่มเลขตรงนี้)
+    goldBoxBoss: 0.05,      // บอสเท่านั้น: กล่องทอง 5%
     redBoxBoss: 0.10,       // บอสเท่านั้น: กล่องแดง 10%
-    blueBoxNormal: 0.05,    // กล่องที่ตกจากมอนทั่วไป: 20% เป็นสีฟ้า ที่เหลือสีขาว
+    blueBoxNormal: 0.05,    // กล่องที่ตกจากมอนทั่วไป: 5% เป็นสีฟ้า ที่เหลือสีขาว
   };
   const OPT_TWO_CHANCE = 0.4;                 // โอกาสสุ่มได้ 2 ออฟ (ไม่งั้นได้ 1)
-  const CLEAN_DROP = { normal: 0.05, boss: 0.15 };   // โอกาสดรอปหินลบออฟ
-  // หินสุ่มออฟมีเลเวล 10,20,...,90 -> 'ขั้น' 1-9
-  const lvIdx = lv => Math.max(1, Math.min(9, Math.round(lv / 10)));
-  const OPT_SELL_PER_STEP = 60;               // ขายหินสุ่มออฟ = ขั้น x ค่านี้ ทอง (Lv10 = 60, Lv90 = 540)
-  const OPT_DISMANTLE = lv => 1 + lvIdx(lv) * 2;   // ย่อยหินสุ่มออฟ 1 เม็ด ได้หินตีบวกเท่านี้
-  const OPT_STEP_GROWTH = 0.6;                // ค่าออฟเพิ่มขั้นละ 60% ของค่าฐาน (Lv90 = x5.8)
-  // ค่าออฟของหินเลเวล 10 (ขั้น 1) | ขั้นสูงขึ้น x(1 + (ขั้น-1) x 0.6) | สุ่มช่วง 70%-130%
-  const OPT_BASE = {
-    patk: 6, ap: 6, lifesteal: 1, spellvamp: 1,
-    hp: 40, dodge: 1.5, hpregen: 0.3, pdef: 4, mdef: 4,
-    mp: 25, mpregen: 0.3, cdr: 1, mspd: 2,
-    crit: 1.5, critdmg: 6, aspd: 2, ppen: 1.5, mpen: 1.5,
+  const CLEAN_DROP = { normal: 0.0001, boss: 0.0001 };   // โอกาสดรอปหินลบออฟ 0.01% (บอสเพิ่มเลขได้)
+  // หินสุ่มออฟไม่มีเลเวลแล้ว: มี 4 สี (แดง/เขียว/ม่วง/เหลือง)
+  // ค่าออฟสุ่มในช่วง [ต่ำสุด, สูงสุด] ของแต่ละสถานะ (แก้ตัวเลขในตาราง OPT_RANGE ได้เลย)
+  const OPT_SELL_PRICE = 300;                 // ขายหินสุ่มออฟ 1 เม็ด ได้กี่ทอง
+  const OPT_DISMANTLE_YIELD = 8;              // ย่อยหินสุ่มออฟ 1 เม็ด ได้หินตีบวกเท่านี้
+  const OPT_SKEW = 1;                         // 1 = สุ่มเท่ากันทั้งช่วง | 2 = ค่าสูงๆ ออกยากขึ้น | 3 = ยากมาก
+  const OPT_RANGE = {
+    patk: [10, 200], ap: [10, 200], lifesteal: [1, 10], spellvamp: [1, 10],
+    hp: [50, 1000], dodge: [1, 15], hpregen: [0.5, 8], pdef: [5, 100], mdef: [5, 100],
+    mp: [30, 500], mpregen: [0.5, 8], cdr: [1, 15], mspd: [2, 25],
+    crit: [1, 20], critdmg: [5, 100], aspd: [2, 30], ppen: [1, 20], mpen: [1, 20],
   };
 
-  window.optStoneYield = function (lv) { return OPT_DISMANTLE(lv); };
-  window.optStonePrice = function (lv) { return OPT_SELL_PER_STEP * lvIdx(lv); };
+  window.optStoneYield = function () { return OPT_DISMANTLE_YIELD; };
+  window.optStonePrice = function () { return OPT_SELL_PRICE; };
 
   // ---------- ตัวช่วยใส่ของซ้อนได้ลงกระเป๋า (คืนจำนวนที่ใส่ไม่ได้) ----------
   function addStack(scene, proto, same, max, n) {
@@ -56,9 +56,9 @@
   function addCleanStone(scene, n) {
     return addStack(scene, { kind: 'cleanstone' }, s => s.kind === 'cleanstone', MAX_STONE_STACK, n);
   }
-  function addOptStone(scene, color, level, n) {
-    return addStack(scene, { kind: 'optstone', color: color, level: level },
-      s => s.kind === 'optstone' && s.color === color && s.level === level, MAX_STONE_STACK, n);
+  function addOptStone(scene, color, n) {
+    return addStack(scene, { kind: 'optstone', color: color },
+      s => s.kind === 'optstone' && s.color === color, MAX_STONE_STACK, n);
   }
 
   // ---------- กล่องที่ตกลงพื้น (ระบบเดิม) -> ใส่สี ขาว/ฟ้า ตอนเก็บ ----------
@@ -84,10 +84,8 @@
 
     if (Math.random() < (boss ? DROP.optStoneBoss : DROP.optStoneNormal)) {
       const color = OPT_COLOR_KEYS[Math.floor(Math.random() * OPT_COLOR_KEYS.length)];
-      // เลเวลหิน = เลเวลมอนปัดลงเป็นหลักสิบ (บอส +10) อยู่ในช่วง 10-90
-      const sl = Math.max(10, Math.min(OPT_STONE_MAX_LV, Math.floor(lvl / 10) * 10 + (boss ? 10 : 0)));
-      const left = addOptStone(this, color, sl, 1);
-      const label = itemLabel({ kind: 'optstone', color: color, level: sl, count: 1 });
+      const left = addOptStone(this, color, 1);
+      const label = itemLabel({ kind: 'optstone', color: color, count: 1 });
       this.toastMsg(left === 0 ? 'ได้รับ ' + label : 'กระเป๋าเต็ม! พลาด ' + label);
     }
 
@@ -124,11 +122,11 @@
   function rollOptions(stone) {
     const pool = (OPT_COLORS[stone.color] || OPT_COLORS.red).pool.slice();
     const n = Math.random() < OPT_TWO_CHANCE ? 2 : 1;
-    const scale = 1 + (lvIdx(stone.level) - 1) * OPT_STEP_GROWTH;
     const out = [];
     for (let i = 0; i < n && pool.length; i++) {
       const k = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
-      let v = OPT_BASE[k] * scale * (0.7 + Math.random() * 0.6);
+      const r = OPT_RANGE[k] || [1, 5];
+      let v = r[0] + (r[1] - r[0]) * Math.pow(Math.random(), OPT_SKEW);
       const d = window.STAT_DEFS[k];
       v = (d && d.fmt === 'int') ? Math.max(1, Math.round(v)) : Math.max(0.1, Math.round(v * 10) / 10);
       out.push({ k: k, v: v });
@@ -158,7 +156,7 @@
     if (!st || st.kind !== 'optstone') return 0;
     const count = st.count || 1;
     n = Math.max(1, Math.min(n || 1, count));
-    const total = OPT_DISMANTLE(st.level) * n;
+    const total = OPT_DISMANTLE_YIELD * n;
     st.count = count - n;
     if (st.count <= 0) this.bag[idx] = null;
     if (this.stoneRoom() < total) {
@@ -178,7 +176,7 @@
     if (!st || st.kind !== 'optstone') return 0;
     const count = st.count || 1;
     n = Math.max(1, Math.min(n || 1, count));
-    const gold = window.optStonePrice(st.level) * n;
+    const gold = OPT_SELL_PRICE * n;
     st.count = count - n;
     if (st.count <= 0) this.bag[idx] = null;
     this.stats.gold += gold;
@@ -222,11 +220,11 @@
   window.itemEmbedButtonsHTML = function (s, it) {
     const stacks = [];
     s.bag.forEach((st, i) => { if (st && st.kind === 'optstone') stacks.push({ st: st, i: i }); });
-    stacks.sort((a, b) => OPT_COLOR_KEYS.indexOf(a.st.color) - OPT_COLOR_KEYS.indexOf(b.st.color) || a.st.level - b.st.level);
+    stacks.sort((a, b) => OPT_COLOR_KEYS.indexOf(a.st.color) - OPT_COLOR_KEYS.indexOf(b.st.color));
     let h = '';
     stacks.forEach(o => {
       h += '<button class="btn info" data-act="embed" data-id="' + o.i + '">💎 ฝัง ' + OPT_COLORS[o.st.color].name
-        + ' Lv' + o.st.level + ' ×' + o.st.count + '</button>';
+        + ' ×' + o.st.count + '</button>';
     });
     if (it && it.opts && it.opts.length) {
       let clean = 0;
