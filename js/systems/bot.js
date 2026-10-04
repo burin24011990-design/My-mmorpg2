@@ -406,13 +406,28 @@ Object.assign(Main.prototype, {
     this.closePanel();
     const page = this.botPage || 0, z = ZONES[this.stageIdx || 0];
     const items = this.panelFrame('ตั้งค่าบอท - ' + (page === 0 ? z.name : 'สกิล / เลือด'));
-    if (page === 0) this.botPageTargets(items); else this.botPageSkills(items);
+    this.panel = items;   // ผูกไว้ก่อน เผื่อสร้างหน้าไม่สำเร็จ จะยังปิดหน้าต่างได้
+    try {
+      if (page === 0) this.botPageTargets(items); else this.botPageSkills(items);
+    } catch (err) {
+      console.error('[bot] สร้างหน้าตั้งค่าไม่สำเร็จ', err);
+      items.push(this.add.text(W / 2, H / 2 - 40, 'เกิดข้อผิดพลาด: ' + err.message, {
+        fontSize: '13px', color: '#ff8888', align: 'center', wordWrap: { width: 460 },
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+    }
 
+    // ปุ่มแท็บ วาดเองด้วยวิธีเดียวกับช่องติ๊ก (แตะติดแน่นอน)
     const by = H / 2 + 165;
-    items.push(...this.tabBtn(W / 2 - 150, by, 'เป้าหมาย', page === 0, () => { this.botPage = 0; this.openBotPanel(); }));
-    items.push(...this.tabBtn(W / 2, by, 'สกิล/เลือด', page === 1, () => { this.botPage = 1; this.openBotPanel(); }));
-    items.push(...this.tabBtn(W / 2 + 150, by, this.autoMode ? 'ปิดบอท' : 'เปิดบอท', this.autoMode, () => { this.closePanel(); this.toggleAuto(); }));
-    this.panel = items;
+    const tab = (x, label, active, cb) => {
+      items.push(this.roundRect(201, x, by, 140, 38, active ? 0x3a8a3a : 0x24262b, 1, 8));
+      items.push(this.add.text(x, by, label, { fontSize: '14px', color: active ? '#fff' : '#bbb' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      const zn = this.add.zone(x, by, 140, 38).setScrollFactor(0).setDepth(204).setInteractive();
+      zn.on('pointerdown', cb);
+      items.push(zn);
+    };
+    tab(W / 2 - 150, 'เป้าหมาย', page === 0, () => { this.botPage = 0; this.openBotPanel(); });
+    tab(W / 2, 'สกิล/เลือด', page === 1, () => { this.botPage = 1; this.openBotPanel(); });
+    tab(W / 2 + 150, this.autoMode ? 'ปิดบอท' : 'เปิดบอท', !!this.autoMode, () => { this.closePanel(); this.toggleAuto(); });
   },
 
   // หน้า 1: เลือกเป้าหมาย (เหมือนเดิม)
