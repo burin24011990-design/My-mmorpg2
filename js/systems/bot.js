@@ -11,6 +11,7 @@ const BOT_DEFAULT = { normal: true, ranged: true, boss: false, flee: true };
 const BOT_GLOBAL_DEFAULT = {
   useUlti: true,
   skillOn: { 0: true, 1: true, 2: true, 3: true },   // ใช้สกิลช่องไหนบ้าง
+  always: { 0: false, 1: false, 2: false, 3: false },  // ช่องนี้ใช้ "ตลอด" ทุกครั้งที่พร้อม (เฉพาะสกิลวาป/ฮีล)
   healAt: { 0: 50, 1: 50, 2: 50, 3: 50 },            // สกิลฮีลช่องนั้น ฮีลเมื่อ HP เหลือ <= กี่ %
   autoHp: true,                                       // ดื่มยาเลือดอัตโนมัติ
   hpPct: 50,                                          // ดื่มยาเมื่อ HP เหลือ <= กี่ %
@@ -80,7 +81,7 @@ function botPatchGroundCasts() {
 
     (this.slots || []).forEach((sid, i) => {
       const cfg = sid && GC[sid];
-      if (!cfg || !g.skillOn[i] || d > cfg.cast) return;
+      if (!cfg || !g.skillOn[i] || botIsHeal(sid) || botIsWarp(sid) || d > cfg.cast) return;
       if (now < (this.cdEnd['slot' + i] || 0)) return;
       if (this.stats.mp < SKILL_DEFS[sid].mp) return;
       this.useSkill(i, { x: t.x, y: t.y });
@@ -218,14 +219,18 @@ Object.assign(Main.prototype, {
   botAutoHeal(say) {
     const g = this.botGlobal(), now = this.time.now;
     const pct = this.stats.hp / Math.max(1, this.maxHp()) * 100;
-    if (pct >= 100) return;
 
     if (now >= (this.botNextHealSkill || 0)) {
       this.botNextHealSkill = now + 250;
       (this.slots || []).forEach((sid, i) => {
         if (!sid || !g.skillOn[i] || !botIsHeal(sid)) return;
         const def = SKILL_DEFS[sid];
-        if (def && this.stats.mp >= def.mp && pct <= g.healAt[i]) this.useSkill(i);   // useSkill เช็กคูลดาวน์เอง
+        if (!def || this.stats.mp < def.mp) return;
+        if (now < (this.cdEnd['slot' + i] || 0)) return;
+        if (g.always[i] || (pct < 100 && pct <= g.healAt[i])) {
+          const pl = this.player;
+          this.useSkill(i, { x: pl.x, y: pl.y });   // ฮีลหมู่แบบวางพื้นให้ลงที่ตัวเอง (ไม่ใช่ที่มอน)
+        }   // useSkill เช็กคูลดาวน์เอง
       });
     }
 
@@ -297,7 +302,7 @@ Object.assign(Main.prototype, {
       this.botFleeRef = { x: p.x, y: p.y, t: now };
     }
     // บอสประชิดตัวมาก: วาปออกไปตามทิศที่หนี
-    if (len < 200) this.botWarp({ x: Math.cos(ang), y: Math.sin(ang) }, { flee: true });
+    if (len < 200 || this.botAlwaysWarpOn()) this.botWarp({ x: Math.cos(ang), y: Math.sin(ang) }, { flee: true });
     p.setVelocity(Math.cos(ang) * BOT_SPEED, Math.sin(ang) * BOT_SPEED);
   },
 
@@ -308,6 +313,7 @@ Object.assign(Main.prototype, {
 
     // 0) ดูแลเลือด (ทำคู่ไปกับทุกอย่าง ไม่หยุดการเดิน)
     this.botAutoHeal(say);
+    if (!this.botFleeing) this.botAlwaysWarp();
 
     // 1) หนีมินิบอส: เริ่มหนีที่ BOT_FLEE_DIST และหนีต่อจนห่างเกิน BOT_FLEE_DIST + BOT_FLEE_EXTRA
     let nb = null, nd = Infinity;
@@ -358,6 +364,7 @@ Object.assign(Main.prototype, {
       const cls = this.currentClass();
       const atk = botAtk(cls);                     // กันค้างเมื่อคลาส/อาวุธใหม่ยังไม่อยู่ใน BASIC_ATTACKS
       const approach = Math.max(50, (atk.range || 70) - 40);
+      this.botGoal = { x: t.x, y: t.y, t: this.time.now, mode: 'keep', r: approach * 0.8 };
       const d = Phaser.Math.Distance.Between(p.x, p.y, t.x, t.y);
       // สายยิง (คทา/ธนู) ต้องมีแนวยิงโล่ง ถ้ามีหินบังให้เดินอ้อมไปหามุมยิง
       const noLine = atk.type === 'proj' && PLAYER_SHOTS_BLOCKED_BY_ROCKS &&
@@ -384,6 +391,61 @@ Object.assign(Main.prototype, {
     const far = this.nearestEnemy();
     if (far) { say('เดินหามอน'); this.botMove(far.x, far.y); }
     else { say('ลาดตระเวนหามอน'); this.botPatrol(dangers); }
+  },
+
+  // ---- วาปตลอด: ช่องวาปที่ตั้ง "ตลอด" จะวาปทุกครั้งที่พร้อม (ไว้ฟื้น MP) ----
+  botAlwaysWarpOn() {
+    const g = this.botGlobal();
+    return (this.slots || []).some((sid, i) => sid && g.skillOn[i] && g.always[i] && botIsWarp(sid));
+  },
+
+  // ร่ายวาปช่อง i ไปทิศ dir (mage.js ห้ามบอทวาปเวลา autoMode เปิด จึงปิดแฟล็กชั่วขณะ)
+  botCastWarpSlot(i, dir) {
+    if (this.facing && this.facing.set) this.facing.set(dir.x, dir.y);
+    this.botNextWarp = this.time.now + 500;
+    const am = this.autoMode;
+    this.autoMode = false;
+    try { this.useSkill(i, { dir: true, x: dir.x, y: dir.y }); }
+    finally { this.autoMode = am; }
+  },
+
+  botAlwaysWarp() {
+    const g = this.botGlobal(), now = this.time.now;
+    if (now < (this.botNextWarp || 0)) return;
+    for (let i = 0; i < (this.slots || []).length; i++) {
+      const sid = this.slots[i];
+      if (!sid || !g.skillOn[i] || !g.always[i] || !botIsWarp(sid)) continue;
+      const def = SKILL_DEFS[sid];
+      if (!def || this.stats.mp < def.mp) continue;
+      if (now < (this.cdEnd['slot' + i] || 0)) continue;
+      const dir = this.botWarpDir(def);
+      if (!dir) continue;
+      this.botCastWarpSlot(i, dir);
+      return;
+    }
+  },
+
+  // เลือกทิศวาปที่ปลอดภัย (8 ทิศ): กำลังเดินไปที่หมาย = เข้าใกล้ที่หมาย | กำลังตีเป้า = รักษาระยะยิง | ไม่มี = ไปทางกลางแมพ
+  botWarpDir(def) {
+    const p = this.player, now = this.time.now;
+    const dist = def.range || def.dist || def.distance || def.warpDist || BOT_WARP_DIST;
+    const dangers = this.botDangers(this.botCfgNow());
+    const goal = (this.botGoal && now - this.botGoal.t < 500) ? this.botGoal : null;
+    let best = null, bs = -Infinity;
+    for (let k = 0; k < 8; k++) {
+      const a = k * Math.PI / 4, dx = Math.cos(a), dy = Math.sin(a);
+      const x2 = p.x + dx * dist, y2 = p.y + dy * dist;
+      if (x2 < 60 || x2 > WORLD_W - 60 || y2 < 60 || y2 > WORLD_H - 60) continue;
+      if (this.pointInRock && this.pointInRock(x2, y2, 30)) continue;
+      if (dangers.length && !this.botSafe(x2, y2, dangers, BOT_FLEE_DIST - 80)) continue;
+      let s;
+      if (goal && goal.mode === 'keep') s = -Math.abs(Phaser.Math.Distance.Between(x2, y2, goal.x, goal.y) - (goal.r || 200));
+      else if (goal) s = -Phaser.Math.Distance.Between(x2, y2, goal.x, goal.y);
+      else s = -Phaser.Math.Distance.Between(x2, y2, WORLD_W / 2, WORLD_H / 2);
+      if (this.segmentBlocked && this.segmentBlocked(p.x, p.y, x2, y2, 14)) s -= 1000;   // มีหินขวาง = วาปได้สั้นลง
+      if (s > bs) { bs = s; best = { x: dx, y: dy }; }
+    }
+    return best;
   },
 
   // ---- วาป: ใช้สกิลวาปในช่องที่ติ๊กไว้ ไปตามทิศ dir (เวกเตอร์หน่วย) ----
@@ -445,6 +507,7 @@ Object.assign(Main.prototype, {
   botMove(x, y) {
     const p = this.player, now = this.time.now;
     let tx = x, ty = y;
+    this.botGoal = { x: x, y: y, t: now, mode: 'move' };
     // จุดหมายไกลและเส้นตรงโล่ง: วาปย่นระยะ (ถ้ามีสกิลวาปในช่องที่ติ๊กไว้)
     const dTo = Phaser.Math.Distance.Between(p.x, p.y, x, y);
     if (dTo > 420 && !(this.segmentBlocked && this.segmentBlocked(p.x, p.y, x, y, 18))) {
@@ -576,7 +639,7 @@ Object.assign(Main.prototype, {
     let y = H / 2 - 135;
 
     // แถวติ๊ก (+ ตัวปรับ % ทางขวา ถ้าส่ง step มา)
-    const row = (label, on, onToggle, step) => {
+    const row = (label, on, onToggle, step, chip) => {
       items.push(this.roundRect(201, W / 2, y, RW, RH, 0x24262b, 0.95, 8));
       if (onToggle) {
         items.push(this.roundRect(202, left + 22, y, 22, 22, on ? 0x3a8a3a : 0x0e1014, 1, 5));
@@ -597,7 +660,15 @@ Object.assign(Main.prototype, {
           zb.on('pointerdown', () => this.botStepG(step.obj, step.key, dir * 5));
           items.push(zb);
         });
-        items.push(this.add.text(cx, y, step.obj[step.key] + '%', { fontSize: '13px', color: '#ffe28a', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+        items.push(this.add.text(cx, y, (step.pre || '') + step.obj[step.key] + '%', { fontSize: '13px', color: '#ffe28a', fontStyle: 'bold' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+      }
+      if (chip) {
+        const cOn = !!chip.obj[chip.key], cxp = W / 2 + 55;
+        items.push(this.roundRect(202, cxp, y, 62, 24, cOn ? 0x3a8a3a : 0x0e1014, 1, 6));
+        items.push(this.add.text(cxp, y, 'ตลอด', { fontSize: '12px', color: cOn ? '#fff' : '#999', fontStyle: cOn ? 'bold' : 'normal' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+        const zc = this.add.zone(cxp, y, 70, RH).setScrollFactor(0).setDepth(204).setInteractive();
+        zc.on('pointerdown', () => this.botToggleG(chip.obj, chip.key));
+        items.push(zc);
       }
       y += RH + 4;
     };
@@ -605,14 +676,21 @@ Object.assign(Main.prototype, {
     row('💊 ดื่มยาเลือดอัตโนมัติ เมื่อ HP ≤', g.autoHp, () => this.botToggleG(g, 'autoHp'), { obj: g, key: 'hpPct' });
     row('⚡ ใช้อัลติเมท (ตามเงื่อนไขของบอท)', g.useUlti, () => this.botToggleG(g, 'useUlti'));
 
+    items.push(this.add.text(W / 2, H / 2 + 100, 'ตลอด = ใช้ทุกครั้งที่พร้อม (🌀 วาป: ไว้ฟื้น MP | ❤ ฮีล: ลงที่ตัวเอง ไม่รอเลือดลด)', {
+      fontSize: '11px', color: '#aaa', align: 'center', wordWrap: { width: 470 },
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(203));
+
     for (let i = 0; i < 4; i++) {
       const sid = this.slots && this.slots[i];
       const def = sid && SKILL_DEFS[sid];
       if (!def) { row('ช่อง ' + (i + 1) + ': (ว่าง)', false, null); continue; }
       const heal = botIsHeal(sid);
       const on = !!g.skillOn[i];
-      if (heal) row('ช่อง ' + (i + 1) + ': ' + def.name + ' ❤ ฮีลเมื่อ ≤', on, () => this.botToggleG(g.skillOn, i), { obj: g.healAt, key: i });
-      else row('ช่อง ' + (i + 1) + ': ' + def.name + (botIsWarp(sid) ? ' 🌀 วาป (ตอนหนี/เดินทาง)' : ''), on, () => this.botToggleG(g.skillOn, i));
+      if (heal) row('ช่อง ' + (i + 1) + ': ' + def.name + ' ❤', on, () => this.botToggleG(g.skillOn, i), { obj: g.healAt, key: i, pre: '≤' }, { obj: g.always, key: i });
+      else {
+        const warp = botIsWarp(sid);
+        row('ช่อง ' + (i + 1) + ': ' + def.name + (warp ? ' 🌀' : ''), on, () => this.botToggleG(g.skillOn, i), null, warp ? { obj: g.always, key: i } : null);
+      }
     }
   },
 });
