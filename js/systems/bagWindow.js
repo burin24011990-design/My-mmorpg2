@@ -18,7 +18,7 @@
 
   // ---- ตัวช่วยรองรับหนังสือสกิล (ไม่ต้องแก้ items.js) ----
   const isBook = (it) => !!it && it.kind === 'skillbook';
-  const itemIcon = (it) => isBook(it) ? skillIconKey(SKILL_DEFS[it.sid].type) : iconKeyForItem(it);
+  const itemIcon = (it) => isBook(it) ? itemImgKey('skillbook', skillIconKey(SKILL_DEFS[it.sid].type)) : iconKeyForItem(it);
   const itemColor = (it) => isBook(it)
     ? ((CLASSES[SKILL_DEFS[it.sid].class] || {}).color || 0xffffff)
     : rarityColor(it);
