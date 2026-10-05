@@ -20,7 +20,7 @@ const BOT_GLOBAL_DEFAULT = {
 const BOT_FLEE_DIST = 330;    // ระยะที่เริ่มหนีบอส (บอสไล่ตามที่ 220)
 const BOT_FLEE_EXTRA = 120;   // หนีจนห่างเกินระยะนี้ + BOT_FLEE_DIST ถึงจะหยุดหนี (กันกระตุก)
 const BOT_AVOID_DIST = 380;   // ไม่เก็บของ/ไม่เลือกเป้าที่อยู่ใกล้บอสที่ต้องหลบ
-const BOT_LOOT_RANGE = 200;   // เก็บของเฉพาะที่อยู่ในระยะนี้จากตัวผู้เล่น (ปรับตรงนี้)
+const BOT_LOOT_RANGE = 450;   // เก็บของเฉพาะที่อยู่ในระยะนี้จากตัวผู้เล่น (เดิม 200 | ปรับตรงนี้)
 const BOT_ATTACKER_RANGE = 400; // มอนที่กำลังไล่ตีและอยู่ในระยะนี้ = กำลังโดนโจมตี
 const BOT_SPEED = 190;
 const BOT_WARP_DIST = 180;    // ระยะวาปโดยประมาณ ถ้าสกิลไม่ระบุ range/dist เอง
@@ -39,13 +39,17 @@ function botAtk(cls) {
 }
 
 // สกิลนี้เป็นสกิลฮีลหรือไม่ (เดาจากข้อมูลใน SKILL_DEFS -- ถ้าไม่ตรงกับเกมจริง แก้ตรงนี้ที่เดียว)
+// หมายเหตุ: ไม่ดูจาก id สกิลแล้ว เพราะ pr_heal (พลังแห่งแสง) ถูกเปลี่ยนเป็นสกิลโจมตี แต่ id ยังมีคำว่า heal
 function botIsHeal(sid) {
   const d = (typeof SKILL_DEFS !== 'undefined') ? SKILL_DEFS[sid] : null;
   if (!d) return false;
-  if (d.heal || d.healAmt || d.healPct) return true;
+  // สกิลโจมตีที่รู้ชนิดแน่นอน ไม่ใช่ฮีล
+  const atkTypes = ['lightbeam', 'holy', 'melee', 'proj', 'dash'];
   const t = String(d.type || d.kind || d.effect || '').toLowerCase();
+  if (atkTypes.indexOf(t) >= 0) return false;
+  if (d.heal || d.healAmt || d.healPct) return true;
   if (t.indexOf('heal') >= 0) return true;
-  return /heal|ฮิล|ฮีล|รักษา/i.test(String(sid) + ' ' + String(d.name || ''));
+  return /heal|ฮิล|ฮีล|รักษา/i.test(String(d.name || ''));
 }
 
 // สกิลนี้เป็นสกิลวาป/เทเลพอร์ตหรือไม่ (เดาจากข้อมูลใน SKILL_DEFS -- ถ้าไม่ตรงกับเกมจริง แก้ตรงนี้ที่เดียว)
@@ -240,17 +244,83 @@ Object.assign(Main.prototype, {
     }
   },
 
-  // เรียกฟังก์ชันดื่มยาเลือดของเกม (ต้องผูกให้ตรงกับระบบกระเป๋าจริง ดูหมายเหตุท้ายไฟล์)
-  botDrinkHp() {
-    try {
-      if (typeof this.useHpPotion === 'function') return this.useHpPotion() !== false;
-      if (typeof this.usePotion === 'function') return this.usePotion('hp') !== false;
-    } catch (e) { console.warn('[bot] ดื่มยาไม่สำเร็จ', e); return false; }
-    if (!_botWarned.potion) {
-      _botWarned.potion = true;
-      console.warn('[bot] ยังไม่พบฟังก์ชันดื่มยาเลือด (useHpPotion / usePotion) -- ต้องผูกใน botDrinkHp()');
+  // หาฟังก์ชันดื่มยาเลือดของเกมอัตโนมัติ (ลองชื่อที่น่าจะเป็นก่อน แล้วค่อยสแกนชื่อเมธอดทั้งหมดของ Main)
+  // คืน { name, arg } หรือ null | จำผลไว้ ไม่สแกนซ้ำ
+  botFindPotionFn() {
+    if (this._botPotFn !== undefined) return this._botPotFn;
+    const known = ['useHpPotion', 'drinkHpPotion', 'useHpPot', 'quickHp', 'useQuickHp', 'useRedPotion',
+      'drinkHp', 'useHealPotion', 'usePotionHp', 'usePotion', 'drinkPotion', 'useQuickPotion'];
+    let name = known.find(n => typeof this[n] === 'function');
+    if (!name) {
+      // สแกนหาเมธอดที่ชื่อเหมือนการดื่มยา (ไม่เอาของบอท และไม่เอายา MP)
+      const all = [];
+      for (let o = Object.getPrototypeOf(this); o && o !== Object.prototype; o = Object.getPrototypeOf(o)) {
+        Object.getOwnPropertyNames(o).forEach(n => all.push(n));
+      }
+      name = all.find(n => typeof this[n] === 'function' && !/^bot/i.test(n) && !/mp|mana/i.test(n) &&
+        /^(use|drink|quaff|quick|consume)\w*(hp|health|potion|heal)\w*$/i.test(n));
     }
-    return false;
+    const generic = name && /^(usePotion|drinkPotion|useQuickPotion)$/.test(name);
+    this._botPotFn = name ? { name: name, arg: generic ? 'hp' : undefined } : null;
+    if (name) console.log('[bot] ใช้ฟังก์ชันดื่มยา: ' + name);
+    return this._botPotFn;
+  },
+
+  // หาปุ่มยา "HP 10%" บนหน้าจอ (วิธีเดียวกับ hidePotions.js) | คืน 'hidden' ถ้าปุ่มถูกซ่อนเพราะมีหน้าต่างเปิดอยู่
+  botPotionBtn() {
+    // ช่องยาเลือดใน shop.js = ปุ่ม .qs ที่ป้ายเป็น "HP 10%/20%/30%" (ตัวเลขเปลี่ยนตามขวดที่เลือก/มีอยู่)
+    let el = this._botPotEl;
+    if (!el || !el.isConnected) {
+      el = null;
+      const labs = document.querySelectorAll('.qs .qs-lab');
+      for (let i = 0; i < labs.length; i++) {
+        if (/^HP\s*\d+\s*%$/.test((labs[i].textContent || '').trim())) { el = labs[i].closest('.qs'); break; }
+      }
+      this._botPotEl = el;
+    }
+    if (!el) return null;
+    const wrap = el.parentElement;
+    if (el.classList.contains('empty')) return 'empty';                       // ไม่มียาในกระเป๋า
+    if (el.classList.contains('pot-hide') || (wrap && wrap.classList.contains('hide'))) return 'hidden';   // มีหน้าต่างเปิดอยู่
+    return el;
+  },
+
+  // กดปุ่มเหมือนนิ้วผู้เล่น
+  botClickEl(el) {
+    const o = { bubbles: true, cancelable: true, view: window };
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(t => {
+      try { el.dispatchEvent(t.indexOf('pointer') === 0 && window.PointerEvent ? new PointerEvent(t, o) : new MouseEvent(t, o)); } catch (e) { /* ignore */ }
+    });
+  },
+
+  // ดื่มยาเลือด: กดปุ่มยาบนจอก่อน (ตรงกับที่ผู้เล่นกดจริง) ไม่เจอปุ่มค่อยลองหาฟังก์ชัน
+  botDrinkHp() {
+    const btn = this.botPotionBtn();
+    if (btn === 'hidden') return false;
+    if (btn === 'empty') {                       // ยาหมด: เตือนทุก 20 วิ
+      const t = this.time.now;
+      if (t > (this._botNoPotAt || 0)) { this._botNoPotAt = t + 20000; if (this.toastMsg) this.toastMsg('บอท: ยาเลือดหมด'); }
+      return false;
+    }
+    if (btn) { this.botClickEl(btn); return true; }
+    const fn = this.botFindPotionFn();
+    if (!fn) {
+      // แจ้งบนหน้าจอ (มือถือไม่มี console) ทุก 15 วิ
+      const now = this.time.now;
+      if (now > (this._botPotWarnAt || 0)) {
+        this._botPotWarnAt = now + 15000;
+        if (this.toastMsg) this.toastMsg('บอท: หาฟังก์ชันดื่มยาไม่เจอ (ส่ง inventory.js ให้ผู้ช่วยผูกให้)');
+        console.warn('[bot] ไม่พบฟังก์ชันดื่มยาเลือดใน Main -- ต้องผูกใน botFindPotionFn()/botDrinkHp()');
+      }
+      return false;
+    }
+    try {
+      const r = fn.arg === undefined ? this[fn.name]() : this[fn.name](fn.arg);
+      return r !== false;
+    } catch (e) {
+      console.warn('[bot] ดื่มยาไม่สำเร็จ', e);
+      return false;
+    }
   },
 
   // ---- หนีบอส: เลือกทิศหนีครั้งเดียวแล้วถือทิศนั้นไว้ ไม่กลับไปกลับมา ----
@@ -339,7 +409,7 @@ Object.assign(Main.prototype, {
       return;
     }
 
-    // 2) เก็บของ: เฉพาะตอนไม่มีมอนไล่ตี และเฉพาะของที่อยู่ใกล้ตัว
+    // 2) เก็บของ: เฉพาะตอนไม่มีมอนไล่ตี และเฉพาะของที่อยู่ในระยะ BOT_LOOT_RANGE
     const underAttack = this.botAttackers(cfg).length > 0;
     if (!underAttack) {
       let loot = null, ld = Infinity;
@@ -377,10 +447,17 @@ Object.assign(Main.prototype, {
         p.setVelocity(0, 0);
         this.useBasicAttack();
         // ใช้เฉพาะสกิลโจมตีในช่องที่ติ๊กไว้ (สกิลฮีลจัดการใน botAutoHeal ตาม % เลือด)
+        // สกิลลากเลือกทิศ (เช่น พลังแห่งแสง) ส่งทิศไปที่เป้าให้ ไม่ต้องพึ่ง facing
         this.slots.forEach((sid, i) => {
           if (!sid || !g.skillOn[i] || botIsHeal(sid) || botIsWarp(sid)) return;
           const def = SKILL_DEFS[sid];
-          if (def && this.stats.mp >= def.mp) this.useSkill(i);
+          if (!def || this.stats.mp < def.mp) return;
+          if (window.DIR_CFG && window.DIR_CFG[sid] && !(window.GROUND_CFG && window.GROUND_CFG[sid])) {
+            const vx = t.x - p.x, vy = t.y - p.y, l = Math.hypot(vx, vy) || 1;
+            this.useSkill(i, { dir: true, x: vx / l, y: vy / l });
+          } else {
+            this.useSkill(i);
+          }
         });
         if (g.useUlti && this.botWantUlti(t)) this.useUlti();
       }
@@ -625,7 +702,7 @@ Object.assign(Main.prototype, {
     });
 
     items.push(this.roundRect(201, W / 2, y, 480, 42, 0x1f2a1f, 0.95, 8));
-    items.push(this.add.text(W / 2, y, '✓ มอนไล่ตีอยู่ = สู้ก่อน | เก็บของเฉพาะที่อยู่ใกล้ตัว', { fontSize: '13px', color: '#9adf9a' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
+    items.push(this.add.text(W / 2, y, '✓ มอนไล่ตีอยู่ = สู้ก่อน | เก็บของในระยะ ' + BOT_LOOT_RANGE + ' รอบตัว', { fontSize: '13px', color: '#9adf9a' }).setOrigin(0.5).setScrollFactor(0).setDepth(203));
     y += 40;
     items.push(this.add.text(W / 2, y, 'ตั้งค่าแยกตามด่าน | ถ้าไม่ติ๊กทั้ง "โจมตีบอส" และ "หนีบอส" บอทจะเมินบอสแต่ยังโดนบอสตีได้', {
       fontSize: '11px', color: '#aaa', align: 'center', wordWrap: { width: 470 },
@@ -696,6 +773,6 @@ Object.assign(Main.prototype, {
 });
 
 // ===== หมายเหตุ =====
-// 1) botDrinkHp(): ต้องมีฟังก์ชันดื่มยาในเกม (useHpPotion หรือ usePotion('hp')) ถ้าชื่อไม่ตรงให้แก้ในฟังก์ชันนั้น
-// 2) botIsHeal(): เดาสกิลฮีลจากฟิลด์ใน SKILL_DEFS ถ้าสกิลฮีลของเกมไม่ถูกตรวจเจอ ให้แก้เงื่อนไขในฟังก์ชันนั้น
+// 1) botFindPotionFn()/botDrinkHp(): หาฟังก์ชันดื่มยาในเกมอัตโนมัติ ถ้าไม่เจอจะขึ้นข้อความบนจอ ให้ส่ง inventory.js มาผูกให้ตรง
+// 2) botIsHeal(): สกิลที่ type เป็น lightbeam/holy/melee/proj/dash ถือเป็นสกิลโจมตีเสมอ (ไม่ดูจาก id แล้ว)
 // 3) ตั้งค่าสกิล/เลือดเก็บใน botCfg.g (ใช้ร่วมทุกด่าน) ถ้าเซฟแล้วไม่ติด ให้ตรวจ save.js ว่าเก็บ botCfg ทั้งก้อนหรือเฉพาะเลขด่าน
