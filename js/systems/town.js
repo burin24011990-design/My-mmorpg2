@@ -9,8 +9,60 @@
 
 const TOWN = { w: 1600, h: 1000, spawnX: 800, spawnY: 620, speed: 190 };
 
-// ปุ่มกลับเมือง: ถ้าไปทับ UI อื่น ให้แก้ตำแหน่งตรงนี้
-const TOWN_BTN_CSS = 'position:fixed;left:8px;top:8px;z-index:9000;';
+// ปุ่มเมือง + ปุ่มแชนเนล (DOM) ขนาดเท่าปุ่มแถบบนขวา วางเรียงต่อจากกรอบ HP ฝั่งซ้าย
+// พิกัด/ขนาดเป็นหน่วยของเกม (W x H) เหมือน TB ใน topbar.js แล้วสเกลตามหน้าจอให้เอง
+const HUD_BTN = { x0: 250, top: 8, w: 50, h: 46, gap: 5 };   // x0 = จุดเริ่มปุ่มแรก (ถัดจากกรอบ HP)
+const HUD_BTN_IDS = [
+  { id: 'btn-to-town', color: '#4a3a2a' },   // ปุ่มเมือง
+  { id: 'btn-ch',      color: '#2a4a5a' },   // ปุ่มแชนเนล (สร้างใน network.js)
+];
+
+// ใส่ไอคอน + ข้อความให้ปุ่ม (ไอคอนด้านบน ข้อความเล็กด้านล่าง)
+function hudBtnFill(b, icon, label) {
+  b.textContent = '';
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;line-height:1.1';
+  const i = document.createElement('div'); i.className = 'hb-i'; i.textContent = icon;
+  const t = document.createElement('div'); t.className = 'hb-t'; t.textContent = label;
+  wrap.append(i, t);
+  b.appendChild(wrap);
+}
+
+// จัดตำแหน่ง/ขนาด/สไตล์ปุ่มให้ตรงกับปุ่มบนขวา (เรียกซ้ำได้ ทำตามขนาดจอเสมอ)
+function hudBtnLayout() {
+  const cv = document.querySelector('canvas');
+  if (!cv) return;
+  const r = cv.getBoundingClientRect();
+  if (r.width < 50) return;
+  const k = r.width / W;
+  HUD_BTN_IDS.forEach(function (it, n) {
+    const b = document.getElementById(it.id);
+    if (!b) return;
+    if (!b.firstElementChild) {          // ถ้าถูกตั้งเป็นข้อความล้วน (เช่นจาก network.js) ให้จัดรูปแบบใหม่
+      const t = b.textContent.trim(), sp = t.indexOf(' ');
+      hudBtnFill(b, sp > 0 ? t.slice(0, sp) : t, sp > 0 ? t.slice(sp + 1) : '');
+    }
+    const disp = b.style.display;        // เก็บสถานะซ่อน/แสดงไว้
+    b.style.cssText =
+      'position:fixed;z-index:9000;box-sizing:border-box;padding:0;margin:0;cursor:pointer;touch-action:manipulation;' +
+      '-webkit-tap-highlight-color:transparent;font-family:Mitr,sans-serif;color:#fff;overflow:hidden;' +
+      'left:' + (r.left + (HUD_BTN.x0 + n * (HUD_BTN.w + HUD_BTN.gap)) * k) + 'px;' +
+      'top:' + (r.top + HUD_BTN.top * k) + 'px;' +
+      'width:' + (HUD_BTN.w * k) + 'px;height:' + (HUD_BTN.h * k) + 'px;' +
+      'border:' + Math.max(1, 2 * k) + 'px solid #8a6a32;border-radius:' + (8 * k) + 'px;' +
+      'background:linear-gradient(180deg,rgba(255,255,255,.16) 0,rgba(255,255,255,0) 45%),' + it.color + ';' +
+      'box-shadow:0 ' + (2 * k) + 'px ' + (4 * k) + 'px rgba(0,0,0,.45);';
+    b.style.display = disp;
+    const ic = b.querySelector('.hb-i'), tx = b.querySelector('.hb-t');
+    if (ic) ic.style.cssText = 'font-size:' + (22 * k) + 'px;margin-top:' + (-2 * k) + 'px';
+    if (tx) tx.style.cssText = 'font-size:' + (9 * k) + 'px;margin-top:' + (1 * k) + 'px;' +
+      'text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000;white-space:nowrap';
+  });
+}
+window.addEventListener('resize', hudBtnLayout);
+window.addEventListener('orientationchange', function () { setTimeout(hudBtnLayout, 300); });
+document.addEventListener('fullscreenchange', function () { setTimeout(hudBtnLayout, 300); });
+setInterval(hudBtnLayout, 500);   // กันกรณีปุ่มถูกสร้าง/เขียนทับทีหลัง
 
 
 const TOWN_NPCS = [
@@ -92,12 +144,11 @@ function townLeave(m) {
       if (!document.getElementById('btn-to-town')) {
         const b = document.createElement('button');
         b.id = 'btn-to-town';
-        b.textContent = '🏠 เมือง';
-        b.style.cssText = TOWN_BTN_CSS + 'font-family:Mitr,sans-serif;font-size:14px;padding:6px 12px;' +
-          'border-radius:10px;border:2px solid #ffd45c;background:#26090fcc;color:#ffe28a;cursor:pointer;touch-action:manipulation';
+        hudBtnFill(b, '🏠', 'เมือง');
         const scene = this;
         b.addEventListener('click', function () { townGoToTown(scene); });
         document.body.appendChild(b);
+        hudBtnLayout();
       }
       townGoToTown(this);
     } catch (e) { console.warn('town patch failed', e); }
