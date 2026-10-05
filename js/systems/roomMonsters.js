@@ -4,6 +4,7 @@
 // - ออฟไลน์ / ห้องเต็ม / หลุดการเชื่อมต่อ: กลับไปใช้มอนในเครื่องแบบเดิม (monsters.js)
 // - เซิร์ฟเวอร์คุม: ตำแหน่ง AI เลือด การตาย การเกิดใหม่ | เครื่องผู้เล่น: ตีมอน (ส่ง hits) รับดาเมจ ยิงกระสุน EXP/ดรอป
 // - คนที่ตีมอนก่อนมอนตายทุกคนได้ EXP | คนที่ตีตัวสุดท้ายได้ของดรอป+ทอง
+// - แก้: โหมดห้องเรียก P.calcHit (stats.js) เพื่อคิดเกราะมอน/คริติคอล/ดูดเลือด เหมือนโหมดมอนในเครื่อง
 
 (function () {
   const P = Main.prototype;
@@ -99,22 +100,30 @@
     });
   };
 
-  // ----- ตีมอน: โหมดห้อง = โชว์เอฟเฟกต์เอง แล้วส่งดาเมจให้เซิร์ฟเวอร์ตัดสิน -----
+  // ----- ตีมอน: โหมดห้อง = คิดเกราะ/คริ/ดูดเลือด (calcHit ใน stats.js) + โชว์เอฟเฟกต์เอง แล้วส่งดาเมจให้เซิร์ฟเวอร์ตัดสิน -----
   const oDmg = P.damage;
   P.damage = function (e, dmg, opts) {
     if (!this.rmActive || !e || e.sid === undefined) return oDmg.call(this, e, dmg, opts);
     if (!e.active) return;
-    e.hp = Math.max(1, e.hp - dmg);                       // เดาไว้ก่อน รอเซิร์ฟเวอร์ยืนยัน (ตายเมื่อเซิร์ฟเวอร์บอก)
+
+    // คิดดาเมจจริง (เกราะมอน + ทะลุเกราะ + คริติคอล) ด้วยสูตรเดียวกับมอนในเครื่อง
+    const h = this.calcHit ? this.calcHit(e, dmg) : { final: Math.max(1, Math.round(Number(dmg))), crit: false, vamp: 0 };
+    const final = h.final;
+
+    e.hp = Math.max(1, e.hp - final);                     // เดาไว้ก่อน รอเซิร์ฟเวอร์ยืนยัน (ตายเมื่อเซิร์ฟเวอร์บอก)
     e.provoked = true;
     this.revealUntil = this.time.now + BUSH_REVEAL_AFTER_ATTACK;
     opts = opts || {};
     const ctx = (this._skillCtx && this.time.now < this._skillCtx.until) ? this._skillCtx.def : null;
     const skill = opts.skill || ctx;
-    const isCrit = !!(opts.crit || this._critHit);
-    showDamage(this, e.x, e.y - 20, dmg, isCrit ? 'crit' : 'normal', skill ? { skill: skill } : undefined);
+    const isCrit = !!(opts.crit || h.crit);
+    showDamage(this, e.x, e.y - 20, final, isCrit ? 'crit' : 'normal', skill ? { skill: skill } : undefined);
     monsterHitFx(this, e);
     if (!this._rmHits) this._rmHits = {};
-    this._rmHits[e.sid] = (this._rmHits[e.sid] || 0) + Math.round(dmg);
+    this._rmHits[e.sid] = (this._rmHits[e.sid] || 0) + final;
+
+    // ดูดเลือด
+    if (h.vamp > 0 && this.vampHeal) this.vampHeal(final * h.vamp / 100);
   };
 
   function flushHits(sc, time) {
