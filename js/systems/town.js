@@ -1,18 +1,17 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v4 =====
+// ===== ฉากเมืองเริ่มต้น (Town) v6 =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
 // - ตาย = กลับเมือง (เติม HP/MP) | ปุ่ม "🏠 เมือง" ในฉากล่ามอนกลับเมืองได้
 // - ต้องใช้คู่กับ main.js ที่ตั้งค่า scene: [Main, Town]
-// - v4: เพิ่มแถบปุ่มด้านบน (กระเป๋า สกิล อุปกรณ์ เลือกด่าน สเตตัส) และจอยสติ๊กเดินในเมือง
+// - v6: ตัวละคร hero + อนิเมชันเดิน/ยืน, จอยสติ๊กลอยแบบเดียวกับข้างนอก (แตะซ้าย 40% ของจอ), ความเร็ว 190
+// - แถบปุ่มด้านบน (กระเป๋า สกิล อุปกรณ์ เลือกด่าน สเตตัส)
 
-const TOWN = { w: 1600, h: 1000, spawnX: 800, spawnY: 620, speed: 260 };
+const TOWN = { w: 1600, h: 1000, spawnX: 800, spawnY: 620, speed: 190 };
 
 // ปุ่มกลับเมือง: ถ้าไปทับ UI อื่น ให้แก้ตำแหน่งตรงนี้
 const TOWN_BTN_CSS = 'position:fixed;left:8px;top:8px;z-index:9000;';
 
-// ตำแหน่งจอยสติ๊กในเมือง (พิกัดหน้าจอเกม) ถ้าไปทับปุ่มอื่นให้ปรับ x / y / r
-const TOWN_JOY = { x: 230, yFromBottom: 90, r: 55 };
 
 const TOWN_NPCS = [
   { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 420,  y: 330, color: 0xe05555, icon: '⚔️' },
@@ -33,6 +32,18 @@ window.TownHooks = window.TownHooks || {};
 
 const TOWN_DEAD_MSG = '💀 คุณตายแล้ว ฟื้นคืนชีพที่เมือง';
 
+// ----- หาฉาก Main (ไม่ผูกกับชื่อ key) -----
+function townMain(sc) {
+  if (window._townMain) return window._townMain;
+  try {
+    const list = sc.scene.manager.scenes;
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] !== sc && typeof list[i].openStageSelect === 'function') return list[i];
+    }
+  } catch (e) {}
+  return null;
+}
+
 // ----- ชุบชีวิตหลังตาย -----
 function townRevive(m) {
   try {
@@ -49,6 +60,7 @@ function townRevive(m) {
 function townGoToTown(scene, notice, died) {
   if (window._townBusy || scene.scene.isPaused()) return;
   window._townBusy = true;
+  window._townMain = scene;
   window.TOWN_NOTICE = notice || null;
   if (died) townRevive(scene);
   const b = document.getElementById('btn-to-town');
@@ -128,8 +140,8 @@ class Town extends Phaser.Scene {
     this.modal = null;
     this.target = null;
     this.pending = null;
-    this.joy = { x: 0, y: 0 };
-    this.joyId = null;
+    this.joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+    this.heroDir = 'down';
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, T.w, T.h);
@@ -175,8 +187,17 @@ class Town extends Phaser.Scene {
     const sh = this.add.graphics();
     sh.fillStyle(0x000000, 0.35).fillEllipse(0, 22, 34, 12);
     parts.push(sh);
-    if (this.textures.exists('player')) {
-      parts.push(this.add.image(0, 0, 'player'));
+    // ตัวละครจริง (sprite 'hero' + อนิเมชันเดียวกับข้างนอก)
+    const mm = townMain(this);
+    const mp = mm && mm.player;
+    let labelY = -34;
+    this.hero = null;
+    if (this.textures.exists('hero')) {
+      const hero = this.add.sprite(0, 0, 'hero', 18);
+      hero.setScale((mp && mp.scaleX) || 1, (mp && mp.scaleY) || 1);
+      this.hero = hero;
+      labelY = -hero.displayHeight * 0.42;
+      parts.push(hero);
     } else {
       const b = this.add.graphics();
       b.fillStyle(0x3b6fe0, 1).fillCircle(0, 0, 18);
@@ -184,13 +205,13 @@ class Town extends Phaser.Scene {
       b.fillStyle(0xffffff, 1).fillCircle(-6, -4, 3).fillCircle(6, -4, 3);
       parts.push(b);
     }
-    parts.push(this.add.text(0, -34, 'คุณ', {
+    parts.push(this.add.text(0, labelY, (mm && mm.playerName) || 'คุณ', {
       fontFamily: 'Mitr, sans-serif', fontSize: '15px', color: '#fff', stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5));
     this.player.add(parts);
     cam.startFollow(this.player, true, 0.12, 0.12);
 
-    this.add.text(12, 10, 'แตะพื้นเพื่อเดิน • แตะ NPC เพื่อคุย • เลือกด่านจากปุ่มเดิมเพื่อออกไปล่ามอน', {
+    this.add.text(12, 10, 'ลากนิ้วฝั่งซ้ายเพื่อเดิน • แตะ NPC เพื่อคุย • เลือกด่านจากปุ่มด้านบนเพื่อออกไปล่ามอน', {
       fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', backgroundColor: '#00000088',
       padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(100000);
@@ -198,6 +219,7 @@ class Town extends Phaser.Scene {
     this.input.on('pointerdown', function (p, over) {
       if (this.modal) return;
       if (over && over.length) return;
+      if (p.x < W * 0.4) return;          // ฝั่งซ้าย = จอยสติ๊กลอย (เหมือนข้างนอก)
       this.pending = null;
       this.target = { x: Phaser.Math.Clamp(p.worldX, 20, T.w - 20), y: Phaser.Math.Clamp(p.worldY, 20, T.h - 20) };
     }, this);
@@ -221,13 +243,14 @@ class Town extends Phaser.Scene {
 
   // ----- แถบปุ่มด้านบน + จอยสติ๊ก (เรียกฟังก์ชันเดิมของ Main) -----
   buildTownHud() {
-    const main = this.scene.get('Main');
+    const self0 = this;
+    const M = function () { return townMain(self0); };
     const items = [
-      ['tb_bag',    'กระเป๋า',   0x2a4a2a, function () { main.openInventory('bag'); }],
-      ['tb_scroll', 'สกิล',      0x2a2a4a, function () { main.openSkillBook(); }],
-      ['tb_shield', 'อุปกรณ์',   0x2a2a5a, function () { main.openInventory('equip'); }],
-      ['tb_map',    'เลือกด่าน', 0x2a4a5a, function () { main.openStageSelect(); }],
-      ['tb_chart',  'สเตตัส',    0x3a2a4a, function () { main.openStatusPanel(); }],
+      ['tb_bag',    'กระเป๋า',   0x2a4a2a, function () { const m = M(); if (m) m.openInventory('bag'); }],
+      ['tb_scroll', 'สกิล',      0x2a2a4a, function () { const m = M(); if (m) m.openSkillBook(); }],
+      ['tb_shield', 'อุปกรณ์',   0x2a2a5a, function () { const m = M(); if (m) m.openInventory('equip'); }],
+      ['tb_map',    'เลือกด่าน', 0x2a4a5a, function () { const m = M(); if (m) m.openStageSelect(); }],
+      ['tb_chart',  'สเตตัส',    0x3a2a4a, function () { const m = M(); if (m) m.openStatusPanel(); }],
     ];
     let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
     items.forEach(function (it) {
@@ -236,32 +259,38 @@ class Town extends Phaser.Scene {
       x += TB.w + TB.gap;
     }, this);
 
-    // ----- จอยสติ๊กเดิน -----
-    this.input.addPointer(2);   // รองรับแตะหลายนิ้ว
-    const jx = TOWN_JOY.x, jy = H - TOWN_JOY.yFromBottom, R = TOWN_JOY.r;
-    const self = this;
-    const base = this.add.circle(jx, jy, R, 0xffffff, 0.12).setStrokeStyle(3, 0xffffff, 0.5)
-      .setScrollFactor(0).setDepth(100020).setInteractive();
-    const knob = this.add.circle(jx, jy, 24, 0xffffff, 0.45).setScrollFactor(0).setDepth(100021);
-    const move = function (p) {
-      const dx = p.x - jx, dy = p.y - jy, d = Math.hypot(dx, dy) || 1, k = Math.min(d, R);
-      knob.setPosition(jx + dx / d * k, jy + dy / d * k);
-      const s = Math.min(1, d / R);
-      self.joy.x = dx / d * s;
-      self.joy.y = dy / d * s;
-    };
-    base.on('pointerdown', function (p) {
+    this.setupJoystick();
+  }
+
+  // ----- จอยสติ๊กลอยแบบเดียวกับข้างนอก: แตะฝั่งซ้าย 40% ของจอแล้วลาก -----
+  setupJoystick() {
+    const self = this, J = this.joy;
+    this.input.addPointer(2);
+    this.joyBase = this.add.circle(0, 0, 50, 0xffffff, 0.15).setScrollFactor(0).setDepth(100020).setVisible(false);
+    this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.4).setScrollFactor(0).setDepth(100021).setVisible(false);
+    this.input.on('pointerdown', function (p, over) {
       if (self.modal) return;
-      self.joyId = p.id; self.target = null; self.pending = null; move(p);
-    });
-    this.input.on('pointermove', function (p) {
-      if (self.joyId === p.id && p.isDown) move(p);
-    });
-    this.input.on('pointerup', function (p) {
-      if (self.joyId === p.id) {
-        self.joyId = null; self.joy.x = 0; self.joy.y = 0; knob.setPosition(jx, jy);
+      if (over && over.length) return;
+      if (p.x < W * 0.4 && J.id === null) {
+        J.id = p.id; J.ox = p.x; J.oy = p.y; J.dx = 0; J.dy = 0;
+        self.joyBase.setPosition(p.x, p.y).setVisible(true);
+        self.joyKnob.setPosition(p.x, p.y).setVisible(true);
       }
     });
+    this.input.on('pointermove', function (p) {
+      if (p.id !== J.id) return;
+      const v = new Phaser.Math.Vector2(p.x - J.ox, p.y - J.oy);
+      if (v.length() > 50) v.setLength(50);
+      J.dx = v.x / 50; J.dy = v.y / 50;
+      self.joyKnob.setPosition(J.ox + v.x, J.oy + v.y);
+    });
+    const release = function (p) {
+      if (p.id !== J.id) return;
+      J.id = null; J.dx = 0; J.dy = 0;
+      self.joyBase.setVisible(false); self.joyKnob.setVisible(false);
+    };
+    this.input.on('pointerup', release);
+    this.input.on('pointerupoutside', release);
   }
 
   makeNpc(n) {
@@ -292,19 +321,21 @@ class Town extends Phaser.Scene {
   update(time, delta) {
     if (this.modal) return;
     const T = TOWN, dt = delta / 1000, p = this.player;
-    let vx = 0, vy = 0;
+    let vx = this.joy.dx, vy = this.joy.dy;
 
     if (this.cursors) {
-      if (this.cursors.left.isDown || this.wasd.A.isDown) vx -= 1;
-      if (this.cursors.right.isDown || this.wasd.D.isDown) vx += 1;
-      if (this.cursors.up.isDown || this.wasd.W.isDown) vy -= 1;
-      if (this.cursors.down.isDown || this.wasd.S.isDown) vy += 1;
+      if (this.cursors.left.isDown || this.wasd.A.isDown) vx = -1;
+      if (this.cursors.right.isDown || this.wasd.D.isDown) vx = 1;
+      if (this.cursors.up.isDown || this.wasd.W.isDown) vy = -1;
+      if (this.cursors.down.isDown || this.wasd.S.isDown) vy = 1;
     }
-    if (this.joy && (this.joy.x || this.joy.y)) { vx += this.joy.x; vy += this.joy.y; }
 
-    if (vx || vy) {
+    if (Math.hypot(vx, vy) > 0.2) {
       this.target = null; this.pending = null;
-      const l = Math.hypot(vx, vy); vx /= l; vy /= l;
+      const l = Math.hypot(vx, vy);
+      if (l > 1) { vx /= l; vy /= l; }
+    } else if (this.target === null) {
+      vx = 0; vy = 0;
     } else if (this.target) {
       const dx = this.target.x - p.x, dy = this.target.y - p.y, d = Math.hypot(dx, dy);
       if (d < 6) { this.target = null; }
@@ -315,6 +346,15 @@ class Town extends Phaser.Scene {
       p.x = Phaser.Math.Clamp(p.x + vx * T.speed * dt, 20, T.w - 20);
       p.y = Phaser.Math.Clamp(p.y + vy * T.speed * dt, 20, T.h - 20);
       p.setDepth(p.y);
+    }
+
+    // อนิเมชันเดิน/ยืน (HeroAnims จาก heroAnims.js)
+    if (this.hero && window.HeroAnims) {
+      const moving = !!(vx || vy);
+      if (moving) {
+        this.heroDir = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? 'left' : 'right') : (vy < 0 ? 'up' : 'down');
+      }
+      try { HeroAnims.play(this.hero, moving ? 'walk' : 'idle', this.heroDir); } catch (e) {}
     }
 
     if (this.pending) {
@@ -375,7 +415,7 @@ class Town extends Phaser.Scene {
     this.input.off('pointerdown');
     this.input.off('pointermove');
     this.input.off('pointerup');
-    this.joy = { x: 0, y: 0 };
-    this.joyId = null;
+    this.input.off('pointerupoutside');
+    this.joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
   }
 }
