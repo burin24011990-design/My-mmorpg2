@@ -53,6 +53,9 @@
       this.stats.expNext = levelExpNeeded(this.stats.level);
       this.computeAtk();
       if (!(this.stats.hp > 0)) this.stats.hp = this.maxHp();
+      // ด่านจุติเช็กได้หลังรู้ขั้นจุติแล้วเท่านั้น (save.js เช็กก่อนหน้านี้ จึงเด้งกลับด่าน 1)
+      const si = d && Number.isInteger(d.stageIdx) ? d.stageIdx : -1;
+      if (ZONES[si] && this.stats.level >= ZONES[si].reqLv) return si;
     } catch (e) { console.warn('[rebirth] โหลดระดับจุติไม่สำเร็จ', e); }
     return res;
   };
@@ -205,6 +208,48 @@
     const r = rb(this);
     if (r > 0 && this.hudNameText) this.hudNameText.setText('จุติ ' + r + '  Lv.' + this.stats.level);
   };
+
+  // ---------- ด่านจุติ: มอนแรงขึ้น + EXP/ทองคูณ (ค่าตั้งใน zones.js) ----------
+  // มอนเกิดใหม่ทุกชนิด (ธรรมดา/ยิงไกล/บอส/Epic) คูณ HP และดาเมจตาม hpMul / dmgMul ของด่าน
+  ['spawnEnemyInZone', 'spawnBoss', 'spawnEpic'].forEach(function (name) {
+    const orig = P[name];
+    if (typeof orig !== 'function') return;
+    P[name] = function (zi) {
+      const e = orig.apply(this, arguments), z = ZONES[zi];
+      if (e && z && z.hpMul) {
+        e.hp = e.hp * z.hpMul; e.maxHp = e.hp;
+        e.dmg = Math.round((e.dmg || 0) * (z.dmgMul || 1));
+      }
+      return e;
+    };
+  });
+
+  // EXP และทองในด่านจุติคูณตาม expMul / goldMul (การได้ EXP ทั้งหมดเกิดในด่านที่ผู้เล่นอยู่)
+  const _gainExp = P.gainExp;
+  P.gainExp = function (n) {
+    const z = ZONES[this.stageIdx || 0];
+    return _gainExp.call(this, z && z.expMul ? n * z.expMul : n);
+  };
+  const _dropLoot = P.dropLoot;
+  P.dropLoot = function () {
+    const g0 = this.stats.gold;
+    const r = _dropLoot.apply(this, arguments);
+    const z = ZONES[this.stageIdx || 0];
+    if (z && z.goldMul > 1) {
+      const gain = this.stats.gold - g0;
+      if (gain > 0) this.stats.gold += Math.round(gain * (z.goldMul - 1));
+    }
+    return r;
+  };
+
+  // หน้าตา/ชื่อมอน: ด่านจุติยืมของด่านเดิมตาม z.look (monsterDefs.js มีข้อมูลแค่ 9 ด่านแรก)
+  try {
+    const _gmd = getMonsterDef;
+    getMonsterDef = function (zi, kind) {
+      const z = ZONES[zi];
+      return _gmd(z && z.look !== undefined ? z.look : zi, kind);
+    };
+  } catch (e) { console.warn('[rebirth] ครอบ getMonsterDef ไม่ได้ (ส่ง monsterDefs.js มาตรวจ)', e); }
 
   // ---------- แสดงในหน้าสเตตัส (ถ้าระบบแผงรองรับ) ----------
   function installHook() {
