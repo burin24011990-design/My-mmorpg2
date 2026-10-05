@@ -1,20 +1,20 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v2 =====
+// ===== ฉากเมืองเริ่มต้น (Town) v3 =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
-// - เริ่มเกมที่เมือง -> ประตูเมือง/ผู้นำทางบอส พาเข้าฉาก Main
-// - ในฉากล่ามอนมีปุ่ม "🏠 เมือง" กดแล้ว "พัก" Main ไว้ (ข้อมูลตัวละคร/กระเป๋าไม่หาย) แล้วเข้าเมือง
-// - ไม่ต้องแก้ scenes/Main.js
+// - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
+// - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
+// - ตาย = กลับเมือง (เติม HP/MP) | ปุ่ม "🏠 เมือง" ในฉากล่ามอนกลับเมืองได้
+// - ต้องใช้คู่กับ main.js ที่ตั้งค่า scene: [Main, Town]
 
 const TOWN = { w: 1600, h: 1000, spawnX: 800, spawnY: 620, speed: 260 };
 
-// ปุ่มกลับเมืองในฉากล่ามอน: ถ้าไปทับ UI อื่น ให้แก้ตำแหน่งตรงนี้
+// ปุ่มกลับเมือง: ถ้าไปทับ UI อื่น ให้แก้ตำแหน่งตรงนี้
 const TOWN_BTN_CSS = 'position:fixed;left:8px;top:8px;z-index:9000;';
 
 const TOWN_NPCS = [
   { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 420,  y: 330, color: 0xe05555, icon: '⚔️' },
   { id: 'market', name: 'พ่อค้าตลาดกลาง',   title: 'ตลาดกลาง',          x: 1180, y: 330, color: 0xf0c040, icon: '🏪' },
   { id: 'trade',  name: 'นายหน้าแลกเปลี่ยน', title: 'แลกเปลี่ยนไอเทม',   x: 420,  y: 720, color: 0x55b0e0, icon: '🔄' },
-  { id: 'boss',   name: 'ผู้นำทางบอสโลก',   title: 'บอสโลก (เร็วๆ นี้)',        x: 1180, y: 720, color: 0xa060e0, icon: '👹' },
-  { id: 'gate',   name: 'ประตูเมือง',       title: 'ออกไปล่ามอนสเตอร์', x: 800,  y: 930, color: 0x6fcf6f, icon: '🚪' },
+  { id: 'boss',   name: 'ผู้นำทางบอสโลก',   title: 'บอสโลก (เร็วๆ นี้)', x: 1180, y: 720, color: 0xa060e0, icon: '👹' },
 ];
 
 const TOWN_TEXT = {
@@ -22,44 +22,56 @@ const TOWN_TEXT = {
   market: 'ตลาดกลางสำหรับซื้อขายไอเทมระหว่างผู้เล่น กำลังเตรียมเปิด',
   trade:  'แลกเปลี่ยนไอเทมกับผู้เล่นคนอื่นได้ที่นี่ กำลังเตรียมเปิด',
   boss:   'บอสโลกกำลังจะมาเร็วๆ นี้! ต้องใช้กุญแจเปิดประตู และรวมปาร์ตี้ 10 คนขึ้นไป โปรดรอการอัปเดต',
-  gate:   'พร้อมออกไปล่ามอนสเตอร์แล้วหรือยัง?',
 };
 
 // ผูกระบบจริงทีหลัง เช่น TownHooks.market = function (scene) { ... };
 window.TownHooks = window.TownHooks || {};
 
-// ----- ตัวช่วยอ่านค่าจากฉาก Main (ไม่รู้ชื่อตัวแปรแน่ชัด จึงลองหลายชื่อ) -----
-function townMainScene(game) {
-  return game.scene.scenes.find(function (s) { return !(s instanceof Town); });
-}
-function townPlayerLevel(m) {
-  if (!m) return null;
-  const c = [m.stats && m.stats.level, m.stats && m.stats.lv, m.level, m.lv];
-  for (let i = 0; i < c.length; i++) if (typeof c[i] === 'number') return c[i];
-  return null;                                   // อ่านไม่ได้ = ไม่ล็อกเลเวล
-}
-function townStageOk(m, idx) {
-  const z = (typeof ZONES !== 'undefined') ? ZONES[idx] : null;
-  const lv = townPlayerLevel(m);
-  return !(z && lv !== null && lv < z.reqLv);
-}
-function townEnterStage(m, idx) {
-  if (!m || idx == null || typeof m.loadStage !== 'function') return;
-  if (!townStageOk(m, idx)) return;
-  try { m.loadStage(idx); } catch (e) { console.warn('loadStage failed', e); }
+const TOWN_DEAD_MSG = '💀 คุณตายแล้ว ฟื้นคืนชีพที่เมือง';
+
+// ----- ชุบชีวิตหลังตาย -----
+function townRevive(m) {
+  try {
+    m.stats.hp = m.maxHp();
+    m.stats.mp = m.maxMp();
+    if (m.player && typeof ZONES !== 'undefined') {
+      m.player.setPosition(ZONES[0].x, ZONES[0].y);
+      if (m.player.body) m.player.body.setVelocity(0, 0);
+    }
+  } catch (e) { console.warn('revive failed', e); }
 }
 
-// ----- ครอบ Main.create: ไปด่านที่เลือกจากเมือง + ใส่ปุ่มกลับเมือง -----
+// ----- เข้าเมือง: พัก Main (ข้อมูลไม่หาย) แล้วเปิด Town ทับ -----
+function townGoToTown(scene, notice, died) {
+  if (window._townBusy || scene.scene.isPaused()) return;
+  window._townBusy = true;
+  window.TOWN_NOTICE = notice || null;
+  if (died) townRevive(scene);
+  const b = document.getElementById('btn-to-town');
+  if (b) b.style.display = 'none';
+  scene.scene.pause();
+  scene.scene.launch('Town');
+}
+
+// ----- ออกจากเมือง: กลับไปเล่น Main ต่อ -----
+function townLeave(m) {
+  if (!window._townBusy) return;
+  window._townBusy = false;
+  const b = document.getElementById('btn-to-town');
+  if (b) b.style.display = '';
+  m.scene.resume();
+  m.scene.stop('Town');
+}
+
+// ----- ครอบ Main -----
 (function patchMainForTown() {
   const target = (typeof Main === 'function') ? Main.prototype : Main;
+
+  // สร้างเสร็จแล้ว: ใส่ปุ่มกลับเมือง และเข้าเมืองทันที (เริ่มเกมที่เมือง)
   const origCreate = target.create;
   target.create = function () {
     if (origCreate) origCreate.apply(this, arguments);
     try {
-      const want = window.TOWN_NEXT_STAGE;
-      window.TOWN_NEXT_STAGE = null;
-      if (want > 0) townEnterStage(this, want);
-
       if (!document.getElementById('btn-to-town')) {
         const b = document.createElement('button');
         b.id = 'btn-to-town';
@@ -67,16 +79,40 @@ function townEnterStage(m, idx) {
         b.style.cssText = TOWN_BTN_CSS + 'font-family:Mitr,sans-serif;font-size:14px;padding:6px 12px;' +
           'border-radius:10px;border:2px solid #ffd45c;background:#26090fcc;color:#ffe28a;cursor:pointer;touch-action:manipulation';
         const scene = this;
-        b.addEventListener('click', function () {
-          const ui = document.getElementById('ui-layer');
-          if (ui) ui.style.display = 'none';
-          b.style.display = 'none';
-          scene.scene.pause();                   // พัก Main (state คงเดิม)
-          scene.scene.launch('Town');
-        });
+        b.addEventListener('click', function () { townGoToTown(scene); });
         document.body.appendChild(b);
       }
+      townGoToTown(this);
     } catch (e) { console.warn('town patch failed', e); }
+  };
+
+  // กดเลือกด่านด้วยปุ่มเดิมขณะอยู่ในเมือง -> ไปด่านนั้นแล้วออกจากเมือง
+  const origLoad = target.loadStage;
+  if (typeof origLoad === 'function') {
+    target.loadStage = function () {
+      const r = origLoad.apply(this, arguments);
+      if (window._townBusy) townLeave(this);
+      return r;
+    };
+  }
+
+  // ตายแล้วกลับเมือง: ครอบเมธอดตายของผู้เล่น (ถ้ามี) + ตรวจ HP <= 0 ทุกเฟรม
+  ['playerDie', 'playerDied', 'onPlayerDeath', 'playerDeath', 'killPlayer', 'respawnPlayer', 'gameOver'].forEach(function (name) {
+    const o = target[name];
+    if (typeof o !== 'function' || o._townWrapped) return;
+    const w = function () {
+      const r = o.apply(this, arguments);
+      townGoToTown(this, TOWN_DEAD_MSG, true);
+      return r;
+    };
+    w._townWrapped = true;
+    target[name] = w;
+  });
+  const origUpdate = target.update;
+  target.update = function () {
+    if (origUpdate) origUpdate.apply(this, arguments);
+    const s = this.stats;
+    if (s && typeof s.hp === 'number' && s.hp <= 0) townGoToTown(this, TOWN_DEAD_MSG, true);
   };
 })();
 
@@ -127,11 +163,8 @@ class Town extends Phaser.Scene {
 
     this.npcs = TOWN_NPCS.map(function (n) { return this.makeNpc(n); }, this);
 
-    // ----- ผู้เล่น: ใช้ texture 'player' ของเกมถ้ามี ไม่งั้นใช้วงกลม -----
+    // ----- ผู้เล่น: ใช้ texture 'player' ของเกม (Main สร้างไว้แล้ว) ไม่งั้นใช้วงกลม -----
     this.player = this.add.container(T.spawnX, T.spawnY).setDepth(T.spawnY);
-    if (!this.textures.exists('player') && typeof generateTextures === 'function') {
-      try { generateTextures(this); } catch (e) {}
-    }
     const parts = [];
     const sh = this.add.graphics();
     sh.fillStyle(0x000000, 0.35).fillEllipse(0, 22, 34, 12);
@@ -151,8 +184,8 @@ class Town extends Phaser.Scene {
     this.player.add(parts);
     cam.startFollow(this.player, true, 0.12, 0.12);
 
-    this.add.text(12, 10, 'แตะพื้นเพื่อเดิน • แตะ NPC เพื่อคุย', {
-      fontFamily: 'Mitr, sans-serif', fontSize: '16px', color: '#fff', backgroundColor: '#00000088',
+    this.add.text(12, 10, 'แตะพื้นเพื่อเดิน • แตะ NPC เพื่อคุย • เลือกด่านจากปุ่มเดิมเพื่อออกไปล่ามอน', {
+      fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', backgroundColor: '#00000088',
       padding: { x: 8, y: 4 },
     }).setScrollFactor(0).setDepth(100000);
 
@@ -170,6 +203,11 @@ class Town extends Phaser.Scene {
     }
 
     this.events.once('shutdown', this.cleanup, this);
+
+    if (window.TOWN_NOTICE) {
+      this.dialog('🏰 เมือง', window.TOWN_NOTICE, [{ label: 'ตกลง', primary: true }]);
+      window.TOWN_NOTICE = null;
+    }
   }
 
   makeNpc(n) {
@@ -235,16 +273,7 @@ class Town extends Phaser.Scene {
   talk(n) {
     const hook = window.TownHooks[n.id];
     if (typeof hook === 'function') { hook(this, n); return; }
-    const title = n.icon + ' ' + n.name;
-
-    if (n.id === 'gate') {
-      this.dialog(title, TOWN_TEXT.gate, [
-        { label: '🗡️ ออกไปล่ามอน', primary: true, fn: this.goHunt.bind(this, null) },
-        { label: 'อยู่ต่อ' },
-      ]);
-      return;
-    }
-    this.dialog(title, TOWN_TEXT[n.id] || '...', [{ label: 'ตกลง', primary: true }]);
+    this.dialog(n.icon + ' ' + n.name, TOWN_TEXT[n.id] || '...', [{ label: 'ตกลง', primary: true }]);
   }
 
   dialog(title, text, buttons) {
@@ -267,9 +296,7 @@ class Town extends Phaser.Scene {
     buttons.forEach(function (b) {
       const btn = document.createElement('button');
       btn.textContent = b.label;
-      btn.disabled = !!b.disabled;
-      btn.style.cssText = 'font-family:inherit;font-size:15px;padding:8px 14px;border-radius:10px;' +
-        'cursor:' + (b.disabled ? 'default' : 'pointer') + ';opacity:' + (b.disabled ? '.45' : '1') + ';' +
+      btn.style.cssText = 'font-family:inherit;font-size:15px;padding:8px 14px;border-radius:10px;cursor:pointer;' +
         'border:2px solid #ffd45c;color:' + (b.primary ? '#26090f' : '#ffe28a') + ';background:' + (b.primary ? '#ffd45c' : '#26090f');
       btn.addEventListener('click', function () {
         self.closeDialog();
@@ -285,27 +312,6 @@ class Town extends Phaser.Scene {
 
   closeDialog() {
     if (this.modal) { this.modal.remove(); this.modal = null; }
-  }
-
-  // stageIdx = null -> ไปต่อที่เดิม (หรือด่าน 1 ถ้าเพิ่งเริ่มเกม)
-  goHunt(stageIdx) {
-    const m = townMainScene(this.game);
-    const key = m ? m.sys.settings.key : 'Main';
-    const paused = m && this.scene.isPaused(key);
-
-    const ui = document.getElementById('ui-layer');
-    if (ui) ui.style.display = '';
-    const tb = document.getElementById('btn-to-town');
-    if (tb) tb.style.display = '';
-
-    if (paused) {
-      this.scene.resume(key);                    // กลับมาเล่นต่อ state เดิม
-      if (stageIdx != null) townEnterStage(m, stageIdx);
-      this.scene.stop();                         // ปิดฉาก Town
-    } else {
-      window.TOWN_NEXT_STAGE = stageIdx;         // เริ่ม Main ครั้งแรก
-      this.scene.start(key);
-    }
   }
 
   cleanup() {
