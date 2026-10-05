@@ -1,0 +1,8 @@
+// เพิ่มในไฟล์ firestore.rules เดิม (ภายใน match /databases/{database}/documents { ... })
+match /market_listings/{id} {
+  allow read: if request.auth != null;
+  allow write: if false;      // เขียนผ่าน Functions เท่านั้น
+}
+match /market_inbox/{uid}/{document=**} {
+  allow read, write: if false; // เข้าถึงผ่าน Functions เท่านั้น
+}
