@@ -3,14 +3,22 @@
 // (this.bag, this.equipment, equipItem, unequipSlot, mergeSingleItem, mergeAllInBag ...)
 // รองรับไอเทม "หนังสือสกิล" (kind: 'skillbook') ซ้อนได้ กดใช้เพื่อเรียนรู้/อัปสกิล
 // รองรับ "หินตีบวก" (kind: 'stone'), ตีบวก และย่อยอุปกรณ์ (ดู enhance.js)
+// ใหม่: ปุ่ม "ย่อยทั้งหมดตามสี" (ย่อยสีขาวทั้งหมด / สีฟ้าทั้งหมด ...) กด 2 ครั้งเพื่อยืนยัน
 // ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
   // ตัวอย่าง: icon_sword: 'assets/icons/sword.png'
   const ICON_FILES = {};
 
+  // ---------- ตั้งค่า "ย่อยทั้งหมดตามสี" (ปรับตรงนี้) ----------
+  // สีที่ "ไม่ให้มีปุ่มย่อยทั้งหมด" (ใช้ id ของสีใน TIER_DEFS ถ้า id ไม่ตรงกับที่ใส่ไว้ ปุ่มของสีนั้นจะยังโชว์ แต่ยังต้องกดยืนยัน 2 ครั้ง)
+  const DISMANTLE_PROTECT_TIERS = ['red', 'gold'];
+  // ข้ามชิ้นที่อัพดาวแล้ว / ตีบวกแล้ว (กันย่อยของที่ลงทุนไปโดยไม่ตั้งใจ) ตั้ง false = ย่อยหมด
+  const DISMANTLE_SKIP_STARRED = true;
+  const DISMANTLE_SKIP_PLUS = true;
+
   const iconCache = {};
-  const state = { tab: 'bag', page: 0, sel: null, msg: '', qty: 1, multi: false, ticks: new Set() };
+  const state = { tab: 'bag', page: 0, sel: null, msg: '', qty: 1, multi: false, ticks: new Set(), confirmTier: null };
   let root = null;
   let scene = null;
 
@@ -94,6 +102,9 @@
         + '#bag-win .bag-tools .qty button{border:0;background:transparent;padding:3px 6px}'
         + ''
         + '#bag-win .bag-tools button.on{background:#2c6a3a;border-color:#3f8d51}'
+        + '#bag-win .bag-tools button.dz{border-color:#7a3a3a;color:#ffb8b8}'
+        + '#bag-win .bag-tools button.dz.cf{background:#8a2a2a;border-color:#ff6a6a;color:#fff;font-weight:700}'
+        + '#bag-win .bag-tools .dz-label{font-size:11px;color:#aaa;padding:0 2px}'
         + '#bag-win .bag-tools .qty-in{width:44px;height:24px;text-align:center;color:var(--gold);background:#0a0d13;border:1px solid #34507f;border-radius:4px;font-size:13px;font-family:inherit;-webkit-user-select:text;user-select:text}'
         + '#bag-win .cell.tick{box-shadow:0 0 0 2px #5ee08a}'
         + '#bag-win .cell .ck{position:absolute;right:1px;bottom:0;font-size:9px;line-height:1;color:#5ee08a;background:rgba(0,0,0,.65);border-radius:3px;padding:0 1px}'
@@ -103,7 +114,7 @@
     }
   }
 
-  function hide() { if (root) root.style.display = 'none'; state.sel = null; }
+  function hide() { if (root) root.style.display = 'none'; state.sel = null; state.confirmTier = null; }
 
   // ---------- จำนวนที่เลือก (ใช้กับ เปิดกล่อง / ย่อยกล่อง / รวมดาว) ----------
   function selBagItem() {
@@ -126,19 +137,67 @@
   }
   function clampQty() { state.qty = Math.max(1, Math.min(state.qty, maxQty())); }
 
+  // ---------- ย่อยทั้งหมดตามสี ----------
+  // ชิ้นที่ถูก "กันไว้" ไม่ย่อย (อัพดาวแล้ว / ตีบวกแล้ว ตามค่าตั้งด้านบน)
+  function dismantleGuard(it) {
+    return (DISMANTLE_SKIP_STARRED && it.star > 0) || (DISMANTLE_SKIP_PLUS && it.plus > 0);
+  }
+  // รายการสีที่มีของในกระเป๋า: [{ id, name, n (ย่อยได้), skip (ถูกกันไว้) }] เรียงตาม TIER_DEFS
+  function tierList() {
+    const out = {};
+    const defs = (typeof TIER_DEFS !== 'undefined') ? TIER_DEFS : {};
+    Object.keys(defs).forEach((id) => { out[id] = { id: id, name: defs[id].name || id, n: 0, skip: 0 }; });
+    scene.bag.forEach((it) => {
+      if (!it || it.kind !== 'equip') return;
+      const t = String(tierOf(it));
+      if (!out[t]) out[t] = { id: t, name: t, n: 0, skip: 0 };
+      if (dismantleGuard(it)) out[t].skip++; else out[t].n++;
+    });
+    return Object.keys(out).map((k) => out[k])
+      .filter((t) => (t.n > 0 || t.skip > 0) && DISMANTLE_PROTECT_TIERS.indexOf(t.id) < 0);
+  }
+  function dismantleTier(tier) {
+    const s = scene;
+    let done = 0, skipped = 0, failed = 0;
+    for (let i = 0; i < s.bag.length; i++) {
+      const it = s.bag[i];
+      if (!it || it.kind !== 'equip' || String(tierOf(it)) !== String(tier)) continue;
+      if (dismantleGuard(it)) { skipped++; continue; }
+      if (s.dismantleBagItem(i)) done++; else failed++;
+    }
+    const nm = (typeof TIER_DEFS !== 'undefined' && TIER_DEFS[tier]) ? TIER_DEFS[tier].name : tier;
+    let msg = done > 0 ? 'ย่อยสี' + nm + ' ' + done + ' ชิ้น' : 'ไม่มีชิ้นที่ย่อยได้';
+    if (skipped) msg += ' (ข้ามที่อัพดาว/ตีบวก ' + skipped + ' ชิ้น)';
+    if (failed) msg += ' (ย่อยไม่สำเร็จ ' + failed + ' ชิ้น)';
+    s.toastMsg(msg);
+    if (done > 0 && s.saveSoon) s.saveSoon();
+  }
+
   function toolbarHTML() {
     const mergeLabel = state.multi
       ? '🔗 รวมที่ติ๊ก (' + state.ticks.size + ')'
       : '🔗 รวมที่เลือก <span class="ql">×' + state.qty + '</span>';
-    return '<div class="bag-tools">'
+    let h = '<div class="bag-tools">'
       + '<span class="qty"><button data-act="qty" data-id="-1">−</button>'
       + '<input class="qty-in" type="text" inputmode="numeric" pattern="[0-9]*" value="' + state.qty + '" aria-label="จำนวน">'
       + '<button data-act="qty" data-id="1">+</button><button data-act="qty" data-id="max">MAX</button></span>'
       + '<button data-act="multi" class="' + (state.multi ? 'on' : '') + '">' + (state.multi ? '☑' : '☐') + ' เลือกหลายชิ้น</button>'
       + '<button data-act="merge-all">🔗 รวมทั้งหมด</button>'
       + '<button data-act="merge-sel">' + mergeLabel + '</button>'
-      + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>'
-      + '</div>';
+      + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>';
+    // ปุ่มย่อยทั้งหมดตามสี (โชว์เฉพาะสีที่มีของในกระเป๋า)
+    const tiers = tierList();
+    if (tiers.length) {
+      h += '<span class="dz-label">♻ ย่อยทั้งหมด:</span>';
+      tiers.forEach((t) => {
+        const cf = state.confirmTier === t.id;
+        h += '<button class="dz' + (cf ? ' cf' : '') + '" data-act="dis-tier" data-id="' + t.id + '">'
+          + (cf ? 'ยืนยันย่อยสี' + t.name + ' ' + t.n + ' ชิ้น?' : 'สี' + t.name + ' (' + t.n + ')')
+          + (!cf && t.skip ? ' ข้าม' + t.skip : '')
+          + '</button>';
+      });
+    }
+    return h + '</div>';
   }
 
   // ---------- ส่วนแสดงผล ----------
@@ -364,6 +423,8 @@
     const id = el.dataset.id;
     const sel = state.sel;
 
+    if (act !== 'dis-tier') state.confirmTier = null;   // กดอย่างอื่น = ยกเลิกการรอยืนยันย่อยทั้งหมด
+
     if (act === 'close') { s.closePanel(); return; }
     if (act === 'tab') { state.tab = id; state.sel = null; state.qty = 1; state.ticks.clear(); }
     else if (act === 'page') { state.page = Math.max(0, Math.min(PAGES - 1, state.page + Number(id))); state.sel = null; state.qty = 1; }
@@ -379,6 +440,16 @@
     else if (act === 'sel-equip') { state.sel = { src: 'equip', id: id }; state.qty = 1; }
     else if (act === 'qty') {
       state.qty = id === 'max' ? maxQty() : state.qty + Number(id);
+    }
+    else if (act === 'dis-tier') {
+      if (state.confirmTier !== id) {
+        state.confirmTier = id;                          // กดครั้งแรก: รอยืนยัน
+        s.toastMsg('กดปุ่มสีแดงอีกครั้งเพื่อยืนยันการย่อย (ย่อยแล้วเอาคืนไม่ได้)');
+      } else {
+        state.confirmTier = null;                        // กดครั้งที่สอง: ย่อยจริง
+        dismantleTier(id);
+        state.sel = null; state.qty = 1; state.ticks.clear();
+      }
     }
     else if (act === 'merge-sel') {
       if (state.multi) {
@@ -445,6 +516,7 @@
     state.tab = tab || state.tab || 'bag';
     if (page !== undefined) state.page = page;
     state.sel = null;
+    state.confirmTier = null;
     this.invTab = state.tab;
     this.invPage = state.page;
     render();
