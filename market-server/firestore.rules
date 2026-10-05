@@ -1,1 +1,48 @@
 
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isOwner(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // เซฟเกม (startScreen.js เขียนที่ saves/{uid})
+    match /saves/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['data', 'savedAtMs', 'name', 'email', 'charName'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 1000000;
+      allow delete: if false;
+    }
+
+    // ตลาด: อ่านได้ เขียนได้เฉพาะ Cloud Functions (Admin SDK ข้าม Rules)
+    match /market/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // กระเป๋าเงินตลาด: อ่านได้เฉพาะเจ้าของ
+    match /marketWallets/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    // กล่องจดหมาย (ไอเทมที่ซื้อ/คืนของ/ทองที่ถอน): อ่านได้เฉพาะเจ้าของ
+    match /mailbox/{uid}/items/{mid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    // ปุ่มปิดตลาดฉุกเฉิน: config/market { enabled: false } (แก้ผ่าน Console เท่านั้น)
+    match /config/{doc} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // items (ทะเบียน uid), flags, marketLogs: เซิร์ฟเวอร์ล้วน ไคลเอนต์เข้าไม่ได้
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
