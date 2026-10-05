@@ -1,0 +1,29 @@
+name: Deploy Market Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install functions dependencies
+        working-directory: market-server/functions
+        run: npm install
+
+      - name: Write service account key
+        env:
+          SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: echo "$SA_KEY" > "$HOME/key.json"
+
+      - name: Deploy to Firebase
+        working-directory: market-server
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/key.json
+        run: npx -y firebase-tools deploy --only functions,firestore --project newworld-ae666 --non-interactive
