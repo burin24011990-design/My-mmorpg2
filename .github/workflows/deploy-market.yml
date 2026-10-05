@@ -26,5 +26,4 @@ jobs:
         working-directory: market-server
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /home/runner/key.json
-        run: npx -y firebase-tools deploy --only functions,firestore --project newworld-ae666 --non-interactive
-         --force
+        run: npx -y firebase-tools deploy --only functions,firestore --project newworld-ae666 --non-interactive --force
