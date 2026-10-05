@@ -251,6 +251,42 @@
     };
   } catch (e) { console.warn('[rebirth] ครอบ getMonsterDef ไม่ได้ (ส่ง monsterDefs.js มาตรวจ)', e); }
 
+  // ---------- เลือกด่านในเมือง (town.js): ข้อความล็อก "ต้องจุติขั้น N" + ด่านจุติสีม่วง ----------
+  // แทนที่เมธอดเดิมของฉากเมืองทั้งก้อน (ตรรกะเหมือนเดิม เปลี่ยนแค่ข้อความ/สี) จึงไม่ต้องแก้ town.js
+  if (typeof Town === 'function') {
+    Town.prototype.openTownStages = function () {
+      const m = townMain(this);
+      if (!m || typeof ZONES === 'undefined') return;
+      const self = this;
+      const card = this.domCard('เลือกด่าน (ต้องเลเวล/ขั้นจุติถึงเกณฑ์)');
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px';
+      ZONES.forEach(function (z, i) {
+        const unlocked = m.stats.level >= z.reqLv;
+        const cell = document.createElement('div');
+        const onBg = z.reqRebirth ? '#3a2a4a' : '#24402a', onBd = z.reqRebirth ? '#9a6ad0' : '#4f9a5a';
+        cell.style.cssText = 'padding:8px 4px;border-radius:10px;border:2px solid ' + (unlocked ? onBd : '#6a3a3a') +
+          ';background:' + (unlocked ? onBg : '#2a2424') + ';cursor:' + (unlocked ? 'pointer' : 'default');
+        const a = document.createElement('div'); a.style.cssText = 'font-size:15px;font-weight:600'; a.textContent = z.name;
+        const b = document.createElement('div'); b.style.cssText = 'font-size:11px;color:#bbb'; b.textContent = 'มอนสเตอร์ Lv.' + z.minLv + '-' + z.maxLv;
+        const c = document.createElement('div');
+        c.style.cssText = 'font-size:11px;color:' + (unlocked ? '#9adf9a' : '#e08a8a');
+        c.textContent = unlocked ? (i === m.stageIdx ? 'อยู่ที่นี่' : 'แตะเพื่อเดินทาง')
+          : (z.reqRebirth ? 'ต้องจุติขั้น ' + z.reqRebirth : 'ต้องการ Lv.' + z.reqLv);
+        cell.append(a, b, c);
+        cell.addEventListener('click', function () {
+          if (!unlocked) return;
+          self.closeDialog();
+          if (i === m.stageIdx) { townLeave(m); return; }
+          m.loadStage(i);
+        });
+        grid.appendChild(cell);
+      });
+      card.appendChild(grid);
+      this.domCloseBtn(card);
+    };
+  }
+
   // ---------- แสดงในหน้าสเตตัส (ถ้าระบบแผงรองรับ) ----------
   function installHook() {
     if (!window.PixelPanels || !PixelPanels.addDataHook) return false;
