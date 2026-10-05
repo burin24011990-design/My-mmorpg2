@@ -1,4 +1,4 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v7 — เมืองจีนย้อนยุคพลังภายใน =====
+// ===== ฉากเมืองเริ่มต้น (Town) v7.1 — เมืองจีนย้อนยุคพลังภายใน =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
@@ -8,10 +8,11 @@
 // - v7: ใช้ภาพจริง (อะตลาส assets/town/town.json + town-0.png), แผนผังเมืองใหม่ 2400x1900,
 //       ชนอาคาร/พรอพ, NPC เป็นสไปรต์, พื้นหญ้า/ถนนหินสร้างด้วยโค้ด (ไม่ต้องมีไฟล์)
 //       ถ้าไม่มีไฟล์ภาพ จะถอยกลับไปใช้กล่องสีเหมือนเดิม เกมไม่พัง
+// - v7.1: หน้าสเตตัสในเมืองแสดงสเตตัสครบเหมือนหน้าสเตตัสจริง (มีคริติคอล ฯลฯ) อ่านจาก STAT_DEFS ใน stats.js
 
 const TOWN = {
   w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190,
-  atlas: 'assets/town/', ver: 1,          // เปลี่ยน ver เมื่ออัปเดตไฟล์ภาพ
+  atlas: 'assets/town/', ver: 2,          // เปลี่ยน ver เมื่ออัปเดตไฟล์ภาพ
 };
 
 // ปุ่มเมือง + ปุ่มแชนเนล (DOM) ขนาดเท่าปุ่มแถบบนขวา วางเรียงต่อจากกรอบ HP ฝั่งซ้าย
@@ -540,24 +541,30 @@ class Town extends Phaser.Scene {
     this.domCloseBtn(card);
   }
 
-  // ----- สถานะตัวละคร (DOM) -----
+  // ----- สถานะตัวละคร (DOM) — อ่านสเตตัสครบจาก STAT_DEFS (stats.js) เหมือนหน้าสเตตัสจริง -----
   openTownStatus() {
     const m = townMain(this);
     if (!m || !m.stats) return;
     const card = this.domCard('สถานะตัวละคร');
     let cls = '-';
     try { cls = CLASSES[m.currentClass()].label; } catch (e) {}
+    const S = (m.getStats && m.getStats()) || null;
     const rows = [
       ['เลเวล', m.stats.level + ' / ' + LEVEL_CAP],
       ['EXP', Math.floor(m.stats.exp) + ' / ' + m.stats.expNext],
       ['HP', Math.max(0, Math.floor(m.stats.hp)) + ' / ' + m.maxHp()],
       ['MP', Math.floor(m.stats.mp) + ' / ' + m.maxMp()],
-      ['ATK', String(m.atk)],
-      ['DEF', String(m.equipDefBonus)],
-      ['ทอง', String(m.stats.gold)],
-      ['มอนที่ฆ่าแล้ว', String(m.kills)],
-      ['อาชีพ', cls],
     ];
+    if (S && window.STAT_DEFS) {
+      Object.keys(STAT_DEFS).forEach(function (k) {
+        if (k === 'hp' || k === 'mp') return;                  // แสดงอยู่แถวบนแล้ว
+        if (STAT_DEFS[k].hideZero && !S[k]) return;            // ซ่อนค่าที่เป็น 0 (เหมือนหน้าสเตตัสจริง)
+        rows.push([STAT_DEFS[k].label, window.fmtStat ? fmtStat(k, S[k]) : String(Math.round(S[k] || 0))]);
+      });
+    } else {
+      rows.push(['ATK', String(m.atk)]);                       // สำรอง ถ้า stats.js ไม่ทำงาน
+    }
+    rows.push(['ทอง', String(m.stats.gold)], ['มอนที่ฆ่าแล้ว', String(m.kills)], ['อาชีพ', cls]);
     rows.forEach(function (r) {
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;justify-content:space-between;padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#3a1620;font-size:14px';
