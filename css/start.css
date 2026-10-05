@@ -1,13 +1,20 @@
-/* ===== หน้าเริ่มเกม / ล็อกอิน (css/start.css) ===== */
+/* ===== หน้าเริ่มเกม / ล็อกอิน (css/start.css) — ธีมกำลังภายในจีนโบราณ =====
+   รูปที่ใช้ (ถ้ายังไม่มีไฟล์ จะใช้ลายสำรองจาก CSS อัตโนมัติ):
+     img/bg.jpg        พื้นหลังวังบนยอดเขา
+     img/medallion.png เหรียญหยกมังกร (ฝั่งซ้าย)
+     img/logo.png      โลโก้ชื่อเกมพู่กันทอง
+*/
 :root {
-  --bg: #12060a;
-  --card: #1f0a10;
-  --card-edge: #5a2a1a;
-  --gold: #ffd45c;
-  --gold-soft: #ffe28a;
-  --crimson: #c0182f;
-  --text: #f6ece4;
-  --muted: #b39a92;
+  --bg: #0c0908;
+  --card: #150f0d;
+  --card-edge: #8a6a2f;
+  --gold: #e3bd62;
+  --gold-soft: #f1d89a;
+  --crimson: #b3261e;
+  --jade: #3f6b5c;
+  --paper: #efe3c8;
+  --text: #f1e8d6;
+  --muted: #a8998a;
   --err: #ff7b7b;
   --warn: #ffb257;
 }
@@ -21,9 +28,11 @@
            max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   box-sizing: border-box;
   background:
-    radial-gradient(ellipse at 50% 120%, #5a1420 0%, rgba(90,20,32,0) 60%),
-    radial-gradient(ellipse at 20% 0%, #2a0d16 0%, rgba(42,13,22,0) 55%),
-    var(--bg);
+    linear-gradient(180deg, rgba(12,9,8,.15) 0%, rgba(12,9,8,.5) 100%),
+    url('../img/bg.jpg') center / cover no-repeat,
+    radial-gradient(circle at 78% 22%, rgba(179,38,30,.55) 0 9%, rgba(179,38,30,0) 10%),
+    radial-gradient(ellipse at 50% 120%, #3a1410 0%, rgba(58,20,16,0) 60%),
+    linear-gradient(180deg, #1b1210 0%, #0c0908 100%);
   color: var(--text);
   font-family: 'Mitr', 'Noto Sans Thai', sans-serif;
   transition: opacity .45s ease;
@@ -32,63 +41,94 @@
 #login-screen.out { opacity: 0; pointer-events: none; }
 #login-screen *, #login-screen *::before, #login-screen *::after { box-sizing: border-box; }
 
-/* ฝุ่นไฟลอย */
+/* กลีบดอกไม้ลอยแทนประกายไฟ (JS เดิมสร้าง <i> ให้) */
 #embers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 #embers i {
-  position: absolute; bottom: -12px; border-radius: 50%;
-  background: #ff9a3c; box-shadow: 0 0 8px 2px rgba(255,150,60,.7);
-  opacity: 0; animation: rise linear infinite;
+  position: absolute; top: -14px; bottom: auto;
+  border-radius: 0 100% 0 100%;
+  background: linear-gradient(135deg, #ffb3b3, #e0344a);
+  box-shadow: 0 0 6px rgba(255,190,180,.35);
+  opacity: 0; animation: petal linear infinite;
 }
-@keyframes rise {
-  0%   { transform: translate(0, 0); opacity: 0; }
-  10%  { opacity: .9; }
-  100% { transform: translate(var(--dx, 0), -105vh); opacity: 0; }
+@keyframes petal {
+  0%   { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  10%  { opacity: .85; }
+  50%  { transform: translate(calc(var(--dx, 0px) * .5 + 24px), 55vh) rotate(180deg); }
+  100% { transform: translate(var(--dx, 0px), 108vh) rotate(380deg); opacity: 0; }
 }
 
-/* การ์ดหลัก: ซ้ายรูปฮีโร่ ขวาฟอร์ม (แนวนอน) */
+/* การ์ดหลัก: ซ้ายฮีโร่ ขวาฟอร์ม — ขอบทองสองชั้นแบบป้ายโบราณ */
 .ls-card {
   position: relative; z-index: 1;
   display: flex; align-items: stretch;
   width: min(760px, 100%); max-height: 100%;
-  background: linear-gradient(160deg, #2b0e16 0%, var(--card) 70%);
+  background: linear-gradient(160deg, rgba(34,18,16,.55) 0%, rgba(12,8,8,.72) 75%);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   border: 2px solid var(--card-edge);
-  border-radius: 18px;
-  box-shadow: 0 0 0 1px #000, 0 18px 50px rgba(0,0,0,.6), inset 0 0 40px rgba(192,24,47,.12);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 0 5px rgba(12,9,8,.9),
+    0 0 0 6px var(--card-edge),
+    0 18px 50px rgba(0,0,0,.7),
+    inset 0 0 40px rgba(179,38,30,.10);
   overflow: hidden;
 }
+/* มุมลายเมฆ */
+.ls-card::before, .ls-card::after {
+  content: ''; position: absolute; width: 22px; height: 22px; z-index: 2; pointer-events: none;
+  border: 2px solid var(--gold);
+}
+.ls-card::before { top: 6px; left: 6px; border-right: 0; border-bottom: 0; }
+.ls-card::after  { bottom: 6px; right: 6px; border-left: 0; border-top: 0; }
 
 .ls-hero {
-  position: relative; flex: 0 0 34%;
+  position: relative; flex: 0 0 36%;
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 50% 55%, #4a1621 0%, #1a070c 75%);
+  background:
+    url('../img/medallion.png') center 46% / auto 88% no-repeat,
+    radial-gradient(circle at 50% 50%, rgba(179,38,30,.30) 0%, rgba(26,12,10,0) 65%),
+    rgba(10,6,6,.30);
   border-right: 2px solid var(--card-edge);
 }
 .ls-glow {
-  position: absolute; width: 150px; height: 150px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,212,92,.55) 0%, rgba(255,212,92,0) 70%);
-  animation: pulse 3.2s ease-in-out infinite;
+  position: absolute; width: 170px; height: 170px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(227,189,98,.35) 0%, rgba(227,189,98,0) 70%);
+  animation: pulse 3.6s ease-in-out infinite;
 }
-@keyframes pulse { 0%,100% { transform: scale(.9); opacity: .7; } 50% { transform: scale(1.1); opacity: 1; } }
+@keyframes pulse { 0%,100% { transform: scale(.92); opacity: .65; } 50% { transform: scale(1.08); opacity: 1; } }
+
+/* ตราประทับ 武 (ซ่อนไว้ เพราะใช้เหรียญหยกแทน) */
 .ls-sprite {
-  position: relative; width: 58px; height: 58px;
-  background: linear-gradient(135deg, var(--gold-soft), #c58a1a);
-  transform: rotate(45deg); border-radius: 8px;
-  box-shadow: 0 0 0 4px #26090f, 0 0 0 6px var(--gold), 0 0 24px rgba(255,212,92,.6);
+  position: relative; width: 68px; height: 68px;
+  display: none; align-items: center; justify-content: center;
+  background: var(--crimson);
+  border-radius: 6px;
+  transform: rotate(-4deg);
+  box-shadow: 0 0 0 3px #1a0907, 0 0 0 5px var(--gold), 0 6px 22px rgba(179,38,30,.55);
 }
 .ls-sprite::after {
-  content: ''; position: absolute; inset: 14px; border-radius: 4px; background: #26090f;
+  content: '武'; position: static; inset: auto; background: none; border-radius: 0;
+  font-family: 'Noto Serif CJK SC', 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', serif;
+  font-size: 42px; font-weight: 900; line-height: 1; color: var(--paper);
+  text-shadow: 0 1px 0 rgba(0,0,0,.4);
 }
 
 .ls-main {
-  flex: 1; min-width: 0; padding: 22px 26px;
+  flex: 1; min-width: 0; padding: 22px 28px;
   overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
 .ls-title {
-  margin: 0; font-size: 34px; font-weight: 700; line-height: 1.15;
-  color: var(--gold);
-  text-shadow: 0 2px 0 #5a2a05, 0 0 18px rgba(255,212,92,.35);
+  margin: 0 0 2px -6px; height: 88px; max-width: 100%;
+  font-size: 0; line-height: 0; color: transparent; overflow: hidden; text-indent: -9999px;
+  background: url('../img/logo.png') left center / contain no-repeat;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.6));
 }
-.ls-sub { margin: 4px 0 16px; font-size: 14px; color: var(--muted); }
+.ls-sub {
+  margin: 6px 0 16px; padding-bottom: 10px; font-size: 14px; color: var(--muted);
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, var(--card-edge), rgba(138,106,47,0)) 1;
+}
 
 .ls-view { display: flex; flex-direction: column; gap: 10px; }
 .ls-center { text-align: center; color: var(--muted); font-size: 14px; }
@@ -96,7 +136,7 @@
 /* ตัวโหลด */
 .spin {
   width: 34px; height: 34px; margin: 10px auto 4px; border-radius: 50%;
-  border: 4px solid rgba(255,212,92,.2); border-top-color: var(--gold);
+  border: 4px solid rgba(227,189,98,.2); border-top-color: var(--gold);
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -106,19 +146,20 @@
   display: flex; align-items: center; justify-content: center; gap: 10px;
   width: 100%; min-height: 46px; padding: 10px 16px;
   font-family: inherit; font-size: 16px; font-weight: 500;
-  border-radius: 12px; border: 2px solid transparent; cursor: pointer;
+  border-radius: 6px; border: 2px solid transparent; cursor: pointer;
   -webkit-tap-highlight-color: transparent; transition: transform .08s ease, filter .15s ease;
 }
 .btn:active:not(:disabled) { transform: translateY(1px) scale(.99); }
 .btn svg { width: 22px; height: 22px; flex: none; }
-.btn-google { background: #fff; color: #2b2b2b; border-color: #dcdcdc; }
+.btn-google { background: var(--paper); color: #2b2420; border-color: #c9b88f; }
 .btn-google.off { opacity: .45; }
-.btn-ghost { background: transparent; color: var(--gold-soft); border-color: #7a5a2a; }
-.btn-ghost:active { background: rgba(255,212,92,.08); }
+.btn-ghost { background: transparent; color: var(--gold-soft); border-color: #7a5f2c; }
+.btn-ghost:active { background: rgba(227,189,98,.08); }
 .btn-gold {
-  background: linear-gradient(180deg, #ffe28a 0%, #f0b429 100%);
-  color: #3b1a02; border-color: #b9770e; font-weight: 600; font-size: 18px;
-  box-shadow: 0 3px 0 #8a5409, 0 6px 14px rgba(240,180,41,.25);
+  background: linear-gradient(180deg, #d4392e 0%, #8f1a14 100%);
+  color: var(--paper); border-color: var(--gold); font-weight: 600; font-size: 18px;
+  text-shadow: 0 1px 0 rgba(0,0,0,.5);
+  box-shadow: 0 3px 0 #4a0d09, 0 6px 16px rgba(179,38,30,.35), inset 0 0 0 1px rgba(255,255,255,.12);
 }
 .btn:disabled { opacity: .5; cursor: not-allowed; filter: grayscale(.5); }
 .btn:focus-visible, #in-name:focus-visible, .ls-links a:focus-visible {
@@ -127,7 +168,7 @@
 
 /* เส้นคั่น "หรือ" */
 .ls-or { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
-.ls-or::before, .ls-or::after { content: ''; flex: 1; height: 1px; background: #4a2a24; }
+.ls-or::before, .ls-or::after { content: ''; flex: 1; height: 1px; background: #4a3a2a; }
 
 /* ข้อความอธิบาย */
 .ls-note { margin: 2px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
@@ -136,9 +177,10 @@
 /* การ์ดผู้ใช้ */
 .ls-user {
   display: flex; align-items: center; gap: 12px; padding: 8px 10px;
-  background: rgba(0,0,0,.28); border: 1px solid #4a2a24; border-radius: 12px;
+  background: rgba(0,0,0,.35); border: 1px solid #5a4528; border-left: 3px solid var(--crimson);
+  border-radius: 4px;
 }
-.ls-user img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #3a1a20; flex: none; }
+.ls-user img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; background: #2a1c18; flex: none; }
 .ls-user > div { min-width: 0; display: flex; flex-direction: column; }
 .ls-user b { font-weight: 500; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ls-user small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -148,9 +190,9 @@
 #in-name {
   width: 100%; min-height: 44px; padding: 8px 12px;
   font-family: inherit; font-size: 16px; color: var(--text);
-  background: #14070b; border: 2px solid #5a3a2a; border-radius: 10px;
+  background: #0e0a09; border: 2px solid #5a4528; border-radius: 4px;
 }
-#in-name::placeholder { color: #7d6a64; }
+#in-name::placeholder { color: #7d6d60; }
 #in-name:focus { border-color: var(--gold); }
 
 /* สถานะคลาวด์ */
@@ -164,8 +206,8 @@
 #cloud-toast {
   position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 9500;
   transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
-  padding: 8px 16px; border-radius: 999px;
-  background: rgba(20,8,12,.95); border: 1px solid #7a5a2a; color: var(--gold-soft);
+  padding: 8px 16px; border-radius: 4px;
+  background: rgba(14,10,9,.95); border: 1px solid var(--card-edge); color: var(--gold-soft);
   font-family: 'Mitr', sans-serif; font-size: 13px;
   transition: opacity .25s ease, transform .25s ease;
 }
@@ -175,27 +217,27 @@
 .ls-modal {
   position: absolute; inset: 0; z-index: 10; padding: 16px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(8,2,4,.85);
+  background: rgba(8,5,4,.88);
 }
 .ls-modal .box {
   width: min(420px, 100%); max-height: 100%; overflow-y: auto;
   display: flex; flex-direction: column; gap: 10px; padding: 18px;
-  background: var(--card); border: 2px solid var(--gold); border-radius: 14px;
+  background: var(--card); border: 2px solid var(--gold); border-radius: 6px;
 }
 .ls-modal .box > div { white-space: pre-line; font-size: 14px; line-height: 1.6; text-align: left; }
 
 /* หน้าจอเตี้ย (มือถือแนวนอน): บีบให้พอดี */
 @media (max-height: 460px) {
   .ls-main { padding: 12px 18px; }
-  .ls-title { font-size: 26px; }
-  .ls-sub { margin-bottom: 8px; font-size: 12px; }
+  .ls-title { height: 62px; margin-bottom: 0; }
+  .ls-sub { display: none; }
   .btn { min-height: 40px; font-size: 15px; padding: 6px 12px; }
   .btn-gold { font-size: 16px; }
   #in-name { min-height: 38px; }
   .ls-view { gap: 6px; }
-  .ls-glow { width: 110px; height: 110px; }
-  .ls-sprite { width: 44px; height: 44px; }
-  .ls-sprite::after { inset: 10px; }
+  .ls-glow { width: 120px; height: 120px; }
+  .ls-sprite { width: 52px; height: 52px; }
+  .ls-sprite::after { font-size: 32px; }
 }
 @media (max-width: 560px) {
   .ls-hero { display: none; }
