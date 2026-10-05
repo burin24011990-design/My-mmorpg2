@@ -73,6 +73,7 @@ function townGoToTown(scene, notice, died) {
 function townLeave(m) {
   if (!window._townBusy) return;
   window._townBusy = false;
+  try { if (m.closePanel) m.closePanel(); } catch (e) {}   // ปิดแผงของ Main ที่อาจค้างอยู่ (กันเดินไม่ได้)
   const b = document.getElementById('btn-to-town');
   if (b) b.style.display = '';
   m.scene.resume();
@@ -211,18 +212,11 @@ class Town extends Phaser.Scene {
     this.player.add(parts);
     cam.startFollow(this.player, true, 0.12, 0.12);
 
-    this.add.text(12, 10, 'ลากนิ้วฝั่งซ้ายเพื่อเดิน • แตะ NPC เพื่อคุย • เลือกด่านจากปุ่มด้านบนเพื่อออกไปล่ามอน', {
+    this.add.text(W / 2, H - 8, 'ลากนิ้วฝั่งซ้ายเพื่อเดิน • เดินเข้าใกล้ NPC แล้วแตะเพื่อคุย', {
       fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', backgroundColor: '#00000088',
       padding: { x: 8, y: 4 },
-    }).setScrollFactor(0).setDepth(100000);
+    }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100000);
 
-    this.input.on('pointerdown', function (p, over) {
-      if (this.modal) return;
-      if (over && over.length) return;
-      if (p.x < W * 0.4) return;          // ฝั่งซ้าย = จอยสติ๊กลอย (เหมือนข้างนอก)
-      this.pending = null;
-      this.target = { x: Phaser.Math.Clamp(p.worldX, 20, T.w - 20), y: Phaser.Math.Clamp(p.worldY, 20, T.h - 20) };
-    }, this);
 
     const kb = this.input.keyboard;
     if (kb) {
@@ -249,8 +243,8 @@ class Town extends Phaser.Scene {
       ['tb_bag',    'กระเป๋า',   0x2a4a2a, function () { const m = M(); if (m) m.openInventory('bag'); }],
       ['tb_scroll', 'สกิล',      0x2a2a4a, function () { const m = M(); if (m) m.openSkillBook(); }],
       ['tb_shield', 'อุปกรณ์',   0x2a2a5a, function () { const m = M(); if (m) m.openInventory('equip'); }],
-      ['tb_map',    'เลือกด่าน', 0x2a4a5a, function () { const m = M(); if (m) m.openStageSelect(); }],
-      ['tb_chart',  'สเตตัส',    0x3a2a4a, function () { const m = M(); if (m) m.openStatusPanel(); }],
+      ['tb_map',    'เลือกด่าน', 0x2a4a5a, function () { self0.openTownStages(); }],
+      ['tb_chart',  'สเตตัส',    0x3a2a4a, function () { self0.openTownStatus(); }],
     ];
     let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
     items.forEach(function (it) {
@@ -293,6 +287,95 @@ class Town extends Phaser.Scene {
     this.input.on('pointerupoutside', release);
   }
 
+  // ----- กล่องข้อความแบบ DOM (ใช้ซ้ำ) -----
+  domCard(title) {
+    this.closeDialog();
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(0,0,0,.55);font-family:Mitr,sans-serif;-webkit-tap-highlight-color:transparent;touch-action:manipulation';
+    const card = document.createElement('div');
+    card.style.cssText = 'width:min(520px,92vw);max-height:90vh;overflow:auto;background:#26090f;border:2px solid #ffd45c;' +
+      'border-radius:14px;padding:12px 14px;color:#fff;text-align:center;box-shadow:0 8px 30px #000a';
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:18px;color:#ffe28a;margin-bottom:8px';
+    h.textContent = title;
+    card.appendChild(h);
+    box.appendChild(card);
+    document.body.appendChild(box);
+    this.modal = box;
+    return card;
+  }
+
+  domCloseBtn(card) {
+    const self = this;
+    const btn = document.createElement('button');
+    btn.textContent = 'ปิด';
+    btn.style.cssText = 'font-family:inherit;font-size:15px;padding:7px 22px;border-radius:10px;cursor:pointer;margin-top:10px;' +
+      'border:2px solid #ffd45c;color:#ffe28a;background:#26090f';
+    btn.addEventListener('click', function () { self.closeDialog(); });
+    card.appendChild(btn);
+  }
+
+  // ----- เลือกด่าน (ทำเองในเมือง เพราะแผงของ Main ถูกฉากเมืองบัง) -----
+  openTownStages() {
+    const m = townMain(this);
+    if (!m || typeof ZONES === 'undefined') return;
+    const self = this;
+    const card = this.domCard('เลือกด่าน (ต้องเลเวลถึงเกณฑ์)');
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px';
+    ZONES.forEach(function (z, i) {
+      const unlocked = m.stats.level >= z.reqLv;
+      const cell = document.createElement('div');
+      cell.style.cssText = 'padding:8px 4px;border-radius:10px;border:2px solid ' + (unlocked ? '#4f9a5a' : '#6a3a3a') +
+        ';background:' + (unlocked ? '#24402a' : '#2a2424') + ';cursor:' + (unlocked ? 'pointer' : 'default');
+      const a = document.createElement('div'); a.style.cssText = 'font-size:15px;font-weight:600'; a.textContent = z.name;
+      const b = document.createElement('div'); b.style.cssText = 'font-size:11px;color:#bbb'; b.textContent = 'มอนสเตอร์ Lv.' + z.minLv + '-' + z.maxLv;
+      const c = document.createElement('div');
+      c.style.cssText = 'font-size:11px;color:' + (unlocked ? '#9adf9a' : '#e08a8a');
+      c.textContent = unlocked ? (i === m.stageIdx ? 'อยู่ที่นี่' : 'แตะเพื่อเดินทาง') : 'ต้องการ Lv.' + z.reqLv;
+      cell.append(a, b, c);
+      cell.addEventListener('click', function () {
+        if (!unlocked) return;
+        self.closeDialog();
+        if (i === m.stageIdx) { townLeave(m); return; }   // ด่านเดิม: กลับไปเล่นต่อ
+        m.loadStage(i);                                   // ครอบไว้แล้ว: โหลดด่านเสร็จจะออกจากเมืองเอง
+      });
+      grid.appendChild(cell);
+    });
+    card.appendChild(grid);
+    this.domCloseBtn(card);
+  }
+
+  // ----- สถานะตัวละคร (DOM) -----
+  openTownStatus() {
+    const m = townMain(this);
+    if (!m || !m.stats) return;
+    const card = this.domCard('สถานะตัวละคร');
+    let cls = '-';
+    try { cls = CLASSES[m.currentClass()].label; } catch (e) {}
+    const rows = [
+      ['เลเวล', m.stats.level + ' / ' + LEVEL_CAP],
+      ['EXP', Math.floor(m.stats.exp) + ' / ' + m.stats.expNext],
+      ['HP', Math.max(0, Math.floor(m.stats.hp)) + ' / ' + m.maxHp()],
+      ['MP', Math.floor(m.stats.mp) + ' / ' + m.maxMp()],
+      ['ATK', String(m.atk)],
+      ['DEF', String(m.equipDefBonus)],
+      ['ทอง', String(m.stats.gold)],
+      ['มอนที่ฆ่าแล้ว', String(m.kills)],
+      ['อาชีพ', cls],
+    ];
+    rows.forEach(function (r) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#3a1620;font-size:14px';
+      const k = document.createElement('span'); k.style.color = '#bbb'; k.textContent = r[0];
+      const v = document.createElement('span'); v.style.cssText = 'color:#ffe28a;font-weight:600'; v.textContent = r[1];
+      row.append(k, v);
+      card.appendChild(row);
+    });
+    this.domCloseBtn(card);
+  }
+
   makeNpc(n) {
     const c = this.add.container(n.x, n.y).setDepth(n.y);
     const g = this.add.graphics();
@@ -312,8 +395,9 @@ class Town extends Phaser.Scene {
     c.setInteractive({ useHandCursor: true });
     c.on('pointerdown', function () {
       if (this.modal) return;
-      this.pending = n;
-      this.target = { x: n.x, y: n.y + 70 };
+      const p = this.player;
+      if (Math.hypot(n.x - p.x, n.y - p.y) < 150) this.talk(n);
+      else this.flash('เดินเข้าไปใกล้ ๆ ก่อน');
     }, this);
     return c;
   }
@@ -364,6 +448,17 @@ class Town extends Phaser.Scene {
         this.talk(n);
       }
     }
+  }
+
+  // ข้อความเตือนสั้น ๆ กลางจอ
+  flash(msg) {
+    if (this._flash) this._flash.destroy();
+    const t = this.add.text(W / 2, H * 0.3, msg, {
+      fontFamily: 'Mitr, sans-serif', fontSize: '18px', color: '#ffe28a', backgroundColor: '#000000bb',
+      padding: { x: 12, y: 6 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100030);
+    this._flash = t;
+    this.tweens.add({ targets: t, alpha: 0, delay: 900, duration: 400, onComplete: function () { t.destroy(); } });
   }
 
   talk(n) {
