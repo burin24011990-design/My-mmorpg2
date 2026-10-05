@@ -97,5 +97,5 @@ new Phaser.Game({
   physics: { default: 'arcade' },
   // Town อยู่ก่อน = เริ่มเกมที่เมือง แล้วเดินเข้า "ประตูเมือง" เพื่อไปฉาก Main
   // (ถ้าอยากข้ามเมืองชั่วคราว เปลี่ยนเป็น scene: Main)
-  scene: [Town, Main],
+  scene: [Main, Town],
 });
