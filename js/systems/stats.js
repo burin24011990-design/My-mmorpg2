@@ -1,6 +1,8 @@
 // ===== ระบบสเตตัสแบบ RoV =====
 // ค่ารวม = พื้นฐานจากเลเวล + อุปกรณ์ + บัพชั่วคราว | ดาเมจสกิล = ค่าฐาน + ตัวคูณ x สเตตัส
 // โหลดหลัง priest.js และก่อน main.js
+// v+: แยกการคำนวณดาเมจที่ผู้เล่นทำ (เกราะมอน/ทะลุเกราะ/คริ/ดูดเลือด) ออกเป็น P.calcHit
+//     เพื่อให้ roomMonsters.js (โหมดห้องออนไลน์) เรียกใช้ได้ด้วย -- แก้ปัญหา "ไม่คริ" ในโหมดห้อง
 (function () {
   const P = Main.prototype;
 
@@ -262,11 +264,11 @@
       scene.stats.hp = Math.min(scene.maxHp(), scene.stats.hp + whole);
     }
   }
+  P.vampHeal = function (amount) { vampHeal(this, amount); };   // ให้ roomMonsters.js เรียกใช้
 
-  // ---------- ดาเมจที่ผู้เล่นทำกับมอน: เกราะมอน + ทะลุเกราะ + คริติคอล + ดูดเลือด ----------
-  const _damage = P.damage;
-  P.damage = function (e, dmg) {
-    if (!e || !e.active) return;
+  // ---------- คำนวณดาเมจที่ผู้เล่นทำกับมอน: เกราะมอน + ทะลุเกราะ + คริติคอล ----------
+  // คืน { final, crit, vamp } -- ใช้ทั้งโหมดมอนในเครื่อง (P.damage ด้านล่าง) และโหมดห้องออนไลน์ (roomMonsters.js)
+  P.calcHit = function (e, dmg) {
     let type = 'physical';
     if (dmg instanceof DmgPacket) type = dmg.dtype;
     else if (this._hitCtx) type = this._hitCtx.type;
@@ -282,16 +284,24 @@
     if (crit) final *= S.critdmg / 100;
     final = Math.max(1, Math.round(final));
 
+    return { final: final, crit: crit, vamp: type === 'magic' ? S.spellvamp : S.lifesteal };
+  };
+
+  // ---------- ดาเมจที่ผู้เล่นทำกับมอน (มอนในเครื่อง): เกราะมอน + ทะลุเกราะ + คริติคอล + ดูดเลือด ----------
+  const _damage = P.damage;
+  P.damage = function (e, dmg) {
+    if (!e || !e.active) return;
+    const h = this.calcHit(e, dmg);
+
     // ส่งธงคริติคอลไปให้ monsters.js (damage) เพื่อแสดงตัวเลขแบบมีดาวระเบิดสีแดง
-    this._critHit = crit;
+    this._critHit = h.crit;
     try {
-      _damage.call(this, e, final, { crit: crit });
+      _damage.call(this, e, h.final, { crit: h.crit });
     } finally {
       this._critHit = false;
     }
 
-    const vamp = type === 'magic' ? S.spellvamp : S.lifesteal;
-    if (vamp > 0) vampHeal(this, final * vamp / 100);
+    if (h.vamp > 0) vampHeal(this, h.final * h.vamp / 100);
   };
 
   // ---------- ดาเมจที่ผู้เล่นโดน: เกราะกายภาพ/เกราะเวท ----------
