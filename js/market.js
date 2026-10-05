@@ -56,12 +56,61 @@
     b.addEventListener('click', fn);
     return b;
   }
-  function row(left, right) {
+  const iconCache = {};
+  function rarHex(it) { try { return '#' + ('000000' + rarityColor(it).toString(16)).slice(-6); } catch (e) { return '#8a6a32'; } }
+  // หารูปไอเทม: ลองคีย์จาก iconKeyForItem ก่อน แล้วสำรองด้วยชื่อรูปจาก assets/items (img_*)
+  function iconKeys(it) {
+    const ks = [];
+    try { ks.push(iconKeyForItem(it)); } catch (e) {}
+    if (it.kind === 'equip') {
+      if (it.baseSlot === 'weapon' && it.class) ks.push('img_weapon_' + it.class);
+      ks.push('img_' + it.baseSlot);
+    } else if (it.kind === 'optstone') ks.push('img_opt_' + it.color, 'icon_opt_' + it.color);
+    else if (it.kind === 'potion') ks.push('icon_potion_' + it.pid);
+    else ks.push('img_' + it.kind);
+    return ks;
+  }
+  function iconSrc(m, it) {
+    const ks = iconKeys(it);
+    for (let i = 0; i < ks.length; i++) {
+      const k = ks[i];
+      if (!k || !m.textures.exists(k)) continue;
+      if (iconCache[k]) return iconCache[k];
+      try {
+        const d = m.textures.getBase64(k);
+        if (d) { iconCache[k] = d; return d; }
+      } catch (e) {}
+    }
+    return null;
+  }
+  function icon(m, it) {
+    const w = document.createElement('div');
+    w.style.cssText = 'width:46px;height:46px;flex:none;position:relative;border-radius:8px;background:#1c0a0f;display:flex;align-items:center;justify-content:center;border:2px solid ' + rarHex(it);
+    const src = iconSrc(m, it);
+    if (src) {
+      const im = document.createElement('img');
+      im.src = src; im.style.cssText = 'width:36px;height:36px;image-rendering:pixelated;object-fit:contain';
+      w.appendChild(im);
+    } else { w.textContent = '📦'; w.style.fontSize = '22px'; }
+    if (it.count > 1) {
+      const c = document.createElement('span');
+      c.textContent = 'x' + it.count;
+      c.style.cssText = 'position:absolute;right:1px;bottom:0;font-size:11px;color:#fff;text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000';
+      w.appendChild(c);
+    }
+    return w;
+  }
+  function row(left, right, ic) {
     const r = document.createElement('div');
     r.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:8px;background:#3a1620;font-size:13px;text-align:left';
     const l = document.createElement('div'); l.style.cssText = 'flex:1;min-width:0'; l.innerHTML = left;
+    if (ic) r.append(ic);
     r.append(l); if (right) r.append(right);
     return r;
+  }
+  function priceTxt(l) {
+    const n = l.item.count || 1;
+    return n > 1 ? '💰 ' + l.price.toLocaleString() + ' (ชิ้นละ ' + Math.round(l.price / n).toLocaleString() + ')' : '💰 ' + l.price.toLocaleString();
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
 
@@ -129,37 +178,56 @@
           if (left > 0) { const w = document.createElement('div'); w.style.cssText = 'color:#e08a8a;font-size:12px;margin-bottom:6px'; w.textContent = 'มีของรอรับ ' + left + ' ชิ้น แต่กระเป๋าเต็ม'; body.appendChild(w); }
           if (!ls.length) { const d = document.createElement('div'); d.style.cssText = 'padding:20px;color:#bbb'; d.textContent = 'ยังไม่มีสินค้า'; body.appendChild(d); return; }
           ls.forEach(function (l) {
-            body.appendChild(row('<b>' + esc(label(l.item)) + '</b><br><small style="color:#bbb">โดย ' + esc(l.sellerName) + ' • 💰 ' + l.price.toLocaleString() + '</small>',
+            body.appendChild(row('<b>' + esc(label(l.item)) + '</b><br><small style="color:#bbb">โดย ' + esc(l.sellerName) + ' • ' + priceTxt(l) + '</small>',
               btn('ซื้อ', function () {
                 if (m.stats.gold < l.price) { m.toastMsg('ทองไม่พอ'); return; }
                 m.stats.gold -= l.price;                           // หักก่อน ล้มเหลวค่อยคืน
                 run(call('buyItem', { id: l.id }).then(function () { m.toastMsg('ซื้อสำเร็จ ของอยู่ในกล่องรับ'); })
                   .catch(function (e) { m.stats.gold += l.price; throw e; }), function () { save(); });
-              }, true)));
+              }, true), icon(m, l.item)));
           });
         });
       }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
     }
 
+    function sellFlow(i, it) {
+      if (m.bag[i] !== it) return;
+      let qty = 1;
+      if (it.count !== undefined && it.count > 1) {
+        const q = window.prompt(label(it) + '\nขายกี่ชิ้น? (มี ' + it.count + ' ชิ้น)', String(it.count));
+        qty = Math.floor(Number(q));
+        if (!q || !isFinite(qty) || qty < 1 || qty > it.count) return;
+      }
+      const v = window.prompt('ตั้งราคา "ต่อชิ้น" (ทอง) ของ ' + label(it) + '\nได้รับสุทธิหลังหักภาษี 5%', '1000');
+      const unit = Math.floor(Number(v));
+      if (!v || !isFinite(unit) || unit < 1 || unit * qty > 1e9) return;
+      const sold = it.count !== undefined ? Object.assign({}, it, { count: qty }) : it;
+      if (it.count !== undefined && qty < it.count) it.count -= qty; else m.bag[i] = null;   // หักออกจากกระเป๋าก่อน
+      save();
+      run(call('listItem', { item: sold, price: unit * qty, sellerName: m.playerName || u.displayName || 'ผู้เล่น' })
+        .then(function () { m.toastMsg('ลงขายแล้ว'); })
+        .catch(function (e) { addToBag(m, sold); save(); throw e; }), function () {});
+    }
+
+    // แสดงของในกระเป๋าเป็นช่องรูป แตะไอเทมที่ต้องการขาย
     function showSell() {
       body.innerHTML = '';
-      const slots = [];
-      m.bag.forEach(function (it, i) { if (it) slots.push(i); });
-      if (!slots.length) { msg('กระเป๋าว่าง'); return; }
-      slots.forEach(function (i) {
-        const it = m.bag[i];
-        body.appendChild(row('<b>' + esc(label(it)) + '</b>', btn('ลงขาย', function () {
-          const v = window.prompt('ตั้งราคา (ทอง) สำหรับ ' + label(it) + '\nได้รับสุทธิหลังหักภาษี 5%', '1000');
-          const price = Math.floor(Number(v));
-          if (!v || !isFinite(price) || price < 1) return;
-          if (m.bag[i] !== it) return;
-          m.bag[i] = null;                                          // หักออกจากกระเป๋าก่อน
-          save();
-          run(call('listItem', { item: it, price: price, sellerName: m.playerName || u.displayName || 'ผู้เล่น' })
-            .then(function () { m.toastMsg('ลงขายแล้ว'); })
-            .catch(function (e) { if (!addToBag(m, it)) m.stats.gold += 0; save(); throw e; }), function () {});
-        }, true)));
+      const hint = document.createElement('div');
+      hint.style.cssText = 'font-size:12px;color:#bbb;margin-bottom:6px';
+      hint.textContent = 'แตะไอเทมในกระเป๋าที่ต้องการขาย';
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;justify-items:center';
+      let n = 0;
+      m.bag.forEach(function (it, i) {
+        if (!it) return;
+        n++;
+        const ic = icon(m, it);
+        ic.style.cursor = 'pointer';
+        ic.addEventListener('click', function () { sellFlow(i, it); });
+        grid.appendChild(ic);
       });
+      if (!n) { msg('กระเป๋าว่าง'); return; }
+      body.append(hint, grid);
     }
 
     function showMine() {
@@ -169,8 +237,8 @@
         if (qs.empty) { msg('ไม่มีรายการที่ลงไว้'); return; }
         qs.docs.forEach(function (d) {
           const l = d.data();
-          body.appendChild(row('<b>' + esc(label(l.item)) + '</b><br><small style="color:#bbb">💰 ' + l.price.toLocaleString() + '</small>',
-            btn('ยกเลิก', function () { run(call('cancelListing', { id: d.id }), function () { m.toastMsg('ยกเลิกแล้ว ไปรับของที่แท็บ ซื้อ'); }); })));
+          body.appendChild(row('<b>' + esc(label(l.item)) + '</b><br><small style="color:#bbb">' + priceTxt(l) + '</small>',
+            btn('ยกเลิก', function () { run(call('cancelListing', { id: d.id }), function () { m.toastMsg('ยกเลิกแล้ว ไปรับของที่แท็บ ซื้อ'); }); }), icon(m, l.item)));
         });
       }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
     }
