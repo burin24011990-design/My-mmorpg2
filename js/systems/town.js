@@ -1,13 +1,18 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v6 =====
+// ===== ฉากเมืองเริ่มต้น (Town) v7 — เมืองจีนย้อนยุคพลังภายใน =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
 // - ตาย = กลับเมือง (เติม HP/MP) | ปุ่ม "🏠 เมือง" ในฉากล่ามอนกลับเมืองได้
 // - ต้องใช้คู่กับ main.js ที่ตั้งค่า scene: [Main, Town]
 // - v6: ตัวละคร hero + อนิเมชันเดิน/ยืน, จอยสติ๊กลอยแบบเดียวกับข้างนอก (แตะซ้าย 40% ของจอ), ความเร็ว 190
-// - แถบปุ่มด้านบน (กระเป๋า สกิล อุปกรณ์ เลือกด่าน สเตตัส)
+// - v7: ใช้ภาพจริง (อะตลาส assets/town/town.json + town-0.png), แผนผังเมืองใหม่ 2400x1900,
+//       ชนอาคาร/พรอพ, NPC เป็นสไปรต์, พื้นหญ้า/ถนนหินสร้างด้วยโค้ด (ไม่ต้องมีไฟล์)
+//       ถ้าไม่มีไฟล์ภาพ จะถอยกลับไปใช้กล่องสีเหมือนเดิม เกมไม่พัง
 
-const TOWN = { w: 1600, h: 1000, spawnX: 800, spawnY: 620, speed: 190 };
+const TOWN = {
+  w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190,
+  atlas: 'assets/town/', ver: 1,          // เปลี่ยน ver เมื่ออัปเดตไฟล์ภาพ
+};
 
 // ปุ่มเมือง + ปุ่มแชนเนล (DOM) ขนาดเท่าปุ่มแถบบนขวา วางเรียงต่อจากกรอบ HP ฝั่งซ้าย
 // พิกัด/ขนาดเป็นหน่วยของเกม (W x H) เหมือน TB ใน topbar.js แล้วสเกลตามหน้าจอให้เอง
@@ -65,11 +70,13 @@ document.addEventListener('fullscreenchange', function () { setTimeout(hudBtnLay
 setInterval(hudBtnLayout, 500);   // กันกรณีปุ่มถูกสร้าง/เขียนทับทีหลัง
 
 
+// ----- NPC 4 ตัว (id/ข้อความ/Hook เดิมทั้งหมด เปลี่ยนแค่หน้าตาและตำแหน่ง) -----
+// x,y = จุดเท้า | sprite = ชื่อเฟรมในอะตลาส | color/icon ใช้เป็นตัวสำรองเมื่อไม่มีภาพ
 const TOWN_NPCS = [
-  { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 420,  y: 330, color: 0xe05555, icon: '⚔️' },
-  { id: 'market', name: 'พ่อค้าตลาดกลาง',   title: 'ตลาดกลาง',          x: 1180, y: 330, color: 0xf0c040, icon: '🏪' },
-  { id: 'trade',  name: 'นายหน้าแลกเปลี่ยน', title: 'แลกเปลี่ยนไอเทม',   x: 420,  y: 720, color: 0x55b0e0, icon: '🔄' },
-  { id: 'boss',   name: 'ผู้นำทางบอสโลก',   title: 'บอสโลก (เร็วๆ นี้)', x: 1180, y: 720, color: 0xa060e0, icon: '👹' },
+  { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 1700, y: 1400, sprite: 'npc_pvp',    color: 0xe05555, icon: '⚔️' },
+  { id: 'market', name: 'พ่อค้าตลาดกลาง',   title: 'ตลาดกลาง',          x: 860,  y: 1120, sprite: 'npc_market', color: 0xf0c040, icon: '🏪' },
+  { id: 'trade',  name: 'นายหน้าแลกเปลี่ยน', title: 'แลกเปลี่ยนไอเทม',   x: 1540, y: 1120, sprite: 'npc_trade',  color: 0x55b0e0, icon: '🔄' },
+  { id: 'boss',   name: 'ผู้นำทางบอสโลก',   title: 'บอสโลก (เร็วๆ นี้)', x: 1110, y: 705,  sprite: 'npc_boss',   color: 0xa060e0, icon: '👹' },
 ];
 
 const TOWN_TEXT = {
@@ -78,6 +85,58 @@ const TOWN_TEXT = {
   trade:  'แลกเปลี่ยนไอเทมกับผู้เล่นคนอื่นได้ที่นี่ กำลังเตรียมเปิด',
   boss:   'บอสโลกกำลังจะมาเร็วๆ นี้! ต้องใช้กุญแจเปิดประตู และรวมปาร์ตี้ 10 คนขึ้นไป โปรดรอการอัปเดต',
 };
+
+// ----- แผนผังเมือง (พิกัดโลก 2400 x 1900) -----
+// ถนน: ตรงกลางแนวตั้ง 1 สาย + แนวนอน 2 สาย
+const TOWN_ROADS = [
+  { x: 1125, y: 640,  w: 150,  h: 1260 },   // ถนนหลัก ประตูเมือง -> สำนัก
+  { x: 330,  y: 665,  w: 1740, h: 110 },    // ถนนเหนือ
+  { x: 330,  y: 1315, w: 1740, h: 110 },    // ถนนใต้ (จุดเกิดอยู่ตรงนี้)
+];
+
+// อาคาร: k=ชื่อเฟรม, x=กึ่งกลาง, y=ชายล่าง
+// foot = ส่วนสูง (0-1) ที่ตัวอาคารจบลง ผู้เล่นที่ยืนต่ำกว่าเส้นนี้จะถูกวาดทับอาคาร (เดินในลานได้)
+// block = กล่องห้ามเดิน [x0,y0,x1,y1] เป็นสัดส่วนของภาพ (0-1)
+const TOWN_BUILDINGS = [
+  { k: 'bld_hall',   x: 1200, y: 650,  foot: 0.50, block: [[0.22,0.02,0.78,0.50],[0.06,0.40,0.31,0.84],[0.69,0.40,0.94,0.84],[0.33,0.64,0.67,0.82]] },
+  { k: 'bld_temple', x: 520,  y: 640,  foot: 0.62, block: [[0.20,0.05,0.80,0.62],[0.72,0.40,0.96,0.74]] },
+  { k: 'bld_koi',    x: 1880, y: 640,  foot: 1.00, block: [[0.05,0.02,0.95,0.98]] },
+  { k: 'bld_inn',    x: 480,  y: 1290, foot: 0.62, block: [[0.22,0.02,0.72,0.62],[0.06,0.38,0.28,0.72],[0.72,0.30,0.96,0.80],[0.06,0.74,0.34,0.96]] },
+  { k: 'bld_herb',   x: 1920, y: 1290, foot: 0.62, block: [[0.22,0.02,0.75,0.62],[0.72,0.28,0.96,0.62],[0.04,0.35,0.30,0.58],[0.70,0.72,0.96,0.90]] },
+  { k: 'qi',         x: 1200, y: 1270, foot: 0.30, block: [[0.30,0.00,0.70,0.27],[0.05,0.45,0.22,0.78],[0.78,0.45,0.95,0.78],[0.35,0.80,0.45,0.95],[0.55,0.80,0.65,0.95]] },
+  { k: 'bld_forge',  x: 520,  y: 1800, foot: 0.40, block: [[0.10,0.03,0.85,0.40],[0.04,0.25,0.38,0.58],[0.62,0.20,0.84,0.58],[0.78,0.52,0.98,0.82],[0.12,0.77,0.27,0.90],[0.54,0.77,0.92,0.90]] },
+  { k: 'gate',       x: 1200, y: 1860, foot: 1.00, block: [[0.04,0.70,0.30,1.00],[0.70,0.70,0.96,1.00]] },
+];
+
+// พรอพ/ต้นไม้/ลานฝึก: bw = ความกว้างตัวกั้นที่ฐาน (0 = เดินทะลุได้), bh = ความลึกตัวกั้น
+const TOWN_PROPS = [
+  // ขอบเมือง
+  { k: 'tree_bamboo', x: 150,  y: 560,  bw: 150 }, { k: 'tree_bamboo', x: 2250, y: 560,  bw: 150, flip: 1 },
+  { k: 'tree_pine',   x: 130,  y: 930,  bw: 110 }, { k: 'tree_pine',   x: 2270, y: 930,  bw: 110, flip: 1 },
+  { k: 'tree_plum',   x: 130,  y: 1230, bw: 100 }, { k: 'tree_plum',   x: 2270, y: 1230, bw: 100, flip: 1 },
+  { k: 'tree_bamboo', x: 150,  y: 1620, bw: 150 }, { k: 'tree_bamboo', x: 2260, y: 1640, bw: 150, flip: 1 },
+  // เสาโคมปลายถนน
+  { k: 'pole1', x: 330,  y: 780,  bw: 40, bh: 20 }, { k: 'pole1', x: 2070, y: 780,  bw: 40, bh: 20, flip: 1 },
+  { k: 'pole2', x: 330,  y: 1400, bw: 40, bh: 20 }, { k: 'pole2', x: 2070, y: 1400, bw: 40, bh: 20, flip: 1 },
+  // กลางเมือง
+  { k: 'burner',  x: 1200, y: 770,  bw: 80, bh: 30 },
+  { k: 'lantern', x: 1100, y: 800,  bw: 34, bh: 20 }, { k: 'lantern', x: 1300, y: 800,  bw: 34, bh: 20 },
+  { k: 'lantern', x: 1100, y: 1335, bw: 34, bh: 20 }, { k: 'lantern', x: 1300, y: 1335, bw: 34, bh: 20 },
+  // ตลาด
+  { k: 'stall_green', x: 860,  y: 1010, bw: 150, bh: 50 },
+  { k: 'stall_cream', x: 1540, y: 1010, bw: 150, bh: 50 },
+  // ลานฝึก
+  { k: 'rack_spear',   x: 1790, y: 1590, bw: 150, bh: 30 }, { k: 'rack_sword',  x: 2040, y: 1590, bw: 150, bh: 30 },
+  { k: 'dummy_a',      x: 1760, y: 1730, bw: 34,  bh: 20 }, { k: 'dummy_hat',   x: 1850, y: 1730, bw: 34, bh: 20 },
+  { k: 'dummy_target', x: 1990, y: 1730, bw: 34,  bh: 20 }, { k: 'dummy_big',   x: 2080, y: 1730, bw: 38, bh: 20 },
+  { k: 'low_wall',     x: 1960, y: 1800, bw: 330, bh: 20 },
+  // กำแพงข้างประตูเมือง
+  { k: 'wall_l', x: 800,  y: 1895, bw: 380, bh: 36 }, { k: 'wall_l', x: 1600, y: 1895, bw: 380, bh: 36, flip: 1 },
+  // ก้อนหินประดับ (เดินทะลุได้)
+  { k: 'rock1', x: 760,  y: 1480 }, { k: 'rock2', x: 1660, y: 1520 },
+  { k: 'rock2', x: 330,  y: 1560 }, { k: 'rock1', x: 2150, y: 880  },
+  { k: 'rock1', x: 980,  y: 1130 }, { k: 'rock2', x: 1420, y: 1160 },
+];
 
 // ผูกระบบจริงทีหลัง เช่น TownHooks.market = function (scene) { ... };
 window.TownHooks = window.TownHooks || {};
@@ -187,6 +246,13 @@ function townLeave(m) {
 class Town extends Phaser.Scene {
   constructor() { super('Town'); }
 
+  // โหลดอะตลาสภาพเมือง (โหลดครั้งเดียว ครั้งต่อไปใช้ของเดิม)
+  preload() {
+    if (this.textures.exists('town')) return;
+    this.load.on('loaderror', function (f) { console.warn('town asset missing:', f && f.src); });
+    this.load.multiatlas('town', TOWN.atlas + 'town.json?v=' + TOWN.ver, TOWN.atlas);
+  }
+
   create() {
     const T = TOWN;
     this.modal = null;
@@ -194,54 +260,33 @@ class Town extends Phaser.Scene {
     this.pending = null;
     this.joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
     this.heroDir = 'down';
+    this.blockers = [];
+    this.hasAtlas = this.textures.exists('town');
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, T.w, T.h);
     cam.setBackgroundColor('#1b241b');
 
-    // ----- พื้น / ถนน / ลานกลางเมือง -----
-    const g = this.add.graphics().setDepth(0);
-    g.fillStyle(0x3b5a35, 1).fillRect(0, 0, T.w, T.h);
-    g.lineStyle(1, 0x30492c, 0.7);
-    for (let x = 0; x <= T.w; x += 80) g.lineBetween(x, 0, x, T.h);
-    for (let y = 0; y <= T.h; y += 80) g.lineBetween(0, y, T.w, y);
-    g.fillStyle(0x7a6e55, 1);
-    g.fillRect(T.w / 2 - 40, 0, 80, T.h);
-    g.fillRect(0, 460, T.w, 80);
-    g.fillStyle(0x8f826a, 1).fillCircle(T.w / 2, 500, 210);
-    g.lineStyle(6, 0x5e5340, 1).strokeCircle(T.w / 2, 500, 210);
-    g.fillStyle(0x4aa3d8, 1).fillCircle(T.w / 2, 500, 55);
-    g.lineStyle(5, 0xcfe9f7, 1).strokeCircle(T.w / 2, 500, 55);
+    this.buildGround();
+    this.buildLayout();
 
-    let seed = 7;
-    const rnd = function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
-    for (let i = 0; i < 70; i++) {
-      const x = 40 + rnd() * (T.w - 80), y = 40 + rnd() * (T.h - 80);
-      const onRoad = Math.abs(x - T.w / 2) < 70 || (y > 440 && y < 560);
-      const inPlaza = Math.hypot(x - T.w / 2, y - 500) < 240;
-      const nearNpc = TOWN_NPCS.some(function (n) { return Math.hypot(x - n.x, y - n.y) < 110; });
-      if (onRoad || inPlaza || nearNpc) continue;
-      const r = 16 + rnd() * 14;
-      g.fillStyle(0x5b3a1e, 1).fillRect(x - 4, y, 8, r);
-      g.fillStyle(0x2f7a38, 1).fillCircle(x, y - 4, r);
-      g.fillStyle(0x3d9647, 0.8).fillCircle(x - r * 0.3, y - r * 0.4, r * 0.55);
-    }
-
-    this.add.text(T.w / 2, 60, '🏰 เมืองเริ่มต้น', {
+    this.add.text(T.w / 2, 56, '🏰 เมืองเริ่มต้น', {
       fontFamily: 'Mitr, sans-serif', fontSize: '34px', color: '#ffe28a', stroke: '#000', strokeThickness: 5,
-    }).setOrigin(0.5).setDepth(5);
+    }).setOrigin(0.5).setDepth(99999);
+
+    // ----- ผู้เล่น (ต้องรู้ความสูงตัวละครก่อนสร้าง NPC เพื่อให้สเกลสัมพันธ์กัน) -----
+    const mm = townMain(this);
+    const mp = mm && mm.player;
+    this.npcH = Phaser.Math.Clamp((mp && mp.displayHeight) ? mp.displayHeight * 1.15 : 96, 80, 150);
 
     this.npcs = TOWN_NPCS.map(function (n) { return this.makeNpc(n); }, this);
 
-    // ----- ผู้เล่น: ใช้ texture 'player' ของเกม (Main สร้างไว้แล้ว) ไม่งั้นใช้วงกลม -----
     this.player = this.add.container(T.spawnX, T.spawnY).setDepth(T.spawnY);
     const parts = [];
     const sh = this.add.graphics();
     sh.fillStyle(0x000000, 0.35).fillEllipse(0, 22, 34, 12);
     parts.push(sh);
     // ตัวละครจริง (sprite 'hero' + อนิเมชันเดียวกับข้างนอก)
-    const mm = townMain(this);
-    const mp = mm && mm.player;
     let labelY = -34;
     this.hero = null;
     if (this.textures.exists('hero')) {
@@ -284,6 +329,103 @@ class Town extends Phaser.Scene {
       this.dialog('🏰 เมือง', window.TOWN_NOTICE, [{ label: 'ตกลง', primary: true }]);
       window.TOWN_NOTICE = null;
     }
+  }
+
+  // ----- พื้นหญ้า + ถนนหิน: วาดด้วยโค้ด ต่อกันได้เนียน ไม่ต้องใช้ไฟล์ -----
+  makeGroundTextures() {
+    if (this.textures.exists('town_grass')) return;
+    const S = 128;
+    let seed = 11;
+    const rnd = function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const wrapRect = function (c, x, y, w, h) {   // วาดซ้ำฝั่งตรงข้าม ให้ขอบต่อกันพอดี
+      for (const ox of [0, -S]) for (const oy of [0, -S]) c.fillRect(x + ox, y + oy, w, h);
+    };
+
+    // หญ้า
+    const gt = this.textures.createCanvas('town_grass', S, S);
+    const gc = gt.getContext('2d');
+    gc.fillStyle = '#44703c'; gc.fillRect(0, 0, S, S);
+    const gcols = ['#3a6334', '#4f7c43', '#5b8a4a', '#33582f', '#668f4e'];
+    for (let i = 0; i < 560; i++) {
+      gc.fillStyle = gcols[Math.floor(rnd() * gcols.length)];
+      wrapRect(gc, Math.floor(rnd() * S), Math.floor(rnd() * S), 2 + Math.floor(rnd() * 3), 1 + Math.floor(rnd() * 2));
+    }
+    const fcols = ['#e9e2c8', '#f2c9d0', '#f0dc7a'];
+    for (let i = 0; i < 9; i++) {
+      gc.fillStyle = fcols[i % 3];
+      wrapRect(gc, Math.floor(rnd() * S), Math.floor(rnd() * S), 2, 2);
+    }
+    gt.refresh();
+
+    // ถนนหินกลม
+    const ct = this.textures.createCanvas('town_cobble', S, S);
+    const cc = ct.getContext('2d');
+    cc.fillStyle = '#4d453a'; cc.fillRect(0, 0, S, S);
+    const scols = ['#8d8473', '#9a917f', '#847b6b', '#a39a88', '#8a806f'];
+    const N = 4, C = S / N;
+    for (let gx = 0; gx < N; gx++) {
+      for (let gy = 0; gy < N; gy++) {
+        const x = gx * C + 2 + Math.floor(rnd() * 3), y = gy * C + 2 + Math.floor(rnd() * 3);
+        const w = C - 5 - Math.floor(rnd() * 3), h = C - 5 - Math.floor(rnd() * 3);
+        cc.fillStyle = scols[Math.floor(rnd() * scols.length)];
+        cc.fillRect(x + 2, y, w - 4, h); cc.fillRect(x, y + 2, w, h - 4); cc.fillRect(x + 1, y + 1, w - 2, h - 2);
+        cc.fillStyle = 'rgba(255,255,255,.18)'; cc.fillRect(x + 3, y + 1, w - 7, 2);       // ไฮไลต์ด้านบน
+        cc.fillStyle = 'rgba(0,0,0,.18)';       cc.fillRect(x + 3, y + h - 2, w - 6, 2);  // เงาด้านล่าง
+      }
+    }
+    for (let i = 0; i < 30; i++) {
+      cc.fillStyle = (i % 2) ? 'rgba(70,110,60,.55)' : 'rgba(0,0,0,.18)';
+      cc.fillRect(Math.floor(rnd() * S), Math.floor(rnd() * S), 2, 2);
+    }
+    ct.refresh();
+  }
+
+  buildGround() {
+    const T = TOWN;
+    this.makeGroundTextures();
+    this.add.tileSprite(0, 0, T.w, T.h, 'town_grass').setOrigin(0).setDepth(0);
+    const edge = this.add.graphics().setDepth(1.5);
+    TOWN_ROADS.forEach(function (r) {
+      this.add.tileSprite(r.x, r.y, r.w, r.h, 'town_cobble').setOrigin(0).setDepth(1);
+      edge.lineStyle(5, 0x3a342b, 0.95).strokeRect(r.x, r.y, r.w, r.h);
+      edge.lineStyle(2, 0x6f9a55, 0.8).strokeRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
+    }, this);
+  }
+
+  // ----- วางอาคาร/พรอพ + สร้างกล่องกั้นการเดิน -----
+  buildLayout() {
+    if (!this.hasAtlas) return;   // ไม่มีไฟล์ภาพ: เหลือแค่พื้น + NPC สำรอง
+    const self = this;
+    const has = function (k) { return !!self.textures.getFrame('town', k); };
+
+    TOWN_BUILDINGS.forEach(function (b) {
+      if (!has(b.k)) return;
+      const s = self.add.image(b.x, b.y, 'town', b.k).setOrigin(0.5, 1);
+      const w = s.displayWidth, h = s.displayHeight, left = b.x - w / 2, top = b.y - h;
+      s.setDepth(b.y - h * (1 - b.foot));
+      b.block.forEach(function (f) {
+        self.blockers.push({ x0: left + f[0] * w, y0: top + f[1] * h, x1: left + f[2] * w, y1: top + f[3] * h });
+      });
+    });
+
+    TOWN_PROPS.forEach(function (p) {
+      if (!has(p.k)) return;
+      const s = self.add.image(p.x, p.y, 'town', p.k).setOrigin(0.5, 1).setDepth(p.bw === undefined ? p.y - 1 : p.y);
+      if (p.flip) s.setFlipX(true);
+      if (p.bw) {
+        self.blockers.push({ x0: p.x - p.bw / 2, y0: p.y - (p.bh || 24), x1: p.x + p.bw / 2, y1: p.y });
+      }
+    });
+  }
+
+  // จุดเท้า (x,y) ชนกล่องกั้นไหม
+  isBlocked(x, y) {
+    const bs = this.blockers;
+    for (let i = 0; i < bs.length; i++) {
+      const b = bs[i];
+      if (x > b.x0 - 6 && x < b.x1 + 6 && y > b.y0 && y < b.y1) return true;
+    }
+    return false;
   }
 
   // ----- แถบปุ่มด้านบน + จอยสติ๊ก (เรียกฟังก์ชันเดิมของ Main) -----
@@ -427,27 +569,46 @@ class Town extends Phaser.Scene {
     this.domCloseBtn(card);
   }
 
+  // ----- NPC: ใช้สไปรต์จากอะตลาส (ไม่มีภาพ = กล่องสีเดิม) | n.x,n.y = จุดเท้า -----
   makeNpc(n) {
     const c = this.add.container(n.x, n.y).setDepth(n.y);
     const g = this.add.graphics();
-    g.fillStyle(0x000000, 0.35).fillEllipse(0, 30, 54, 16);
-    g.fillStyle(n.color, 1).fillRoundedRect(-28, -28, 56, 56, 14);
-    g.lineStyle(4, 0xffffff, 1).strokeRoundedRect(-28, -28, 56, 56, 14);
-    const icon = this.add.text(0, 0, n.icon, { fontSize: '32px' }).setOrigin(0.5);
-    const name = this.add.text(0, -52, n.name, {
-      fontFamily: 'Mitr, sans-serif', fontSize: '16px', color: '#ffe28a', stroke: '#000', strokeThickness: 4,
-    }).setOrigin(0.5);
-    const title = this.add.text(0, 46, n.title, {
-      fontFamily: 'Mitr, sans-serif', fontSize: '13px', color: '#fff', backgroundColor: '#000000aa',
-      padding: { x: 6, y: 2 },
-    }).setOrigin(0.5);
-    c.add([g, icon, name, title]);
-    c.setSize(110, 130);
-    c.setInteractive({ useHandCursor: true });
+    const textStyle = { fontFamily: 'Mitr, sans-serif', fontSize: '16px', color: '#ffe28a', stroke: '#000', strokeThickness: 4 };
+    const titleStyle = { fontFamily: 'Mitr, sans-serif', fontSize: '13px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 6, y: 2 } };
+    let hit;
+
+    if (this.hasAtlas && this.textures.getFrame('town', n.sprite)) {
+      g.fillStyle(0x000000, 0.35).fillEllipse(0, 2, 62, 16);
+      const spr = this.add.image(0, 8, 'town', n.sprite).setOrigin(0.5, 1);
+      const k = this.npcH / spr.height;
+      spr.setScale(k);
+      const w = spr.displayWidth, h = spr.displayHeight;
+      // หายใจเบา ๆ ให้ดูมีชีวิต (ยืดจากเท้า)
+      this.tweens.add({
+        targets: spr, scaleY: k * 1.018, yoyo: true, repeat: -1,
+        duration: 950 + Math.floor(Math.random() * 400), ease: 'Sine.easeInOut',
+      });
+      const name = this.add.text(0, 8 - h - 14, n.name, textStyle).setOrigin(0.5);
+      const title = this.add.text(0, 26, n.title, titleStyle).setOrigin(0.5);
+      c.add([g, spr, name, title]);
+      hit = new Phaser.Geom.Rectangle(-w / 2 - 12, 8 - h - 28, w + 24, h + 56);
+    } else {
+      g.fillStyle(0x000000, 0.35).fillEllipse(0, 30, 54, 16);
+      g.fillStyle(n.color, 1).fillRoundedRect(-28, -28, 56, 56, 14);
+      g.lineStyle(4, 0xffffff, 1).strokeRoundedRect(-28, -28, 56, 56, 14);
+      const icon = this.add.text(0, 0, n.icon, { fontSize: '32px' }).setOrigin(0.5);
+      const name = this.add.text(0, -52, n.name, textStyle).setOrigin(0.5);
+      const title = this.add.text(0, 46, n.title, titleStyle).setOrigin(0.5);
+      c.add([g, icon, name, title]);
+      hit = new Phaser.Geom.Rectangle(-55, -65, 110, 130);
+    }
+
+    c.setSize(hit.width, hit.height);
+    c.setInteractive({ hitArea: hit, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
     c.on('pointerdown', function () {
       if (this.modal) return;
       const p = this.player;
-      if (Math.hypot(n.x - p.x, n.y - p.y) < 150) this.talk(n);
+      if (Math.hypot(n.x - p.x, n.y - (p.y + 20)) < 150) this.talk(n);
       else this.flash('เดินเข้าไปใกล้ ๆ ก่อน');
     }, this);
     return c;
@@ -478,9 +639,13 @@ class Town extends Phaser.Scene {
     }
 
     if (vx || vy) {
-      p.x = Phaser.Math.Clamp(p.x + vx * T.speed * dt, 20, T.w - 20);
-      p.y = Phaser.Math.Clamp(p.y + vy * T.speed * dt, 20, T.h - 20);
-      p.setDepth(p.y);
+      const FEET = 20;   // จุดเท้าอยู่ต่ำกว่ากึ่งกลางตัวละคร
+      const nx = Phaser.Math.Clamp(p.x + vx * T.speed * dt, 20, T.w - 20);
+      const ny = Phaser.Math.Clamp(p.y + vy * T.speed * dt, 20, T.h - 24);
+      const stuck = this.isBlocked(p.x, p.y + FEET);          // เผื่อเกิดทับกล่องกั้น: ให้เดินออกได้อิสระ
+      if (stuck || !this.isBlocked(nx, p.y + FEET)) p.x = nx;
+      if (stuck || !this.isBlocked(p.x, ny + FEET)) p.y = ny;  // แยกแกน = ไถลไปตามขอบอาคารได้
+      p.setDepth(p.y + FEET);
     }
 
     // อนิเมชันเดิน/ยืน (HeroAnims จาก heroAnims.js)
@@ -494,7 +659,7 @@ class Town extends Phaser.Scene {
 
     if (this.pending) {
       const n = this.pending;
-      if (Math.hypot(n.x - p.x, n.y - p.y) < 110) {
+      if (Math.hypot(n.x - p.x, n.y - (p.y + 20)) < 110) {
         this.pending = null; this.target = null;
         this.talk(n);
       }
