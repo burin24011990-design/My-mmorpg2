@@ -1,6 +1,7 @@
-// functions/econ.js — กล่องเงิน + กระเป๋าทองฝั่งเซิร์ฟเวอร์
+// functions/econ.js — กล่องเงิน + กระเป๋าทองฝั่งเซิร์ฟเวอร์ (v2)  (บันทึกไว้เป็น functions/econ.js)
 // ใน functions/index.js ต้องมี:  Object.assign(exports, require('./econ'));
 // ชื่อฟังก์ชันต้องไม่ซ้ำกับของตลาด (ตลาดใช้ getWallet, listItem, buyItem, ... อยู่แล้ว)
+// v2: importGold — บัญชีที่สร้างหลัง NEW_ACCOUNT_FROM ย้ายทองจากเครื่องขึ้นเซิร์ฟเวอร์ได้ไม่เกิน NEW_ACCOUNT_IMPORT_CAP
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -13,7 +14,6 @@ const REGION = 'asia-southeast1';
 const ENFORCE_APP_CHECK = false;
 const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };
 // redeploy
-// <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
 const DAY = 24 * 3600000;
 
 const COLORS = ['blue', 'red', 'gold'];
@@ -31,8 +31,12 @@ const MAX_REPORT_KILLS = 150;
 const DAY_CAP = { blue: 3000, red: 800, gold: 80 };
 
 // ----- กระเป๋าทอง -----
-const IMPORT_CAP = 1000000000;   // ทองสูงสุดที่ย้ายขึ้นเซิร์ฟเวอร์ "ครั้งเดียว" ตั้งให้มากกว่าผู้เล่นจริงที่รวยสุด
-const GAIN_ENFORCE = false;      // false = แค่จดบันทึกทองที่เพิ่มผิดปกติ | true = ตัดส่วนเกินทิ้ง (เปิดหลังย้ายตลาดมาเครดิตที่เซิร์ฟเวอร์)
+const IMPORT_CAP = 1000000000;   // ทองสูงสุดที่ย้ายขึ้นเซิร์ฟเวอร์ "ครั้งเดียว" สำหรับบัญชีเก่า (ลดลงให้ใกล้ทองสูงสุดของผู้เล่นจริงได้)
+// บัญชีที่สร้างตั้งแต่วันนี้เป็นต้นไป: ย้ายทองจากเครื่องได้น้อยกว่ามาก (กันสร้างบัญชีใหม่แล้วแก้เซฟเสกทองก้อนใหญ่)
+// ผู้เล่นเก่าที่มีบัญชีอยู่แล้วไม่โดนผลกระทบ | ปรับวันที่ให้เป็นวันที่คุณ deploy ไฟล์นี้
+const NEW_ACCOUNT_FROM = Date.parse('2026-10-07T00:00:00+07:00');
+const NEW_ACCOUNT_IMPORT_CAP = 3000000;
+const GAIN_ENFORCE = false;      // false = แค่จดบันทึกทองที่เพิ่มผิดปกติ | true = ตัดส่วนเกินทิ้ง (เปิดหลังดู econ_audit แล้วปรับ GAIN_PER_MIN)
 const GAIN_PER_MIN = 3000000;    // ทองที่ได้เพิ่มต่อนาทีที่ยอมรับ (ดูตัวเลขจริงจาก econ_audit แล้วปรับ)
 const GAIN_START = 5000000;      // โควตาตอนเริ่ม
 const GAIN_MAX = 50000000;       // สะสมโควตาได้สูงสุด
@@ -160,20 +164,29 @@ exports.getGoldWallet = onCall(OPT, async (req) => {
   return { imported: !!e.goldImported, gold: e.gold || 0 };
 });
 
-// ย้ายทองในเครื่องขึ้นเซิร์ฟเวอร์ "ครั้งเดียวต่อบัญชี" (เชื่อค่าจากเครื่องครั้งนี้ครั้งเดียว จึงมีเพดาน IMPORT_CAP)
+// ย้ายทองในเครื่องขึ้นเซิร์ฟเวอร์ "ครั้งเดียวต่อบัญชี" (เชื่อค่าจากเครื่องครั้งนี้ครั้งเดียว จึงมีเพดาน)
 exports.importGold = onCall(OPT, async (req) => {
   const uid = googleUid(req);
   const amt = Math.floor(Number((req.data || {}).amount));
   if (!Number.isFinite(amt) || amt < 0) bad('จำนวนไม่ถูกต้อง');
+
+  // บัญชีใหม่ (สร้างหลัง NEW_ACCOUNT_FROM) ได้เพดานต่ำกว่า
+  let cap = IMPORT_CAP;
+  try {
+    const u = await admin.auth().getUser(uid);
+    const created = Date.parse(u.metadata.creationTime);
+    if (isFinite(created) && created >= NEW_ACCOUNT_FROM) cap = Math.min(cap, NEW_ACCOUNT_IMPORT_CAP);
+  } catch (e) {}
+
   const ref = db.collection('econ').doc(uid);
   const now = Date.now();
   return db.runTransaction(async (tx) => {
     const s = await tx.get(ref);
     const e = s.exists ? s.data() : {};
     if (e.goldImported) return { imported: true, gold: e.gold || 0, first: false };
-    const g = Math.min(amt, IMPORT_CAP);
+    const g = Math.min(amt, cap);
     tx.set(ref, { gold: g, goldImported: true, goldImportedAt: now }, { merge: true });
-    tx.set(db.collection('econ_audit').doc(), { at: now, uid: uid, type: 'import', asked: amt, gold: g });
+    tx.set(db.collection('econ_audit').doc(), { at: now, uid: uid, type: 'import', asked: amt, gold: g, cap: cap });
     return { imported: true, gold: g, first: true };
   });
 });
