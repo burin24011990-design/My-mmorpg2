@@ -1,444 +1,608 @@
-// functions/market.js — ตลาดกลาง v3 (กันเปิดหลายบัญชีปั๊มของเข้าตัวหลัก)
-// ใน functions/index.js ต้องมี:  Object.assign(exports, require('./market'));
-//
-// ของเดิม v2 (ยังอยู่ครบ): ตั๋วลงขาย, โควตาลงขาย, เพดานราคา, ผู้ขายนิรนาม, audit, คืนของหมดอายุ
-// เพิ่มใน v3:
-//  A) ราคาขั้นต่ำ (กันโอนของฟรี/ราคา 1 ทอง)
-//  B) จำกัดจำนวน "คู่ค้าต่างคน" ต่อวัน (ตัวหลักรับของจากหลายบัญชีไม่ได้)
-//  C) เพดานยอดซื้อ/ขายรวมต่อ 7 วัน
-//  D) กันเทรดย้อนกลับ A->B แล้ว B->A (ล้างของวนกัน)
-//  E) เทียบ IP: ผู้ซื้อ/ผู้ขายเคยใช้ IP เดียวกันภายใน 7 วัน = บล็อก + บันทึก flag
-//  F) ของที่ได้จากการซื้อเข้ากล่องแบบ "พักไว้" (hold) ให้มีเวลาตรวจ/แบนก่อนรับได้
-//  G) reqId กันเครดิต/ลงขาย/ซื้อซ้ำเมื่อเน็ตหลุดแล้วยิงใหม่ (กันบั๊กของหาย/ของเบิ้ล)
-//  H) ยอมรับเฉพาะ provider google.com (เดิมกันแค่ anonymous)
-//  I) market_flags (ให้คุณตรวจ) + adminBan (แบน/อายัดกล่องรับ)
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
-const crypto = require('crypto');
-if (!admin.apps.length) admin.initializeApp();
-const db = admin.firestore();
-const FV = admin.firestore.FieldValue;
+// ===== ตลาดกลาง (js/market.js) v6 — ผูกกับ NPC id 'market' ใน town.js =====
+// ต้องโหลดหลัง town.js และหลัง firebase-functions-compat.js
+// ฟีเจอร์: หมวดหมู่ + ค้นหา + เรียงราคา | ขายได้เฉพาะของแรร์ | ตั๋วลงขาย (เก็บที่เซิร์ฟเวอร์) | ผู้ขายนิรนาม
+// v6: หน้าต่างตั้งจำนวน/ราคาแบบใหม่ (แทน prompt) มีปุ่ม +/- , MAX, ปุ่มลัดราคา, สรุปภาษี/ตั๋วแบบสด
+// กฎ/เพดานราคาทั้งหมดอ่านมาจากเซิร์ฟเวอร์ (getWallet → rules) จึงแก้ที่ functions/market.js ที่เดียว
+(function () {
+  const REGION = 'asia-southeast1';   // ต้องตรงกับ functions/market.js
+  const SHOW_LIMIT = 100;             // แสดงสูงสุดกี่รายการในหน้าซื้อ
+  const BUY_TICKET_URL = '';          // หน้าชำระเงินสำหรับซื้อตั๋ว (ว่าง = ยังไม่เปิดขาย)
+  const TIER_RANK = ['white', 'blue', 'red', 'gold'];
 
-// ---------- ค่าที่ปรับได้ ----------
-const REGION = 'asia-southeast1';            // ต้องตรงกับ REGION ใน js/market.js
-const ENFORCE_APP_CHECK = false;             // เปิดเป็น true หลังตั้งค่า Firebase App Check ฝั่งเกมแล้ว
-const TAX = 0.05;
-const HOUR = 3600000;
-const DAY = 24 * HOUR;
-const WEEK = 7 * DAY;
-const DAILY_LIMIT = 6;                       // ลงขายได้กี่รายการต่อ 24 ชม.
-const LIST_HOURS = 24;                       // อายุรายการ
-const MIN_LIST_GAP_MS = 20000;               // ลงขายห่างกันอย่างน้อย
-const MAX_PRICE = 9999999;                   // ราคารวมสูงสุดต่อรายการ
-const MIN_PRICE_RATIO = 0.10;                // ราคาต่อชิ้นต้องไม่ต่ำกว่า 10% ของเพดานไอเทมนั้น
-const BUY_DAILY_GOLD = 20000000;             // ยอดซื้อรวมสูงสุดต่อ 24 ชม.
-const BUY_WEEKLY_GOLD = 60000000;            // ยอดซื้อรวมสูงสุดต่อ 7 วัน
-const SELL_WEEKLY_GOLD = 60000000;           // ยอดขายรวมสูงสุดต่อ 7 วัน (กันตัวหลักรับทองจากหลายบัญชี)
-const PAIR_LIMIT = 2;                        // ซื้อจากผู้ขายคนเดิมได้กี่ครั้งต่อ 24 ชม.
-const MAX_SELLERS_DAY = 4;                   // ซื้อจากผู้ขายต่างคนได้กี่คนต่อ 24 ชม.
-const MAX_BUYERS_DAY = 4;                    // ขายให้ผู้ซื้อต่างคนได้กี่คนต่อ 24 ชม.
-const REVERSE_BLOCK_MS = 72 * HOUR;          // เคยขายให้เขา -> ซื้อจากเขากลับไม่ได้ภายในเวลานี้
-const BLOCK_SHARED_IP = true;                // บล็อกคู่ซื้อ-ขายที่เคยใช้ IP เดียวกันใน 7 วัน (เน็ตมือถือ CGNAT อาจชนกันได้บ้าง ปิดได้)
-const IP_FLAG_UIDS = 3;                      // IP เดียวมีกี่บัญชีใน 7 วัน ถึงบันทึก flag (ไม่บล็อก)
-const HOLD_MS = 30 * 60000;                  // พักของ/ทองที่ได้จากตลาดก่อนรับได้ (ปกติ)
-const HOLD_HIGH_MS = 12 * HOUR;              // พักนานขึ้น: ของแพง หรือผู้ซื้ออายุบัญชีน้อย
-const MIN_AGE_H = 72;                        // อายุบัญชีขั้นต่ำเพื่อใช้ตลาด (ชม.)
-const HIGH_VALUE = 5000000;                  // รายการราคาตั้งแต่นี้ถือเป็นของแพง
-const HIGH_VALUE_AGE_H = 168;                // อายุบัญชีขั้นต่ำสำหรับของแพง (ชม.)
-const STONE_STACK = 9999;                    // ต้องตรงกับ MAX_STONE_STACK ในเกม
-const IP_SALT = 'x7Kq2mVd9RtLp4Zw8NcB1yHs5Fg3JaUe';   // <-- แก้ (ใช้แฮช IP ไม่เก็บ IP ดิบ) ห้ามเปลี่ยนบ่อย เพราะข้อมูล IP เก่าจะใช้เทียบไม่ได้
-const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan  เช่น ['abc123...']
-
-const TICKET_MAX = { 1: 2000000, 2: 5000000, 3: MAX_PRICE };
-const TIERS = ['white', 'blue', 'red', 'gold'];
-const SLOTS = ['weapon', 'helmet', 'armor', 'gloves', 'shoes', 'ring', 'necklace'];
-const WEAPON_CLASSES = ['sword', 'mage', 'archer', 'priest', 'rogue'];
-const OPT_COLORS = ['red', 'green', 'purple', 'yellow'];
-
-const CAP = {
-  box:   { white: 300000, blue: 1000000, red: 3000000, gold: 9999999 },
-  equip: { white: 500000, blue: 1500000, red: 4000000, gold: 9999999 },
-  equipPlusBonus: 0.10, equipStarBonus: 0.15,
-  optstone: 150000, cleanstone: 200000,
-  stone: 1000,
-  book: 3000000
-};
-const RULES = { dailyLimit: DAILY_LIMIT, listHours: LIST_HOURS, maxPrice: MAX_PRICE, tax: TAX, stoneStack: STONE_STACK, ticketMax: TICKET_MAX, cap: CAP, minPriceRatio: MIN_PRICE_RATIO };
-
-const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 3 };   // <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
-
-// ---------- ตัวช่วย ----------
-function bad(msg) { throw new HttpsError('invalid-argument', msg); }
-function authOnly(req) {
-  if (!req.auth) throw new HttpsError('unauthenticated', 'ต้องล็อกอินด้วย Google ก่อน');
-  return req.auth.uid;
-}
-function tierOfItem(it) { return TIERS.indexOf(it.tier) >= 0 ? it.tier : 'white'; }
-function ticketFor(price) { return price <= TICKET_MAX[1] ? 1 : (price <= TICKET_MAX[2] ? 2 : 3); }
-function sig(it) { return [it.kind, it.tier || '', it.level || '', it.baseSlot || it.color || it.sid || ''].join(':'); }
-function audit(tx, rec) { tx.set(db.collection('market_audit').doc(), Object.assign({ at: Date.now() }, rec)); }
-function sum(a) { return a.reduce(function (x, y) { return x + y.amt; }, 0); }
-function cleanReq(v) { const s = String(v || ''); return /^[A-Za-z0-9_-]{8,64}$/.test(s) ? s : ''; }
-
-// บันทึกเหตุน่าสงสัยให้เจ้าของเกมตรวจ (ดูที่ Firestore > market_flags) — ห้ามทำให้ฟังก์ชันหลักล้ม
-async function flag(uid, type, data) {
-  try { await db.collection('market_flags').add(Object.assign({ at: Date.now(), uid: uid, type: type }, data || {})); } catch (e) {}
-}
-
-// IP -> แฮช (IPv6 ใช้แค่ 4 ส่วนแรก เพราะมือถือเปลี่ยนท้ายที่อยู่ตลอด)
-function ipHash(req) {
-  let ip = String((req.rawRequest && req.rawRequest.ip) || 'unknown').replace(/^::ffff:/, '');
-  if (ip.indexOf(':') >= 0 && ip.indexOf('.') < 0) ip = ip.split(':').slice(0, 4).join(':');
-  return crypto.createHash('sha256').update(IP_SALT + ip).digest('hex').slice(0, 24);
-}
-
-// จดว่าบัญชีนี้ใช้ IP นี้ (เก็บ 7 วัน) และ flag ถ้า IP เดียวมีหลายบัญชี
-async function touchIp(uid, h) {
-  const now = Date.now();
-  const linkRef = db.collection('market_links').doc(uid);
-  const ipRef = db.collection('market_ips').doc(h);
-  const [ls, is] = await Promise.all([linkRef.get(), ipRef.get()]);
-  const ips = ls.exists ? (ls.data().ips || {}) : {};
-  const u = is.exists ? (is.data().u || {}) : {};
-  const isNew = !(u[uid] > now - WEEK);
-  Object.keys(ips).forEach(function (k) { if (!(ips[k] > now - WEEK)) delete ips[k]; });
-  Object.keys(u).forEach(function (k) { if (!(u[k] > now - WEEK)) delete u[k]; });
-  ips[h] = now; u[uid] = now;
-  await Promise.all([linkRef.set({ ips: ips }), ipRef.set({ u: u })]);
-  if (isNew && Object.keys(u).length >= IP_FLAG_UIDS) await flag(uid, 'ip_many_accounts', { ip: h, uids: Object.keys(u) });
-}
-
-// ตรวจก่อนใช้ตลาด: ต้องเป็น Google, ตลาดเปิด, ไม่ถูกแบน, อายุบัญชีพอ
-async function guard(req, minAgeH) {
-  const uid = authOnly(req);
-  const prov = req.auth.token && req.auth.token.firebase && req.auth.token.firebase.sign_in_provider;
-  if (prov !== 'google.com') throw new HttpsError('permission-denied', 'ต้องล็อกอินด้วย Google ก่อนใช้ตลาด');
-  const [cfg, ban, user] = await Promise.all([
-    db.collection('market_config').doc('main').get(),
-    db.collection('market_bans').doc(uid).get(),
-    admin.auth().getUser(uid)
-  ]);
-  if (cfg.exists && cfg.data().enabled === false) throw new HttpsError('failed-precondition', 'ตลาดปิดปรับปรุงชั่วคราว');
-  if (ban.exists) throw new HttpsError('permission-denied', 'บัญชีนี้ถูกจำกัดการใช้ตลาด');
-  const created = Date.parse(user.metadata.creationTime);
-  const ageH = isFinite(created) ? (Date.now() - created) / HOUR : 0;
-  const need = minAgeH === undefined ? MIN_AGE_H : minAgeH;
-  if (ageH < need) throw new HttpsError('failed-precondition', 'บัญชีใหม่ใช้ตลาดได้เมื่อสร้างครบ ' + Math.ceil(need) + ' ชม. (อีก ' + Math.ceil(need - ageH) + ' ชม.)');
-  const h = ipHash(req);
-  await touchIp(uid, h);
-  return { uid: uid, ageH: ageH, ipH: h };
-}
-
-function validateItem(raw) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) bad('ไอเทมไม่ถูกต้อง');
-  const json = JSON.stringify(raw);
-  if (json.length > 2000) bad('ไอเทมไม่ถูกต้อง');
-  const it = JSON.parse(json);
-  const int = function (v, lo, hi) { return Number.isInteger(v) && v >= lo && v <= hi; };
-  if (it.tier !== undefined && TIERS.indexOf(it.tier) < 0) bad('ไอเทมไม่ถูกต้อง');
-  if (it.opts !== undefined && (!Array.isArray(it.opts) || it.opts.length > 10)) bad('ไอเทมไม่ถูกต้อง');
-  switch (it.kind) {
-    case 'equip':
-      if (SLOTS.indexOf(it.baseSlot) < 0 || !int(it.level, 1, 300) || !int(it.star, 0, 50)) bad('อุปกรณ์ไม่ถูกต้อง');
-      if (it.plus !== undefined && !int(it.plus, 0, 100)) bad('อุปกรณ์ไม่ถูกต้อง');
-      if (it.baseSlot === 'weapon' && WEAPON_CLASSES.indexOf(it.class) < 0) bad('อุปกรณ์ไม่ถูกต้อง');
-      if (it.count !== undefined) bad('อุปกรณ์ไม่ถูกต้อง');
-      break;
-    case 'box':
-      if (!int(it.level, 1, 300) || !int(it.count, 1, 999)) bad('กล่องไม่ถูกต้อง');
-      break;
-    case 'stone':
-      if (it.count !== STONE_STACK) bad('หินตีบวกต้องขายยกกองเต็ม ' + STONE_STACK + ' ก้อน');
-      break;
-    case 'cleanstone':
-      if (!int(it.count, 1, 9999)) bad('จำนวนไม่ถูกต้อง');
-      break;
-    case 'optstone':
-      if (OPT_COLORS.indexOf(it.color) < 0 || !int(it.count, 1, 9999)) bad('หินออฟไม่ถูกต้อง');
-      break;
-    case 'skillbook':
-      if (typeof it.sid !== 'string' || !it.sid || it.sid.length > 40 || !int(it.count, 1, 999)) bad('สมุดสกิลไม่ถูกต้อง');
-      break;
-    default:
-      bad('ไอเทมชนิดนี้ขายในตลาดไม่ได้');
+  // หมวดหมู่ในหน้าซื้อ
+  const CATS = [
+    { id: 'all', name: 'ทั้งหมด' },
+    { id: 'box', name: '📦 กล่อง' },
+    { id: 'equip', name: '⚔️ อุปกรณ์' },
+    { id: 'gem', name: '💎 อัญมณี' },
+    { id: 'stone', name: '🪨 หินตีบวก' },
+    { id: 'book', name: '📖 สมุดสกิล' },
+    { id: 'other', name: 'อื่นๆ' }
+  ];
+  function categoryOf(it) {
+    if (!it) return 'other';
+    if (it.kind === 'box') return 'box';
+    if (it.kind === 'equip') return 'equip';
+    if (it.kind === 'optstone' || it.kind === 'cleanstone') return 'gem';   // หินสุ่มออฟ / หินลบออฟ = อัญมณี
+    if (it.kind === 'stone') return 'stone';
+    if (it.kind === 'skillbook') return 'book';
+    return 'other';
   }
-  if ((it.kind === 'box' || it.kind === 'equip') && TIERS.indexOf(tierOfItem(it)) < 2) bad('ขายได้เฉพาะสีแดงขึ้นไป');
-  return it;
-}
 
-function maxUnitPrice(it) {
-  const t = tierOfItem(it);
-  let c;
-  if (it.kind === 'box') c = CAP.box[t];
-  else if (it.kind === 'equip') c = CAP.equip[t] * (1 + CAP.equipPlusBonus * (it.plus || 0) + CAP.equipStarBonus * (it.star || 0));
-  else if (it.kind === 'optstone') c = CAP.optstone;
-  else if (it.kind === 'cleanstone') c = CAP.cleanstone;
-  else if (it.kind === 'stone') c = CAP.stone;
-  else c = CAP.book;
-  return Math.min(MAX_PRICE, Math.floor(c));
-}
+  // ---------- กฎจากเซิร์ฟเวอร์ (R = rules) ----------
+  function tierKey(it) { return (typeof tierOf === 'function') ? tierOf(it) : (it.tier || 'white'); }
+  function sellBlock(it, R) {          // เหตุผลที่ขายไม่ได้ หรือ '' ถ้าขายได้
+    if (!it) return 'ขายไม่ได้';
+    if (it.kind === 'box' || it.kind === 'equip') return TIER_RANK.indexOf(tierKey(it)) >= 2 ? '' : 'ขายได้เฉพาะสีแดงขึ้นไป';
+    if (it.kind === 'optstone' || it.kind === 'cleanstone' || it.kind === 'skillbook') return '';
+    if (it.kind === 'stone') return (it.count || 1) >= R.stoneStack ? '' : 'หินตีบวกต้องเป็นกองเต็ม ' + R.stoneStack.toLocaleString() + ' ก้อน';
+    return 'ไอเทมชนิดนี้ขายในตลาดไม่ได้';
+  }
+  function maxUnitPrice(it, R) {
+    const C = R.cap, t = tierKey(it);
+    let c;
+    if (it.kind === 'box') c = C.box[t];
+    else if (it.kind === 'equip') c = C.equip[t] * (1 + C.equipPlusBonus * (it.plus || 0) + C.equipStarBonus * (it.star || 0));
+    else if (it.kind === 'optstone') c = C.optstone;
+    else if (it.kind === 'cleanstone') c = C.cleanstone;
+    else if (it.kind === 'stone') c = C.stone;
+    else c = C.book;
+    return Math.min(R.maxPrice, Math.floor(c));
+  }
+  function minUnitPrice(it, R) {       // ราคาต่ำสุดต่อชิ้น (ตรงกับฝั่งเซิร์ฟเวอร์)
+    return Math.max(1, Math.floor(maxUnitPrice(it, R) * (R.minPriceRatio || 0)));
+  }
+  function ticketFor(R, total) { return total <= R.ticketMax[1] ? 1 : (total <= R.ticketMax[2] ? 2 : 3); }
+  function ticketName(R, tk) {
+    return 'ตั๋วลงขาย (ไม่เกิน ' + (tk === 3 ? R.maxPrice.toLocaleString() : (R.ticketMax[tk] / 1000000) + ' ล้าน') + ')';
+  }
 
-// ---------- ข้อมูลของฉัน ----------
-exports.getWallet = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const [w, l] = await Promise.all([
-    db.collection('market_wallets').doc(uid).get(),
-    db.collection('market_limits').doc(uid).get()
-  ]);
-  const now = Date.now();
-  const ld = l.exists ? l.data() : {};
-  const times = (ld.times || []).filter(function (t) { return t > now - LIST_HOURS * HOUR; });
-  const spent = (ld.buys || []).filter(function (b) { return b.t > now - DAY; }).reduce(function (a, b) { return a + b.amt; }, 0);
-  return {
-    tickets: (w.exists && w.data().tickets) || {},
-    listedToday: times.length, dailyLimit: DAILY_LIMIT,
-    boughtToday: spent, buyDailyGold: BUY_DAILY_GOLD,
-    rules: RULES
-  };
-});
+  let fns = null;
+  function call(name, data) {
+    if (!fns) fns = firebase.app().functions(REGION);
+    return fns.httpsCallable(name)(data || {}).then(function (r) { return r.data; });
+  }
+  function errMsg(e) { return (e && e.message) ? e.message : 'เกิดข้อผิดพลาด'; }
 
-exports.myListings = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const q = await db.collection('market_private').where('sellerId', '==', uid).where('status', '==', 'active').limit(50).get();
-  if (q.empty) return { listings: [] };
-  const snaps = await db.getAll.apply(db, q.docs.map(function (d) { return db.collection('market_listings').doc(d.id); }));
-  return {
-    listings: snaps.filter(function (s) { return s.exists; })
-      .map(function (s) { const d = s.data(); return { id: s.id, item: d.item, price: d.price, expiresAt: d.expiresAt }; })
-  };
-});
-
-// ---------- ตั๋ว ----------
-async function creditTickets(uid, tk, n, payId) {
-  if (!uid || !(tk >= 1 && tk <= 3) || !Number.isInteger(n) || n < 1 || n > 1000) throw new HttpsError('invalid-argument', 'ข้อมูลไม่ถูกต้อง');
-  await db.runTransaction(async (tx) => {
-    if (payId) {
-      const pref = db.collection('market_payments').doc(payId);
-      const ps = await tx.get(pref);
-      if (ps.exists) return;
-      tx.set(pref, { uid: uid, tk: tk, n: n, at: Date.now() });
-    }
-    tx.set(db.collection('market_wallets').doc(uid), { tickets: { [tk]: FV.increment(n) } }, { merge: true });
-    audit(tx, { type: 'ticket_credit', uid: uid, tk: tk, n: n, payId: payId || '' });
-  });
-}
-
-exports.adminGrantTickets = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  if (ADMIN_UIDS.indexOf(uid) < 0) throw new HttpsError('permission-denied', 'ไม่มีสิทธิ์');
-  const d = req.data || {};
-  await creditTickets(String(d.target || ''), Number(d.tk), Number(d.n), d.ref ? String(d.ref) : '');
-  return { ok: true };
-});
-
-// แบน/อายัด: { target: uid, on: true|false, freeze: true|false, note }
-//  on:true  = ใช้ตลาดไม่ได้ | freeze:true (ค่าเริ่มต้น) = รับของจากกล่องไม่ได้ด้วย | on:false = ปลดแบน
-exports.adminBan = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  if (ADMIN_UIDS.indexOf(uid) < 0) throw new HttpsError('permission-denied', 'ไม่มีสิทธิ์');
-  const d = req.data || {};
-  const target = String(d.target || '');
-  if (!target) bad('ไม่มี target');
-  const ref = db.collection('market_bans').doc(target);
-  if (d.on === false) await ref.delete();
-  else await ref.set({ freeze: d.freeze !== false, at: Date.now(), by: uid, note: String(d.note || '').slice(0, 200) });
-  return { ok: true };
-});
-
-// ---------- ลงขาย ----------
-exports.listItem = onCall(OPT, async (req) => {
-  authOnly(req);
-  const d = req.data || {};
-  const item = validateItem(d.item);
-  const price = d.price;
-  if (!Number.isInteger(price) || price < 1 || price > MAX_PRICE) bad('ราคาไม่ถูกต้อง (สูงสุด ' + MAX_PRICE.toLocaleString() + ')');
-  const qty = item.count === undefined ? 1 : item.count;
-  const cap = maxUnitPrice(item);
-  if (Math.ceil(price / qty) > cap) bad('ราคาต่อชิ้นสูงเกินเพดานของไอเทมนี้ (สูงสุด ' + cap.toLocaleString() + ')');
-  const floor = Math.max(1, Math.floor(cap * MIN_PRICE_RATIO));
-  if (price < floor * qty) bad('ราคาต่ำเกินไป (ต่ำสุดชิ้นละ ' + floor.toLocaleString() + ')');
-
-  const g = await guard(req, price >= HIGH_VALUE ? HIGH_VALUE_AGE_H : MIN_AGE_H);
-  const uid = g.uid;
-  const reqId = cleanReq(d.reqId);
-  const reqRef = reqId ? db.collection('market_reqs').doc(uid + '_' + reqId) : null;
-  const tk = ticketFor(price);
-  const walletRef = db.collection('market_wallets').doc(uid);
-  const limitRef = db.collection('market_limits').doc(uid);
-  const pubRef = db.collection('market_listings').doc();
-  const privRef = db.collection('market_private').doc(pubRef.id);
-  const now = Date.now();
-
-  return db.runTransaction(async (tx) => {
-    const r = await Promise.all([tx.get(walletRef), tx.get(limitRef), reqRef ? tx.get(reqRef) : null]);
-    const w = r[0], l = r[1], dup = r[2];
-    if (dup && dup.exists) return { id: dup.data().listingId, expiresAt: dup.data().expiresAt, dup: true };   // ยิงซ้ำ: ลงไปแล้ว ไม่หักตั๋วซ้ำ
-    const tickets = (w.exists && w.data().tickets) || {};
-    if (!(tickets[tk] > 0)) throw new HttpsError('failed-precondition', 'ต้องมีตั๋วลงขายระดับ ' + tk + ' (ราคาไม่เกิน ' + TICKET_MAX[tk].toLocaleString() + ')');
-    const times = ((l.exists && l.data().times) || []).filter(function (t) { return t > now - LIST_HOURS * HOUR; });
-    if (times.length >= DAILY_LIMIT) throw new HttpsError('resource-exhausted', 'ลงขายครบ ' + DAILY_LIMIT + ' รายการใน 24 ชม. แล้ว');
-    if (times.length && now - times[times.length - 1] < MIN_LIST_GAP_MS) throw new HttpsError('resource-exhausted', 'ลงขายถี่เกินไป รอสักครู่');
-    times.push(now);
-    const expiresAt = now + LIST_HOURS * HOUR;
-    tx.update(walletRef, { ['tickets.' + tk]: FV.increment(-1) });
-    tx.set(limitRef, { times: times }, { merge: true });
-    tx.set(pubRef, { item: item, price: price, status: 'active', createdAt: FV.serverTimestamp(), expiresAt: expiresAt });
-    tx.set(privRef, { sellerId: uid, status: 'active', createdAt: now });
-    if (reqRef) tx.set(reqRef, { at: now, listingId: pubRef.id, expiresAt: expiresAt, expireAt: new Date(now + 2 * DAY) });
-    audit(tx, { type: 'list', uid: uid, listingId: pubRef.id, price: price, sig: sig(item), qty: qty, tk: tk, ip: g.ipH });
-    return { id: pubRef.id, expiresAt: expiresAt };
-  });
-});
-
-// ---------- ซื้อ ----------
-// ข้อความปฏิเสธทุกกรณีของด่านกันปั๊มเป็นข้อความกลางเดียวกัน ไม่บอกว่าติดเงื่อนไขไหน/ผู้ขายเป็นใคร
-const NEUTRAL = 'ซื้อรายการนี้ไม่ได้ในขณะนี้';
-
-exports.buyItem = onCall(OPT, async (req) => {
-  const g = await guard(req);
-  const uid = g.uid;
-  const d = req.data || {};
-  const id = String(d.id || '');
-  if (!id) throw new HttpsError('invalid-argument', 'ไม่มี id');
-  const reqId = cleanReq(d.reqId);
-  const reqRef = reqId ? db.collection('market_reqs').doc(uid + '_' + reqId) : null;
-  const pubRef = db.collection('market_listings').doc(id);
-  const privRef = db.collection('market_private').doc(id);
-  const limitRef = db.collection('market_limits').doc(uid);
-  const myLinkRef = db.collection('market_links').doc(uid);
-  let pendingFlag = null;
-
-  try {
-    await db.runTransaction(async (tx) => {
-      pendingFlag = null;
-      const first = await Promise.all([tx.get(pubRef), tx.get(privRef), reqRef ? tx.get(reqRef) : null]);
-      const pub = first[0], priv = first[1], dup = first[2];
-      if (dup && dup.exists) return;                                  // ยิงซ้ำ: ซื้อสำเร็จไปแล้ว
-      if (!pub.exists || !priv.exists || pub.data().status !== 'active') throw new HttpsError('not-found', 'สินค้านี้ถูกขายหรือยกเลิกแล้ว');
-      const L = pub.data(), P = priv.data();
-      const sellerId = P.sellerId;
-      if (sellerId === uid) throw new HttpsError('failed-precondition', 'ซื้อของตัวเองไม่ได้');
-      if (L.expiresAt && L.expiresAt <= Date.now()) throw new HttpsError('failed-precondition', 'รายการนี้หมดอายุแล้ว');
-      if (L.price >= HIGH_VALUE && g.ageH < HIGH_VALUE_AGE_H) throw new HttpsError('failed-precondition', 'ของราคานี้ต้องใช้บัญชีที่สร้างครบ ' + HIGH_VALUE_AGE_H + ' ชม.');
-
-      const pairRef = db.collection('market_pairs').doc(sellerId + '_' + uid);
-      const revRef = db.collection('market_pairs').doc(uid + '_' + sellerId);
-      const sLimRef = db.collection('market_limits').doc(sellerId);
-      const sLinkRef = db.collection('market_links').doc(sellerId);
-      const r = await Promise.all([tx.get(limitRef), tx.get(pairRef), tx.get(revRef), tx.get(sLimRef), tx.get(myLinkRef), tx.get(sLinkRef)]);
-      const lim = r[0], pr = r[1], rv = r[2], slim = r[3], myLink = r[4], sLink = r[5];
-      const now = Date.now();
-      const block = function (type, extra) {
-        pendingFlag = Object.assign({ type: type, uid: uid, sellerId: sellerId, listingId: id, price: L.price }, extra || {});
-        throw new HttpsError('failed-precondition', NEUTRAL);
-      };
-
-      // E) IP เดียวกัน
-      if (BLOCK_SHARED_IP) {
-        const a = (myLink.exists && myLink.data().ips) || {}, b = (sLink.exists && sLink.data().ips) || {};
-        if (Object.keys(a).some(function (h) { return a[h] > now - WEEK && b[h] > now - WEEK; })) block('shared_ip');
-      }
-      // D) เทรดย้อนกลับ
-      const rtimes = (rv.exists && rv.data().times) || [];
-      if (rtimes.some(function (t) { return t > now - REVERSE_BLOCK_MS; })) block('reverse_trade');
-
-      // ฝั่งผู้ซื้อ: ยอดรายวัน/รายสัปดาห์ + จำนวนผู้ขายต่างคน
-      const buys = ((lim.exists && lim.data().buys) || []).filter(function (x) { return x.t > now - WEEK; });
-      const buysDay = buys.filter(function (x) { return x.t > now - DAY; });
-      if (sum(buysDay) + L.price > BUY_DAILY_GOLD) throw new HttpsError('resource-exhausted', 'ซื้อได้ไม่เกิน ' + BUY_DAILY_GOLD.toLocaleString() + ' ทองต่อ 24 ชม.');
-      if (sum(buys) + L.price > BUY_WEEKLY_GOLD) throw new HttpsError('resource-exhausted', 'ถึงเพดานการซื้อรายสัปดาห์แล้ว');
-      const sellersDay = {}; buysDay.forEach(function (x) { if (x.s) sellersDay[x.s] = 1; }); sellersDay[sellerId] = 1;
-      if (Object.keys(sellersDay).length > MAX_SELLERS_DAY) block('fan_in', { n: Object.keys(sellersDay).length });
-
-      // ฝั่งผู้ขาย: ยอดขายรายสัปดาห์ + จำนวนผู้ซื้อต่างคน
-      const sales = ((slim.exists && slim.data().sales) || []).filter(function (x) { return x.t > now - WEEK; });
-      const salesDay = sales.filter(function (x) { return x.t > now - DAY; });
-      if (sum(sales) + L.price > SELL_WEEKLY_GOLD) block('sell_weekly_cap');
-      const buyersDay = {}; salesDay.forEach(function (x) { if (x.b) buyersDay[x.b] = 1; }); buyersDay[uid] = 1;
-      if (Object.keys(buyersDay).length > MAX_BUYERS_DAY) block('fan_out', { n: Object.keys(buyersDay).length });
-
-      // คู่เดิมซ้ำ
-      const ptimes = ((pr.exists && pr.data().times) || []).filter(function (t) { return t > now - WEEK; });
-      if (ptimes.filter(function (t) { return t > now - DAY; }).length >= PAIR_LIMIT) throw new HttpsError('failed-precondition', NEUTRAL);
-
-      buys.push({ t: now, amt: L.price, s: sellerId });
-      sales.push({ t: now, amt: L.price, b: uid });
-      ptimes.push(now);
-
-      // F) พักของ
-      const hold = (L.price >= HIGH_VALUE || g.ageH < HIGH_VALUE_AGE_H) ? HOLD_HIGH_MS : HOLD_MS;
-      const availableAt = now + hold;
-      const gain = L.price - Math.floor(L.price * TAX);
-
-      tx.update(pubRef, { status: 'sold' });
-      tx.update(privRef, { status: 'sold', buyerId: uid, soldAt: now });
-      tx.set(limitRef, { buys: buys }, { merge: true });
-      tx.set(sLimRef, { sales: sales }, { merge: true });
-      tx.set(pairRef, { times: ptimes });
-      tx.set(db.collection('market_inbox').doc(uid).collection('entries').doc(),
-        { type: 'item', item: L.item, note: 'ซื้อจากตลาด', at: now, availableAt: availableAt });
-      tx.set(db.collection('market_inbox').doc(sellerId).collection('entries').doc(),
-        { type: 'gold', amount: gain, note: 'ขาย ' + L.item.kind + ' (หักภาษี 5%)', at: now, availableAt: availableAt });
-      if (reqRef) tx.set(reqRef, { at: now, listingId: id, expireAt: new Date(now + 2 * DAY) });
-      audit(tx, { type: 'buy', uid: uid, sellerId: sellerId, listingId: id, price: L.price, sig: sig(L.item), ip: g.ipH, hold: hold });
+  // ---------- ช่วยจัดการกระเป๋า ----------
+  function capOf(it) {
+    if (it.kind === 'box' && typeof MAX_BOX_STACK !== 'undefined') return MAX_BOX_STACK;
+    if ((it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone') && typeof MAX_STONE_STACK !== 'undefined') return MAX_STONE_STACK;
+    if (it.kind === 'skillbook' && typeof MAX_SKILLBOOK_STACK !== 'undefined') return MAX_SKILLBOOK_STACK;
+    return 999;
+  }
+  function key(it) { const c = Object.assign({}, it); delete c.count; return JSON.stringify(c); }
+  function canAdd(m, it) {
+    if (it.count === undefined) return m.bag.some(function (s) { return s === null; });
+    const cap = capOf(it), k = key(it);
+    let room = 0;
+    m.bag.forEach(function (s) {
+      if (s === null) room += cap;
+      else if (s.count !== undefined && s.kind === it.kind && key(s) === k) room += cap - s.count;
     });
-  } catch (e) {
-    if (pendingFlag) await flag(pendingFlag.uid, pendingFlag.type, pendingFlag);
-    throw e;
+    return room >= it.count;
   }
-  return { ok: true };
-});
+  function addToBag(m, it) {
+    if (!canAdd(m, it)) return false;
+    if (it.count === undefined) { m.bag[m.bag.findIndex(function (s) { return s === null; })] = it; return true; }
+    const cap = capOf(it), k = key(it);
+    let left = it.count;
+    m.bag.forEach(function (s) {
+      if (left > 0 && s && s.count !== undefined && s.kind === it.kind && key(s) === k && s.count < cap) {
+        const a = Math.min(left, cap - s.count); s.count += a; left -= a;
+      }
+    });
+    while (left > 0) {
+      const i = m.bag.findIndex(function (s) { return s === null; });
+      const a = Math.min(left, cap);
+      m.bag[i] = Object.assign({}, it, { count: a }); left -= a;
+    }
+    return true;
+  }
+  function label(it) {
+    try {
+      if (it.kind === 'skillbook') {
+        const d = (typeof SKILL_DEFS !== 'undefined') ? SKILL_DEFS[it.sid] : null;
+        return 'สมุดสกิล ' + ((d && (d.name || d.label)) || it.sid) + (it.count > 1 ? '  x' + it.count : '');
+      }
+      return itemLabel(it);
+    } catch (e) { return it.kind; }
+  }
+  function leftTxt(l) {
+    if (typeof l.expiresAt !== 'number') return '';
+    const ms = l.expiresAt - Date.now();
+    if (ms <= 0) return 'หมดอายุแล้ว';
+    const h = Math.floor(ms / 3600000), mi = Math.floor((ms % 3600000) / 60000);
+    return 'เหลือ ' + (h ? h + ' ชม. ' : '') + mi + ' นาที';
+  }
 
-// ---------- ยกเลิก / รับคืน (ไม่คืนตั๋ว ไม่คืนโควตา) ----------
-// ของที่ยกเลิก (หรือหมดอายุแล้วกด "รับคืน") จะถูกส่งกลับเข้ากล่องรับของผู้ขายทันที
-exports.cancelListing = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const id = String((req.data || {}).id || '');
-  if (!id) throw new HttpsError('invalid-argument', 'ไม่มี id');
-  const pubRef = db.collection('market_listings').doc(id);
-  const privRef = db.collection('market_private').doc(id);
-  await db.runTransaction(async (tx) => {
-    const pub = await tx.get(pubRef);
-    const priv = await tx.get(privRef);
-    if (!pub.exists || !priv.exists || pub.data().status !== 'active') throw new HttpsError('not-found', 'รายการนี้ไม่อยู่แล้ว');
-    if (priv.data().sellerId !== uid) throw new HttpsError('permission-denied', 'ไม่ใช่ของคุณ');
-    const now = Date.now();
-    tx.update(pubRef, { status: 'cancelled' });
-    tx.update(privRef, { status: 'cancelled', cancelledAt: now });
-    tx.set(db.collection('market_inbox').doc(uid).collection('entries').doc(),
-      { type: 'item', item: pub.data().item, note: 'คืนจากตลาด', at: now, availableAt: now });
-    audit(tx, { type: 'cancel', uid: uid, listingId: id });
-  });
-  return { ok: true };
-});
+  // ---------- UI ----------
+  function btn(text, fn, primary) {
+    const b = document.createElement('button');
+    b.textContent = text;
+    b.style.cssText = 'font-family:inherit;font-size:13px;padding:6px 10px;border-radius:8px;cursor:pointer;border:2px solid #ffd45c;' +
+      'color:' + (primary ? '#26090f' : '#ffe28a') + ';background:' + (primary ? '#ffd45c' : '#26090f');
+    b.addEventListener('click', fn);
+    return b;
+  }
+  const iconCache = {};
+  function rarHex(it) { try { return '#' + ('000000' + rarityColor(it).toString(16)).slice(-6); } catch (e) { return '#8a6a32'; } }
+  // หารูปไอเทม: ลองคีย์จาก iconKeyForItem ก่อน แล้วสำรองด้วยชื่อรูปจาก assets/items (img_*)
+  function iconKeys(it) {
+    const ks = [];
+    if (it.kind === 'ticket' || it.kind === 'skillbook') return ks;
+    try { ks.push(iconKeyForItem(it)); } catch (e) {}
+    if (it.kind === 'equip') {
+      if (it.baseSlot === 'weapon' && it.class) ks.push('img_weapon_' + it.class);
+      ks.push('img_' + it.baseSlot);
+    } else if (it.kind === 'optstone') ks.push('img_opt_' + it.color, 'icon_opt_' + it.color);
+    else ks.push('img_' + it.kind);
+    return ks;
+  }
+  function iconSrc(m, it) {
+    const ks = iconKeys(it);
+    for (let i = 0; i < ks.length; i++) {
+      const k = ks[i];
+      if (!k || !m.textures.exists(k)) continue;
+      if (iconCache[k]) return iconCache[k];
+      try {
+        const d = m.textures.getBase64(k);
+        if (d) { iconCache[k] = d; return d; }
+      } catch (e) {}
+    }
+    return null;
+  }
+  function icon(m, it) {
+    const w = document.createElement('div');
+    w.style.cssText = 'width:46px;height:46px;flex:none;position:relative;border-radius:8px;background:#1c0a0f;display:flex;align-items:center;justify-content:center;border:2px solid ' +
+      (it.kind === 'ticket' ? '#ffd45c' : rarHex(it));
+    const src = iconSrc(m, it);
+    if (src) {
+      const im = document.createElement('img');
+      im.src = src; im.style.cssText = 'width:36px;height:36px;image-rendering:pixelated;object-fit:contain';
+      w.appendChild(im);
+    } else { w.textContent = it.kind === 'ticket' ? '🎫' : (it.kind === 'skillbook' ? '📖' : '📦'); w.style.fontSize = '22px'; }
+    if (it.count > 1) {
+      const c = document.createElement('span');
+      c.textContent = 'x' + it.count;
+      c.style.cssText = 'position:absolute;right:1px;bottom:0;font-size:11px;color:#fff;text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000';
+      w.appendChild(c);
+    }
+    return w;
+  }
+  function row(left, right, ic) {
+    const r = document.createElement('div');
+    r.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:8px;background:#3a1620;font-size:13px;text-align:left';
+    const l = document.createElement('div'); l.style.cssText = 'flex:1;min-width:0'; l.innerHTML = left;
+    if (ic) r.append(ic);
+    r.append(l); if (right) r.append(right);
+    return r;
+  }
+  function priceTxt(l) {
+    const n = l.item.count || 1;
+    return n > 1 ? '💰 ' + l.price.toLocaleString() + ' (ชิ้นละ ' + Math.round(l.price / n).toLocaleString() + ')' : '💰 ' + l.price.toLocaleString();
+  }
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+  function chip(text, on, fn) {
+    const b = btn(text, fn, on);
+    b.style.flex = 'none'; b.style.whiteSpace = 'nowrap'; b.style.padding = '5px 9px'; b.style.fontSize = '12px';
+    return b;
+  }
 
-// ---------- กล่องรับ ----------
-exports.listInbox = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const q = await db.collection('market_inbox').doc(uid).collection('entries').limit(100).get();
-  return {
-    entries: q.docs.map(function (d) {
-      const e = d.data();
-      return { id: d.id, type: e.type, item: e.item, amount: e.amount, note: e.note, at: e.at, availableAt: e.availableAt };
-    })
-  };
-});
+  // ================= หน้าต่างตั้งจำนวน + ราคา (แทน window.prompt) =================
+  // คืน Promise<{qty, unit} | null>  (null = ยกเลิก)
+  function sellDialog(m, it, R, w) {
+    return new Promise(function (resolve) {
+      const stack = it.count !== undefined && it.count > 1 && it.kind !== 'stone';   // เลือกจำนวนได้
+      const maxQty = it.count === undefined ? 1 : it.count;
+      const cap = maxUnitPrice(it, R), floor = Math.min(minUnitPrice(it, R), cap);
+      const tkMap = w.tickets || {};
+      const quotaLeft = w.dailyLimit - w.listedToday;
+      let qty = it.kind === 'stone' ? it.count : (stack ? it.count : 1);
+      let unit = cap;
 
-exports.claimInbox = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const id = String((req.data || {}).id || '');
-  if (!id) bad('ไม่มี id');
-  const ban = await db.collection('market_bans').doc(uid).get();
-  if (ban.exists && ban.data().freeze) throw new HttpsError('permission-denied', 'บัญชีนี้ถูกอายัดการรับของ');
-  const ref = db.collection('market_inbox').doc(uid).collection('entries').doc(id);
-  const now = Date.now();
-  return db.runTransaction(async (tx) => {
-    const s = await tx.get(ref);
-    if (!s.exists) return { entry: null };
-    const e = s.data();
-    if ((e.availableAt || 0) > now) return { entry: null, wait: e.availableAt - now };   // ยังอยู่ในช่วงพัก
-    tx.delete(ref);
-    audit(tx, { type: 'claim', uid: uid, entryId: id, kind: e.type });
-    return { entry: { type: e.type, item: e.item || null, amount: e.amount || 0 } };
-  });
-});
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:8px;box-sizing:border-box;touch-action:pan-y';
+      const pn = document.createElement('div');
+      pn.style.cssText = 'width:min(96vw,680px);max-height:96vh;overflow:auto;box-sizing:border-box;background:#26090f;border:2px solid #ffd45c;border-radius:14px;padding:12px 14px;color:#ffe28a;font-family:inherit;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,.6)';
+      ov.appendChild(pn);
+
+      function mk(tag, css, txt) { const e = document.createElement(tag); if (css) e.style.cssText = css; if (txt !== undefined) e.textContent = txt; return e; }
+      const small = 'font-size:11px;color:#bbb;margin-bottom:3px';
+
+      // ส่วนหัว: รูป + ชื่อ
+      const head = mk('div', 'display:flex;gap:10px;align-items:center;margin-bottom:10px');
+      head.appendChild(icon(m, it));
+      const ht = mk('div', 'flex:1;min-width:0');
+      ht.appendChild(mk('div', 'font-size:16px;font-weight:600;color:#fff;line-height:1.3', label(it)));
+      ht.appendChild(mk('div', 'font-size:11px;color:#bbb', 'ตั้งราคา "ต่อชิ้น" • ต่ำสุด ' + floor.toLocaleString() + ' • สูงสุด ' + cap.toLocaleString()));
+      head.appendChild(ht);
+      const x = btn('✕', function () { done(null); });
+      x.style.flex = 'none'; x.style.padding = '4px 9px';
+      head.appendChild(x);
+      pn.appendChild(head);
+
+      const cols = mk('div', 'display:flex;gap:12px;flex-wrap:wrap');
+      const left = mk('div', 'flex:1 1 280px;min-width:0');
+      const right = mk('div', 'flex:1 1 220px;min-width:0');
+      cols.append(left, right);
+      pn.appendChild(cols);
+
+      function numInput(val, onChange) {
+        const i = document.createElement('input');
+        i.type = 'text'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.value = String(val);
+        i.style.cssText = 'flex:1;min-width:0;box-sizing:border-box;text-align:center;padding:8px 6px;border-radius:8px;border:2px solid #ffd45c;background:#0d0406;color:#fff;font-family:inherit;font-size:18px';
+        i.addEventListener('focus', function () { try { i.select(); } catch (e) {} });
+        i.addEventListener('input', function () {
+          const d = i.value.replace(/[^0-9]/g, '').slice(0, 9);
+          if (i.value !== d) i.value = d;
+          onChange(d === '' ? 0 : parseInt(d, 10), true);
+        });
+        return i;
+      }
+      function sq(text, fn) {       // ปุ่มสี่เหลี่ยมสำหรับ + / -
+        const b = btn(text, fn, false);
+        b.style.cssText += ';width:42px;flex:none;font-size:20px;padding:4px 0;line-height:1';
+        return b;
+      }
+      function chipRow(items) {
+        const r = mk('div', 'display:flex;gap:5px;flex-wrap:wrap;margin-top:6px');
+        items.forEach(function (c) { r.appendChild(chip(c[0], false, c[1])); });
+        return r;
+      }
+
+      // ----- จำนวน -----
+      let qtyIn = null;
+      if (stack) {
+        left.appendChild(mk('div', small, 'จำนวนที่จะขาย (มี ' + maxQty.toLocaleString() + ')'));
+        const qr = mk('div', 'display:flex;gap:6px;align-items:stretch');
+        qtyIn = numInput(qty, function (v, fromTyping) { qty = Math.min(maxQty, Math.max(0, v)); if (!fromTyping || qty !== v) qtyIn.value = String(qty || ''); refresh(); });
+        qr.append(sq('−', function () { setQty(qty - 1); }), qtyIn, sq('+', function () { setQty(qty + 1); }));
+        left.appendChild(qr);
+        const qc = [['1', 1], ['½', Math.max(1, Math.floor(maxQty / 2))], ['MAX', maxQty]].map(function (c) {
+          return [c[0], function () { setQty(c[1]); }];
+        });
+        left.appendChild(chipRow(qc));
+      } else {
+        const fixed = mk('div', 'font-size:13px;color:#ddd;margin-bottom:6px', it.kind === 'stone'
+          ? 'หินตีบวกขายยกกองเต็ม ' + qty.toLocaleString() + ' ก้อน'
+          : 'ขาย 1 ชิ้น');
+        left.appendChild(fixed);
+      }
+      function setQty(v) { qty = Math.min(maxQty, Math.max(1, v)); if (qtyIn) qtyIn.value = String(qty); refresh(); }
+
+      // ----- ราคาต่อชิ้น -----
+      left.appendChild(mk('div', small + ';margin-top:10px', 'ราคาต่อชิ้น (ทอง)'));
+      const pr = mk('div', 'display:flex;gap:6px;align-items:stretch');
+      const unitIn = numInput(unit, function (v) { unit = v; refresh(); });
+      const step = Math.max(1, Math.round(cap / 100));
+      pr.append(sq('−', function () { setUnit(unit - step); }), unitIn, sq('+', function () { setUnit(unit + step); }));
+      left.appendChild(pr);
+      function setUnit(v) { unit = Math.min(cap, Math.max(1, v)); unitIn.value = String(unit); refresh(); }
+      left.appendChild(chipRow([
+        ['ต่ำสุด', function () { setUnit(floor); }],
+        ['25%', function () { setUnit(Math.max(floor, Math.floor(cap * 0.25))); }],
+        ['50%', function () { setUnit(Math.max(floor, Math.floor(cap * 0.5))); }],
+        ['75%', function () { setUnit(Math.max(floor, Math.floor(cap * 0.75))); }],
+        ['สูงสุด', function () { setUnit(cap); }]
+      ]));
+
+      // ----- สรุป (ฝั่งขวา) -----
+      const sum = mk('div', 'background:#3a1620;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9');
+      function line(k, vEl) {
+        const r = mk('div', 'display:flex;justify-content:space-between;gap:8px');
+        r.appendChild(mk('span', 'color:#bbb', k)); r.appendChild(vEl);
+        sum.appendChild(r);
+        return vEl;
+      }
+      const vTotal = line('ราคารวม', mk('b', 'color:#fff'));
+      const vTax = line('ภาษีขาย ' + Math.round(R.tax * 100) + '%', mk('span', 'color:#e08a8a'));
+      const vNet = line('ได้รับสุทธิ', mk('b', 'color:#7be07b;font-size:16px'));
+      const vTk = line('ตั๋วที่ใช้', mk('span', 'color:#fff;text-align:right'));
+      line('อยู่ในตลาด', mk('span', 'color:#fff', R.listHours + ' ชม.'));
+      line('โควตาวันนี้', mk('span', 'color:#fff', w.listedToday + '/' + w.dailyLimit));
+      right.appendChild(sum);
+
+      const warn = mk('div', 'color:#ff9a9a;font-size:12px;min-height:16px;margin-top:6px');
+      right.appendChild(warn);
+
+      const act = mk('div', 'display:flex;gap:8px;margin-top:8px');
+      const cancelB = btn('ยกเลิก', function () { done(null); });
+      cancelB.style.flex = '1'; cancelB.style.padding = '10px';
+      const okB = btn('ลงขาย', function () { if (!okB.disabled) done({ qty: qty, unit: unit }); }, true);
+      okB.style.flex = '2'; okB.style.padding = '10px'; okB.style.fontSize = '15px';
+      act.append(cancelB, okB);
+      right.appendChild(act);
+
+      function refresh() {
+        const total = unit * qty;
+        const net = Math.floor(total * (1 - R.tax));
+        const tk = ticketFor(R, Math.max(1, total));
+        const have = tkMap[tk] || 0;
+        vTotal.textContent = '💰 ' + total.toLocaleString();
+        vTax.textContent = '−' + (total - net).toLocaleString();
+        vNet.textContent = '💰 ' + net.toLocaleString();
+        vTk.textContent = ticketName(R, tk) + ' (มี ' + have + ')';
+        vTk.style.color = have > 0 ? '#fff' : '#ff9a9a';
+        let why = '';
+        if (qty < 1) why = 'ใส่จำนวนอย่างน้อย 1';
+        else if (unit < floor) why = 'ราคาต่ำสุดต่อชิ้น ' + floor.toLocaleString();
+        else if (unit > cap) why = 'ราคาสูงสุดต่อชิ้น ' + cap.toLocaleString();
+        else if (total > R.maxPrice) why = 'ราคารวมต้องไม่เกิน ' + R.maxPrice.toLocaleString();
+        else if (have < 1) why = 'ไม่มี ' + ticketName(R, tk) + ' (ดูที่แท็บ 🎫 ตั๋ว)';
+        else if (quotaLeft < 1) why = 'ลงขายครบ ' + w.dailyLimit + ' รายการใน 24 ชม. แล้ว';
+        warn.textContent = why;
+        okB.disabled = !!why;
+        okB.style.opacity = why ? '.4' : '1';
+        okB.style.cursor = why ? 'not-allowed' : 'pointer';
+      }
+
+      function done(r) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(r); }
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(null); });
+      document.body.appendChild(ov);
+      refresh();
+    });
+  }
+
+  function openMarket(scene) {
+    const m = townMain(scene);
+    if (!m) return;
+    if (!window.firebase || !firebase.functions) { scene.dialog('🏪 ตลาดกลาง', 'ยังไม่ได้โหลด firebase-functions (ดูขั้นตอนใน index.html)', [{ label: 'ตกลง', primary: true }]); return; }
+    const u = firebase.auth().currentUser;
+    if (!u) { scene.dialog('🏪 ตลาดกลาง', 'ต้องล็อกอินด้วย Google ก่อนจึงจะใช้ตลาดได้', [{ label: 'ตกลง', primary: true }]); return; }
+
+    const card = scene.domCard('🏪 ตลาดกลาง');
+    const goldEl = document.createElement('div');
+    goldEl.style.cssText = 'color:#ffe28a;font-size:14px;margin-bottom:6px';
+    const tabs = document.createElement('div');
+    tabs.style.cssText = 'display:flex;gap:6px;justify-content:center;margin-bottom:8px;flex-wrap:wrap';
+    const body = document.createElement('div');
+    body.style.cssText = 'min-height:120px;max-height:55vh;overflow:auto;touch-action:pan-y';
+    card.append(goldEl, tabs, body);
+    scene.domCloseBtn(card);
+
+    let tab = 'buy', busy = false, rules = null;
+    // สถานะตัวกรองหน้าซื้อ (จำไว้ตอนสลับแท็บ)
+    let cache = [], cat = 'all', q = '', asc = true;
+
+    function gold() { goldEl.textContent = '💰 ' + m.stats.gold.toLocaleString() + (rules ? ' (ภาษีขาย ' + Math.round(rules.tax * 100) + '%)' : ''); }
+    function msg(t) { body.innerHTML = ''; const d = document.createElement('div'); d.style.cssText = 'padding:20px;color:#bbb'; d.textContent = t; body.appendChild(d); }
+    function save() { if (m.saveSoon) m.saveSoon(); }
+    function run(p, ok) {
+      if (busy) return; busy = true; msg('กำลังดำเนินการ...');
+      p.then(ok).catch(function (e) { m.toastMsg(errMsg(e)); }).then(function () { busy = false; show(tab); });
+    }
+
+    // รับของจากกล่อง (ทองเข้าทันที / ไอเทมเข้ากระเป๋าถ้ามีที่)
+    function claimAll() {
+      return call('listInbox').then(function (r) {
+        let p = Promise.resolve(), n = 0;
+        r.entries.forEach(function (e) {
+          if (e.type === 'item' && !canAdd(m, e.item)) return;   // กระเป๋าเต็ม: รอไว้ก่อน
+          p = p.then(function () { return call('claimInbox', { id: e.id }); }).then(function (c) {
+            if (!c || !c.entry) return;                          // ยังอยู่ในช่วงพัก (wait) ข้ามไปก่อน
+            const en = c.entry;
+            if (en.type === 'gold') m.stats.gold += en.amount; else addToBag(m, en.item);
+            n++;
+            save();                                              // เซฟทันทีหลังรับแต่ละชิ้น กันของหายถ้าปิดเกมกลางคัน
+          });
+        });
+        return p.then(function () { if (n) m.toastMsg('รับของจากตลาด ' + n + ' รายการ'); return r.entries.length - n; });
+      });
+    }
+
+    function show(t) {
+      tab = t; gold();
+      tabs.innerHTML = '';
+      [['buy', 'ซื้อ'], ['sell', 'ขายของฉัน'], ['mine', 'ที่ลงไว้'], ['ticket', '🎫 ตั๋ว']].forEach(function (x) {
+        tabs.appendChild(btn(x[1], function () { if (!busy) show(x[0]); }, x[0] === t));
+      });
+      if (t === 'buy') showBuy(); else if (t === 'sell') showSell(); else if (t === 'mine') showMine(); else showTicket();
+    }
+
+    // ================= ซื้อ (หมวดหมู่ + ค้นหา) =================
+    function showBuy() {
+      msg('กำลังโหลด...');
+      claimAll().then(function (left) {
+        gold();
+        return Promise.all([
+          firebase.firestore().collection('market_listings').where('status', '==', 'active').limit(300).get(),
+          call('myListings')                                     // รู้ว่ารายการไหนเป็นของเรา เพื่อซ่อนจากหน้าซื้อ
+        ]).then(function (res) {
+          const own = {};
+          res[1].listings.forEach(function (l) { own[l.id] = 1; });
+          const now = Date.now();
+          cache = res[0].docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); })
+            .filter(function (l) { return !own[l.id]; })
+            .filter(function (l) { return typeof l.expiresAt !== 'number' || l.expiresAt > now; });   // ซ่อนรายการหมดอายุ
+          buildBuyUI(left);
+        });
+      }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
+    }
+
+    function buildBuyUI(left) {
+      body.innerHTML = '';
+      if (left > 0) {
+        const w = document.createElement('div');
+        w.style.cssText = 'color:#e08a8a;font-size:12px;margin-bottom:6px';
+        w.textContent = 'มีของรอรับ ' + left + ' ชิ้น (กระเป๋าเต็ม หรือยังอยู่ในช่วงพัก)';
+        body.appendChild(w);
+      }
+      // ช่องค้นหา + ปุ่มเรียงราคา
+      const bar = document.createElement('div');
+      bar.style.cssText = 'display:flex;gap:6px;margin-bottom:6px';
+      const input = document.createElement('input');
+      input.type = 'search'; input.value = q; input.placeholder = '🔍 ค้นหา เช่น ดาบ, ทอง, เลเวล 50';
+      input.setAttribute('enterkeyhint', 'search'); input.autocomplete = 'off';
+      input.style.cssText = 'flex:1;min-width:0;box-sizing:border-box;padding:8px 10px;border-radius:8px;border:2px solid #ffd45c;background:#0d0406;color:#fff;font-family:inherit;font-size:16px';
+      const sortB = btn('', function () { asc = !asc; render(); });
+      sortB.style.flex = 'none';
+      bar.append(input, sortB);
+
+      const chipsEl = document.createElement('div');
+      chipsEl.style.cssText = 'display:flex;gap:5px;overflow-x:auto;margin-bottom:8px;padding-bottom:2px;touch-action:pan-x';
+      const listEl = document.createElement('div');
+      body.append(bar, chipsEl, listEl);
+
+      input.addEventListener('input', function () { q = input.value; render(); });
+
+      function render() {
+        sortB.textContent = asc ? 'ราคา ↑' : 'ราคา ↓';
+        const toks = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const matched = cache.filter(function (l) {
+          if (!toks.length) return true;
+          const t = label(l.item).toLowerCase();
+          return toks.every(function (k) { return t.indexOf(k) !== -1; });
+        });
+        const counts = { all: matched.length };
+        matched.forEach(function (l) { const c = categoryOf(l.item); counts[c] = (counts[c] || 0) + 1; });
+        if (cat === 'other' && !counts.other) cat = 'all';
+
+        chipsEl.innerHTML = '';
+        CATS.forEach(function (c) {
+          if (c.id === 'other' && !counts.other) return;
+          chipsEl.appendChild(chip(c.name + ' (' + (counts[c.id] || 0) + ')', c.id === cat, function () { cat = c.id; render(); }));
+        });
+
+        const unit = function (l) { return l.price / (l.item.count || 1); };
+        const shown = matched.filter(function (l) { return cat === 'all' || categoryOf(l.item) === cat; })
+          .sort(function (a, b) { return asc ? unit(a) - unit(b) : unit(b) - unit(a); });
+
+        listEl.innerHTML = '';
+        if (!shown.length) {
+          const d = document.createElement('div');
+          d.style.cssText = 'padding:20px;color:#bbb';
+          d.textContent = toks.length ? 'ไม่พบสินค้าที่ค้นหา' : 'ยังไม่มีสินค้าในหมวดนี้';
+          listEl.appendChild(d);
+          return;
+        }
+        shown.slice(0, SHOW_LIMIT).forEach(function (l) { listEl.appendChild(buyRow(l)); });
+        if (shown.length > SHOW_LIMIT) {
+          const d = document.createElement('div');
+          d.style.cssText = 'padding:8px;color:#bbb;font-size:12px';
+          d.textContent = 'แสดง ' + SHOW_LIMIT + ' จาก ' + shown.length + ' รายการ — พิมพ์ค้นหาเพื่อกรอง';
+          listEl.appendChild(d);
+        }
+      }
+      render();
+    }
+
+    function buyRow(l) {
+      const lt = leftTxt(l);
+      return row('<b>' + esc(label(l.item)) + '</b><br><small style="color:#bbb">' + priceTxt(l) + (lt ? ' • ' + lt : '') + '</small>',
+        btn('ซื้อ', function () {
+          if (busy) return;
+          if (m.stats.gold < l.price) { m.toastMsg('ทองไม่พอ'); return; }
+          m.stats.gold -= l.price;                           // หักก่อน ล้มเหลวค่อยคืน
+          run(call('buyItem', { id: l.id }).then(function () { m.toastMsg('ซื้อสำเร็จ ของอยู่ในกล่องรับ'); })
+            .catch(function (e) { m.stats.gold += l.price; throw e; }), function () { save(); });
+        }, true), icon(m, l.item));
+    }
+
+    // ================= ขาย =================
+    function sellFlow(i, it) {
+      if (busy || m.bag[i] !== it || !rules) return;
+      const R = rules;
+      const why = sellBlock(it, R);
+      if (why) { m.toastMsg(why); return; }
+
+      busy = true;
+      call('getWallet').then(function (w) {          // ยอดตั๋วและโควตาวันนี้มาจากเซิร์ฟเวอร์
+        rules = w.rules;
+        return sellDialog(m, it, w.rules, w).then(function (res) {
+          busy = false;
+          if (!res) return;
+          if (m.bag[i] !== it) { m.toastMsg('ไอเทมในกระเป๋าเปลี่ยนไป ลองใหม่'); show(tab); return; }
+          const qty = it.kind === 'stone' ? it.count : Math.min(res.qty, it.count === undefined ? 1 : it.count);
+          const total = res.unit * qty;
+          const sold = it.count !== undefined ? Object.assign({}, it, { count: qty }) : it;
+          if (it.count !== undefined && qty < it.count) it.count -= qty; else m.bag[i] = null;   // หักของออกจากกระเป๋าก่อน
+          save();
+          run(call('listItem', { item: sold, price: total })
+            .then(function () { m.toastMsg('ลงขายแล้ว (' + w.rules.listHours + ' ชม.)'); })
+            .catch(function (e) { addToBag(m, sold); save(); throw e; }), function () {});
+        });
+      }).catch(function (e) { busy = false; m.toastMsg('ตรวจสอบไม่สำเร็จ: ' + errMsg(e)); show(tab); });
+    }
+
+    // แสดงของที่ขายได้ในกระเป๋าเป็นช่องรูป แตะไอเทมที่ต้องการขาย
+    function showSell() {
+      msg('กำลังโหลด...');
+      call('getWallet').then(function (w) {
+        rules = w.rules; gold();
+        const R = rules, tk = w.tickets || {};
+        body.innerHTML = '';
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:12px;color:#bbb;margin-bottom:6px;line-height:1.5';
+        hint.innerHTML = 'ขายได้เฉพาะ: กล่อง/อุปกรณ์สีแดงขึ้นไป • หินออฟ • หินตีบวกกองเต็ม ' + R.stoneStack.toLocaleString() + ' • สมุดสกิล<br>' +
+          'แตะไอเทมที่ต้องการขาย • ลงวันนี้ ' + w.listedToday + '/' + w.dailyLimit + ' • อยู่ ' + R.listHours + ' ชม.<br>' +
+          '🎫 ตั๋วที่มี: ' + [1, 2, 3].map(function (n) { return 'ระดับ ' + n + ' ×' + (tk[n] || 0); }).join(' | ');
+        const grid = document.createElement('div');
+        grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(54px,1fr));gap:6px;justify-items:center';
+        let n = 0;
+        m.bag.forEach(function (it, i) {
+          if (!it || sellBlock(it, R)) return;     // แสดงเฉพาะของที่ขายได้
+          n++;
+          const ic = icon(m, it);
+          ic.style.cursor = 'pointer';
+          ic.addEventListener('click', function () { sellFlow(i, it); });
+          grid.appendChild(ic);
+        });
+        body.append(hint);
+        if (!n) { const d = document.createElement('div'); d.style.cssText = 'padding:16px;color:#bbb'; d.textContent = 'ไม่มีไอเทมที่ขายได้ในกระเป๋า'; body.append(d); return; }
+        body.append(grid);
+      }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
+    }
+
+    // ================= ที่ลงไว้ =================
+    function showMine() {
+      msg('กำลังโหลด...');
+      Promise.all([call('myListings'), call('getWallet')]).then(function (res) {
+        const ls = res[0].listings, w = res[1];
+        rules = w.rules;
+        body.innerHTML = '';
+        const head = document.createElement('div');
+        head.style.cssText = 'font-size:12px;color:#bbb;margin-bottom:6px';
+        head.textContent = 'ลงขายอยู่ ' + ls.length + ' รายการ • ลงวันนี้ ' + w.listedToday + '/' + w.dailyLimit;
+        body.appendChild(head);
+        if (!ls.length) { const d = document.createElement('div'); d.style.cssText = 'padding:20px;color:#bbb'; d.textContent = 'ไม่มีรายการที่ลงไว้'; body.appendChild(d); return; }
+        ls.forEach(function (l) {
+          const expired = typeof l.expiresAt === 'number' && l.expiresAt <= Date.now(), lt = leftTxt(l);
+          body.appendChild(row('<b>' + esc(label(l.item)) + '</b><br><small style="color:' + (expired ? '#e08a8a' : '#bbb') + '">' + priceTxt(l) + (lt ? ' • ' + lt : '') + '</small>',
+            btn(expired ? 'รับคืน' : 'ยกเลิก', function () { run(call('cancelListing', { id: l.id }), function () { m.toastMsg('คืนของแล้ว ไปรับที่แท็บ ซื้อ'); }); }), icon(m, l.item)));
+        });
+      }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
+    }
+
+    // ================= ตั๋ว (ซื้อด้วยเงินจริง เก็บฝั่งเซิร์ฟเวอร์) =================
+    function buyTicketReal() {
+      if (!BUY_TICKET_URL) { m.toastMsg('ยังไม่เปิดขายตั๋ว'); return; }
+      window.open(BUY_TICKET_URL, '_blank');
+    }
+    function showTicket() {
+      msg('กำลังโหลด...');
+      call('getWallet').then(function (w) {
+        rules = w.rules;
+        body.innerHTML = '';
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:12px;color:#bbb;margin-bottom:6px;line-height:1.5';
+        hint.textContent = 'ต้องใช้ตั๋ว 1 ใบต่อการลงขาย 1 รายการ เลือกตั๋วตามราคารวมที่จะตั้ง • ตั๋วซื้อด้วยเงินจริง เก็บไว้ที่เซิร์ฟเวอร์ (ไม่อยู่ในกระเป๋า) • ลงวันนี้ ' + w.listedToday + '/' + w.dailyLimit;
+        body.appendChild(hint);
+        [1, 2, 3].forEach(function (n) {
+          const have = (w.tickets || {})[n] || 0;
+          body.appendChild(row('<b>' + esc(ticketName(rules, n)) + '</b><br><small style="color:#bbb">มีอยู่ ' + have + ' ใบ</small>',
+            btn('ซื้อ', buyTicketReal, true), icon(m, { kind: 'ticket' })));
+        });
+        const idEl = document.createElement('div');
+        idEl.style.cssText = 'font-size:11px;color:#888;margin-top:8px;word-break:break-all;user-select:all';
+        idEl.textContent = 'รหัสผู้เล่น: ' + u.uid;
+        body.appendChild(idEl);
+      }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
+    }
+
+    show('buy');
+  }
+
+  window.TownHooks = window.TownHooks || {};
+  window.TownHooks.market = openMarket;
+})();
