@@ -1,4 +1,5 @@
 // ===== ระบบออนไลน์ (Socket.IO) + แชนเนล/ห้อง =====
+// v+: ส่งเลเวลตอน join (ใช้กับ social.js: แสดง Lv. ข้างชื่อ + ปาร์ตี้)
 
 // ชื่อตัวละครเหนือหัว (ปรับตรงนี้)
 const NET_NAME_SIZE = '20px';    // ขนาดชื่อ (เดิม 12px)
@@ -73,7 +74,10 @@ Object.assign(Main.prototype, {
 
     this.socket.on('connect', () => {
       this.online = true; this.statusText.setText('ออนไลน์');
-      this.socket.emit('join', { name, stage: this.stageIdx || 0, ch: this.channel, rm: this.netRoom, cid: netClientId() });
+      this.socket.emit('join', {
+        name, stage: this.stageIdx || 0, ch: this.channel, rm: this.netRoom, cid: netClientId(),
+        lv: (this.stats && this.stats.level) || 1
+      });
     });
     this.socket.on('disconnect', () => {
       this.online = false; this.inRoom = false; this._netStage = null; this._enterPending = false;
@@ -289,6 +293,7 @@ Object.assign(Main.prototype, {
     this.socket.emit(ev, Object.assign({ stage: this.stageIdx }, data));
   },
 
+  // (social.js จะทับฟังก์ชันนี้ให้เป็นตัวละครจริง ถ้าไม่โหลด social.js จะใช้แบบวงกลมนี้)
   addOther(p) {
     if (this.others[p.id]) return;
     const s = this.add.sprite(p.x, p.y, 'player').setTint(0xffaa44);
