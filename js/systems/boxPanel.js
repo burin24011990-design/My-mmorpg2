@@ -110,22 +110,37 @@
     return null;
   }
 
+  // ===== ปุ่มกล่อง: วางต่อท้ายแถวปุ่ม เมือง / CH1-1 / จุติ =====
+  // ปรับ 3 ค่านี้ให้ตรงกับเกม (หน่วยเป็น px ของหน้าจอ CSS)
+  const BOX_SIZE = 44;      // ขนาดปุ่มกล่อง (ให้เท่าปุ่มจุติ)
+  const BOX_LEFT_PX = 0;    // ถ้าอยากขยับซ้าย/ขวาเพิ่ม ใส่ค่าบวก/ลบ
+  const BOX_TOP_PX = 0;     // ถ้าอยากขยับขึ้น/ลงเพิ่ม
+
   function placeBox() {
-    const j = findJuti();
-    if (!j) return;
-    const r = j.getBoundingClientRect();
-    if (r.width < 20) return;
+    const sc = window.__mainScene;
+    const canvas = document.querySelector('canvas');
+    if (!sc || !canvas) return;
+    const cr = canvas.getBoundingClientRect();
+    const k = cr.width / (sc.scale ? sc.scale.width : cr.width);   // อัตราส่วนแคนวาสเทียบหน้าจอ
+
+    // ตำแหน่งปุ่มจุติในเกม (ปุ่มที่ 3 ของแถวบน: เมือง, CH1-1, จุติ)
+    const jx = 747 / 2412 * cr.width + cr.left;   // กลางปุ่มจุติ
+    const jy = 55 / 1080 * cr.height + cr.top;    // กลางแนวตั้งของปุ่ม
+    const size = Math.round(88 / 2412 * cr.width);
+
+    const left = Math.round(jx + size / 2 + 8 + BOX_LEFT_PX);
+    const top = Math.round(jy - size / 2 + BOX_TOP_PX);
     setImp(btn, 'position', 'fixed');
-    setImp(btn, 'left', Math.round(r.right + BOX_GAP) + 'px');
-    setImp(btn, 'top', Math.round(r.top) + 'px');
+    setImp(btn, 'left', left + 'px');
+    setImp(btn, 'top', top + 'px');
     setImp(btn, 'right', 'auto');
     setImp(btn, 'bottom', 'auto');
-    setImp(btn, 'width', Math.round(r.width) + 'px');
-    setImp(btn, 'height', Math.round(r.height) + 'px');
+    setImp(btn, 'width', size + 'px');
+    setImp(btn, 'height', size + 'px');
     setImp(btn, 'margin', '0');
-    setImp(btn, 'font-size', Math.round(r.height * 0.5) + 'px');
-    panel.style.left = Math.round(r.right + BOX_GAP) + 'px';
-    panel.style.top = Math.round(r.bottom + 8) + 'px';
+    setImp(btn, 'font-size', Math.round(size * 0.5) + 'px');
+    panel.style.left = left + 'px';
+    panel.style.top = (top + size + 8) + 'px';
   }
 
   // ---------- ปุ่มยา ATK / DEF / HP+ : เรียงแนวนอนมุมซ้ายล่าง ----------
