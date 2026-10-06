@@ -265,7 +265,8 @@ Object.assign(Main.prototype, {
   },
 
   updateEnemies(time) {
-    const p = this.player;
+  if (this.rmActive) return;   // โหมดห้อง: ให้ roomMonsters.js คุมมอนแทน
+  const p = this.player;
     if (time > (this.nextBossCheck || 0)) { this.nextBossCheck = time + 1000; this.spawnDueBosses(); }
     const hidden = this.updatePlayerHidden ? this.updatePlayerHidden(time) : false;
 
