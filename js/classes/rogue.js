@@ -65,19 +65,25 @@
   });
 
   // 4) ฟันดูดเลือด: ฟันตรงเป็นแนวยาว range กว้าง halfW*2 ไปทางที่เลือก | ดูดเลือด vamp ของดาเมจต่อเป้า (นับสูงสุด 5 เป้า)
+  //    (ดาเมจ x2 จากเดิม 24 -> 48)
+  //    aspd = บัฟความเร็วโจมตี % (25 = +25%) นาน aspdMs (3000 = 3 วิ) ทุกครั้งที่ใช้สกิล
+  //    ถ้าบัฟไม่ขึ้น ให้เช็คชื่อสเตตัสความเร็วโจมตีใน stats.js แล้วแก้คีย์ 'aspd' ที่ handler rdrain ด้านล่าง
   Classes.skill('rg_drain', {
     name: 'ฟันดูดเลือด', class: 'rogue', type: 'rdrain', noInfo: true,
-    dmg: 24, range: 220, halfW: 45, cd: 5000, mp: mpc(16), vamp: 0.5,
+    dmg: 48, range: 220, halfW: 45, cd: 5000, mp: mpc(16), vamp: 0.5,
+    aspd: 25, aspdMs: 3000,
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'ฟันตรงเป็นแนว ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' ดูดเลือด ' + Math.round(def.vamp * 100) +
-      '% ของดาเมจต่อเป้า • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+      '% ของดาเมจต่อเป้า • เพิ่มความเร็วโจมตี ' + def.aspd + '% นาน ' + (def.aspdMs / 1000) +
+      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้ | คูลดาวน์ 20 วิ
   // (ภาพพายุใน skillFx.js เล่น 640ms = hits x gap ถ้าเปลี่ยน hits/gap ให้ปรับ fps ของ rg_ult ใน skillFx.js ตาม)
+  // (พลังโจมตี +50% จากเดิม dmg 60 -> 90)
   Classes.ulti('rogue', {
-    name: 'พายุใบมีด', dmg: 60, range: 140, cd: ULTI_COOLDOWN, mp: mpc(50), type: 'rult',
+    name: 'พายุใบมีด', dmg: 90, range: 140, cd: ULTI_COOLDOWN, mp: mpc(50), type: 'rult',
     hits: 4, hitMul: 0.4, gap: 160, vamp: 0.4,
   }, { scale: { patk: 1 } });
 
@@ -303,6 +309,12 @@
     const l = Math.hypot(ux, uy);
     if (l < 0.001) { ux = 1; uy = 0; } else { ux /= l; uy /= l; }
     const len = def.range, hw = def.halfW;
+
+    // บัฟความเร็วโจมตี (ได้ทุกครั้งที่ใช้สกิล แม้ไม่โดนมอน)
+    if (scene.addStatBuff && def.aspd) {
+      scene.addStatBuff('drainAspd', { aspd: def.aspd }, def.aspdMs);
+      scene.popText(p.x, p.y - 62, '⚡ ความเร็วโจมตี +' + def.aspd + '%', '#ffd45c');
+    }
 
     if (!(scene.anims && scene.anims.exists('rg_drain'))) {
       const r = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, 0xff4d7a, 0.4)
