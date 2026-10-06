@@ -1,9 +1,9 @@
 // ===== อาชีพคทา (mage) — แก้ความสามารถสกิลของคทาที่ไฟล์นี้ =====
-// สกิล 1 สายฟ้า     (mg_bolt) | ยิงสายฟ้าไปข้างหน้าเป็นแนวใหญ่ ติดไฟช็อต (เลือดลดต่อวินาที) | ลากเลือกทิศได้
+// สกิล 1 สายฟ้า     (mg_bolt) | ยิงสายฟ้าไปข้างหน้าเป็นแนวใหญ่ ติดไฟช็อต + บัพคริติคอลให้ตัวเอง 40% นาน 3 วิ | ลากเลือกทิศได้
 // สกิล 2 เวทวาป     (mg_nova) | วาปไปทางที่กำหนด + เพิ่มเกราะชั่วขณะ + รีเจนมานาเพิ่มขึ้นชั่วขณะ | ลากเลือกทิศได้
-// สกิล 3 ลูกไฟ      (mg_fire) | วางระเบิดลูกไฟวงกว้างลงพื้น 1 ครั้ง ติดสตั้น | ลากเล็งวางได้
-// สกิล 4 ธารน้ำแข็ง (mg_ice)  | วางวงน้ำแข็งลงพื้น ดาเมจ 2 ครั้ง มีโอกาสแช่แข็ง | ลากเล็งวางได้
-// อัลติ  ระเบิดมหาเวท         | ระเบิดรอบตัวเป็นวงกว้าง รุนแรง ติดแช่แข็ง + ไฟช็อต + เติมมานาเต็มทันที | คูลดาวน์ 60 วิ
+// สกิล 3 ลูกไฟ      (mg_fire) | วางระเบิดลูกไฟวงกว้างลงพื้น 2 ครั้ง ติดสตั้น | ลากเล็งวางได้
+// สกิล 4 ธารน้ำแข็ง (mg_ice)  | วางวงน้ำแข็งลงพื้น ดาเมจ 3 ครั้ง มีโอกาสแช่แข็ง | ลากเล็งวางได้
+// อัลติ  ระเบิดมหาเวท         | ชาจพลัง 1 วิ แล้วระเบิดรอบตัววงกว้างมาก รุนแรง ติดแช่แข็ง + ไฟช็อต + เติมมานาเต็ม | คูลดาวน์ 60 วิ
 // dmg = ค่าฐาน | range = ระยะ/รัศมี | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส (ap = พลังเวท)
 (function () {
@@ -19,17 +19,22 @@
   const ARMOR_STAT = null;      // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติจาก pdef/def/armor/defense)
   const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
   const MANA_TICK = 500;        // บัพรีเจนมานาเติมทุกกี่มิลลิวินาที
+  const CRIT_MUL = 1.5;         // ตัวคูณดาเมจเมื่อคริ (ใช้เฉพาะกรณีหาสเตตัสคริใน stats.js ไม่เจอ แล้วใช้ระบบคริสำรองในไฟล์นี้)
+  const CRIT_STAT = null;       // ชื่อสเตตัสคริใน stats.js (null = เดาอัตโนมัติจาก CRIT_KEYS)
+  const CRIT_KEYS = ['crit', 'critRate', 'critChance', 'cri', 'cr'];
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('mage', { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' });
 
   // สกิล 1: สายฟ้าแนวใหญ่ ยาว range กว้าง halfW*2 | ไฟช็อต: ดาเมจ shockMul ของดาเมจสกิล ต่อวินาที นาน shockMs
+  // critBuff = บัพโอกาสคริติคอลให้ตัวเองตอนใช้สกิล (0.4 = 40%) นาน critMs มิลลิวินาที
   Classes.skill('mg_bolt', {
     name: 'สายฟ้า', class: 'mage', type: 'mbolt', noInfo: true,
-    dmg: 26, range: 380, halfW: 60, cd: 3500, mp: 20, shockMul: 0.25, shockMs: 4000,
+    dmg: 39, range: 380, halfW: 60, cd: 3500, mp: 20, shockMul: 0.25, shockMs: 4000, critBuff: 0.4, critMs: 3000,
   }, {
     scale: { ap: 1 },
     info: (def, lv, S) => 'ยิงสายฟ้าแนวใหญ่ ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+      ' • บัพคริติคอล +' + Math.round(def.critBuff * 100) + '% นาน ' + (def.critMs / 1000) + ' วิ' +
       ' ติดไฟช็อต ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.shockMul) + '/วิ นาน ' + (def.shockMs / 1000) +
       ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
@@ -46,32 +51,32 @@
       ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // สกิล 3: ลูกไฟวงกว้าง — วางลงพื้นรัศมี range ระเบิด 1 ครั้งหลังเตือน delay มิลลิวินาที | สตั้น stunMs
+  // สกิล 3: ลูกไฟวงกว้าง — วางลงพื้นรัศมี range ระเบิด hits ครั้ง (ครั้งแรกหลังเตือน delay มิลลิวินาที ครั้งต่อไปห่างกัน hitMs) | สตั้น stunMs
   Classes.skill('mg_fire', {
     name: 'ลูกไฟ', class: 'mage', type: 'mfire', noInfo: true,
-    dmg: 30, range: 150, cd: 7000, mp: 24, delay: 400, stunMs: 1500,
+    dmg: 45, range: 200, cd: 7000, mp: 24, delay: 400, hits: 2, hitMs: 450, stunMs: 1500,
   }, {
     scale: { ap: 1 }, ground: { cast: 340 },
     info: (def, lv, S) => 'วางลูกไฟวงกว้างลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' 1 ครั้ง สตั้น ' + (def.stunMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+      ' x ' + def.hits + ' ครั้ง สตั้น ' + (def.stunMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
   // สกิล 4: ธารน้ำแข็ง — วางวงรัศมี range ดาเมจ ticks ครั้ง ห่างกัน tickMs | ทุกครั้งมีโอกาส freezeChance (0-1) แช่แข็ง freezeMs
   Classes.skill('mg_ice', {
     name: 'ธารน้ำแข็ง', class: 'mage', type: 'mice', noInfo: true,
-    dmg: 14, range: 130, cd: 6000, mp: 20,
-    ticks: 2, tickMs: 900, freezeChance: 0.4, freezeMs: 1800,
+    dmg: 20, range: 170, cd: 6000, mp: 20,
+    ticks: 3, tickMs: 900, freezeChance: 0.4, freezeMs: 1800,
   }, {
     scale: { ap: 1 }, ground: { cast: 320 },
     info: (def, lv, S) => 'วางวงน้ำแข็งลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' x ' + def.ticks +
       ' ครั้ง โอกาสแช่แข็ง ' + Math.round(def.freezeChance * 100) + '% ต่อครั้ง (' + (def.freezeMs / 1000) + ' วิ) • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
-  // อัลติ ระเบิดมหาเวท — ระเบิดรอบตัวรัศมี range | แช่แข็ง freezeMs + ไฟช็อต shockMs | คูลดาวน์ 60 วิ
-  // mpFull: true = เติมมานาเต็มทันทีหลังร่าย (ตั้ง false ถ้าไม่ต้องการ)
+  // อัลติ ระเบิดมหาเวท — ชาจพลัง chargeMs มิลลิวินาที แล้วระเบิดรอบตัวรัศมี range | แช่แข็ง freezeMs + ไฟช็อต shockMs | คูลดาวน์ 60 วิ
+  // mpFull: true = เติมมานาเต็มทันทีหลังระเบิด (ตั้ง false ถ้าไม่ต้องการ)
   Classes.ulti('mage', {
-    name: 'ระเบิดมหาเวท', dmg: 110, range: 260, cd: 60000, mp: 60, type: 'mult',
-    freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true,
+    name: 'ระเบิดมหาเวท', dmg: 220, range: 420, cd: 60000, mp: 60, type: 'mult',
+    chargeMs: 1000, freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true,
   }, { scale: { ap: 1 } });
 
   if (TEST_UNLOCK) Classes.testUnlock(MG_IDS);
@@ -155,6 +160,36 @@
     }
   }
 
+  // บัพคริติคอลให้ตัวเอง (จากสายฟ้า) | ร่ายซ้ำ = รีเฟรชเวลา ไม่ซ้อนกัน
+  // ถ้าหาสเตตัสคริไม่เจอ จะใช้ระบบสำรอง: ระหว่างบัพ ดาเมจจากสกิลเมจมีโอกาสคริ x CRIT_MUL
+  function critBuff(scene, def) {
+    let key = CRIT_STAT, val = def.critBuff;
+    try {
+      const S = scene.getStats ? scene.getStats() : null;
+      if (!key) key = CRIT_KEYS.find(k => S && (k in S));
+      if (key && S && Math.abs(S[key]) > 1) val = def.critBuff * 100;   // สเตตัสเก็บเป็น % (เช่น 15) ไม่ใช่ 0.15
+    } catch (e) { console.error('critBuff', e); }
+    if (statBuff(scene, 'mg_crit', key, val, def.critMs)) {
+      scene._mgCrit = null;
+    } else {
+      scene._mgCrit = { until: scene.time.now + def.critMs, chance: def.critBuff };
+      if (scene.time.now > (scene._mgWarnAt || 0)) {
+        scene._mgWarnAt = scene.time.now + 4000;
+        console.warn('mage.js: ไม่พบสเตตัสคริ/addStatBuff -> ใช้ระบบคริสำรอง (ใส่ชื่อที่ CRIT_STAT)');
+      }
+    }
+    scene.toastMsg('💥 คริติคอล +' + Math.round(def.critBuff * 100) + '% นาน ' + (def.critMs / 1000) + ' วิ');
+  }
+  // ระบบคริสำรอง (ทำงานเฉพาะเมื่อ critBuff ใช้สเตตัสจริงไม่ได้)
+  function critDmg(scene, e, dmg) {
+    const c = scene._mgCrit;
+    if (c && scene.time.now < c.until && Math.random() < c.chance) {
+      scene.popText(e.x, e.y - 34, '💥 คริ!', '#ffd24a');
+      return Math.round(dmg * CRIT_MUL);
+    }
+    return dmg;
+  }
+
   // ---------- มานา ----------
   // หามานาสูงสุด (รองรับหลายชื่อ เผื่อระบบสเตตัสตั้งชื่อต่างกัน) คืน 0 ถ้าหาไม่เจอ
   function maxMpOf(scene) {
@@ -207,18 +242,19 @@
   }
 
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
-  // สกิล 1: สายฟ้าแนวใหญ่ + ไฟช็อต
+  // สกิล 1: สายฟ้าแนวใหญ่ + ไฟช็อต + โอกาสคริ
   Classes.handlers.mbolt = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player, u = unit(fx, fy), len = def.range, hw = def.halfW;
     drawBolt(scene, p, u, len, hw);
     const dps = Math.round(dmg * def.shockMul);
+    critBuff(scene, def);
     scene.enemies.getChildren().slice().forEach(e => {
       if (!e.active) return;
       const rx = e.x - p.x, ry = e.y - p.y;
       const along = rx * u.x + ry * u.y, perp = Math.abs(-rx * u.y + ry * u.x);
       if (along < -15 || along > len + 12 || perp > hw + 12) return;
       shock(scene, e, dps, def.shockMs);
-      scene.damage(e, dmg);
+      scene.damage(e, critDmg(scene, e, dmg));
     });
   };
 
@@ -238,22 +274,25 @@
     manaRegenBuff(scene, def);
   };
 
-  // สกิล 3: ลูกไฟวงกว้างวางพื้น (เตือนสั้นๆ แล้วระเบิด 1 ครั้ง) + สตั้น
+  // สกิล 3: ลูกไฟวงกว้างวางพื้น (เตือนสั้นๆ แล้วระเบิด hits ครั้ง) + สตั้น
   Classes.handlers.mfire = function (def, x, y, dmg) {
     const scene = this, pt = takeGround(scene, def, x, y);
+    const hits = def.hits || 1, gap = def.hitMs || 400;
     const warn = scene.add.circle(pt.x, pt.y, def.range, 0xff6a2a, 0.12).setStrokeStyle(3, 0xff6a2a, 0.8).setDepth(40);
     const tw = scene.tweens.add({ targets: warn, alpha: 0.5, yoyo: true, repeat: -1, duration: 120 });
-    scene.time.delayedCall(def.delay, () => {
-      tw.stop(); warn.destroy();
-      scene.flash(pt.x, pt.y, def.range, 0xff7a2a);
-      scene.time.delayedCall(90, () => scene.flash(pt.x, pt.y, def.range * 0.6, 0xffffff));
-      const list = Classes.enemiesIn(scene, pt.x, pt.y, def.range);
-      list.forEach(e => {
-        Classes.status(scene, e, 'stun', {}, ccMs(e, def.stunMs));
-        scene.damage(e, dmg);
+    for (let h = 0; h < hits; h++) {
+      scene.time.delayedCall(def.delay + h * gap, () => {
+        scene.flash(pt.x, pt.y, def.range, 0xff7a2a);
+        scene.time.delayedCall(90, () => scene.flash(pt.x, pt.y, def.range * 0.6, 0xffffff));
+        const list = Classes.enemiesIn(scene, pt.x, pt.y, def.range);
+        list.forEach(e => {
+          Classes.status(scene, e, 'stun', {}, ccMs(e, def.stunMs));
+          scene.damage(e, critDmg(scene, e, dmg));
+        });
+        if (h === 0 && list.length) scene.popText(pt.x, pt.y - 40, 'สตั้น!', '#ffb36b');
+        if (h === hits - 1) { tw.stop(); warn.destroy(); }
       });
-      if (list.length) scene.popText(pt.x, pt.y - 40, 'สตั้น!', '#ffb36b');
-    });
+    }
   };
 
   // สกิล 4: วงน้ำแข็งวางพื้น ดาเมจ ticks ครั้ง มีโอกาสแช่แข็ง
@@ -268,41 +307,59 @@
             Classes.status(scene, e, 'freeze', {}, ccMs(e, def.freezeMs));
             scene.popText(e.x, e.y - 30, '❄ แช่แข็ง!', '#9fe8ff');
           }
-          scene.damage(e, dmg);
+          scene.damage(e, critDmg(scene, e, dmg));
         });
       });
     }
     scene.time.delayedCall((def.ticks - 1) * def.tickMs + 500, () => zone.destroy());
   };
 
-  // อัลติ: ระเบิดรอบตัว + แช่แข็ง + ไฟช็อต + เติมมานาเต็มทันที
+  // อัลติ: ชาจพลัง 1 วิ (chargeMs) แล้วระเบิดรอบตัว + แช่แข็ง + ไฟช็อต + เติมมานาเต็มทันที
   Classes.handlers.mult = function (def, x, y, dmg) {
     const scene = this, p = scene.player;
-    const ring = scene.add.circle(p.x, p.y, def.range, 0x9fe8ff, 0.25).setStrokeStyle(4, 0xffffff, 0.9).setDepth(60).setScale(0.1);
-    scene.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
-    scene.flash(p.x, p.y, def.range * 0.5, 0xffe14a);
-    const dps = Math.round(dmg * def.shockMul);
-    const list = Classes.enemiesIn(scene, p.x, p.y, def.range);
-    list.forEach(e => {
-      Classes.status(scene, e, 'freeze', {}, ccMs(e, def.freezeMs));
-      shock(scene, e, dps, def.shockMs);
-      scene.damage(e, dmg);
-    });
-    if (list.length) scene.popText(p.x, p.y - 50, '❄ แช่แข็ง + ⚡ ไฟช็อต!', '#d9f4ff');
+    const charge = def.chargeMs || 0;
 
-    // เติมมานาเต็มทันที (หลังหักมานาที่ใช้ร่ายแล้ว)
-    if (def.mpFull && scene.stats) {
-      const max = maxMpOf(scene);
-      if (max > 0) {
-        scene.stats.mp = max;
-        scene.flash(p.x, p.y, 44, 0x4aa8ff);
-        scene.popText(p.x, p.y - 72, '💧 มานาเต็ม!', '#7cc4ff');
-      } else if (scene.time.now > (scene._mgWarnAt || 0)) {
-        scene._mgWarnAt = scene.time.now + 4000;
-        console.warn('mage.js: เติมมานาไม่ได้ (ไม่พบ maxMp() หรือ stats.maxMp)');
-        scene.toastMsg('⚠ เติมมานาไม่ได้ (ดู console)');
+    // วงเตือนขอบเขตระเบิด + วงพลังที่ค่อยๆ ขยายเข้าหาขอบ
+    const edge = scene.add.circle(p.x, p.y, def.range, 0x9fe8ff, 0.06).setStrokeStyle(3, 0xffffff, 0.7).setDepth(59);
+    const core = scene.add.circle(p.x, p.y, def.range, 0xffe14a, 0.25).setStrokeStyle(3, 0xffe14a, 0.9).setDepth(60).setScale(0.05);
+    scene.tweens.add({ targets: core, scale: 1, duration: Math.max(1, charge), ease: 'Quad.easeIn' });
+    const follow = scene.time.addEvent({
+      delay: 16, loop: true,
+      callback: () => { if (p && p.active) { edge.setPosition(p.x, p.y); core.setPosition(p.x, p.y); } }
+    });
+    if (charge > 0) scene.popText(p.x, p.y - 60, '⚡ ชาจพลัง...', '#ffe28a');
+
+    scene.time.delayedCall(charge, () => {
+      follow.remove(false); edge.destroy(); core.destroy();
+      if (!p || !p.active || (scene.stats && scene.stats.hp <= 0)) return;
+
+      const ring = scene.add.circle(p.x, p.y, def.range, 0x9fe8ff, 0.25).setStrokeStyle(4, 0xffffff, 0.9).setDepth(60).setScale(0.1);
+      scene.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
+      scene.flash(p.x, p.y, def.range * 0.5, 0xffe14a);
+      scene.cameras.main.shake(260, 0.006);
+      const dps = Math.round(dmg * def.shockMul);
+      const list = Classes.enemiesIn(scene, p.x, p.y, def.range);
+      list.forEach(e => {
+        Classes.status(scene, e, 'freeze', {}, ccMs(e, def.freezeMs));
+        shock(scene, e, dps, def.shockMs);
+        scene.damage(e, critDmg(scene, e, dmg));
+      });
+      if (list.length) scene.popText(p.x, p.y - 50, '❄ แช่แข็ง + ⚡ ไฟช็อต!', '#d9f4ff');
+
+      // เติมมานาเต็มทันที (หลังหักมานาที่ใช้ร่ายแล้ว)
+      if (def.mpFull && scene.stats) {
+        const max = maxMpOf(scene);
+        if (max > 0) {
+          scene.stats.mp = max;
+          scene.flash(p.x, p.y, 44, 0x4aa8ff);
+          scene.popText(p.x, p.y - 72, '💧 มานาเต็ม!', '#7cc4ff');
+        } else if (scene.time.now > (scene._mgWarnAt || 0)) {
+          scene._mgWarnAt = scene.time.now + 4000;
+          console.warn('mage.js: เติมมานาไม่ได้ (ไม่พบ maxMp() หรือ stats.maxMp)');
+          scene.toastMsg('⚠ เติมมานาไม่ได้ (ดู console)');
+        }
       }
-    }
+    });
   };
 
   // ---------- ตั้งทิศก่อนใช้สกิล + บอทไม่ใช้เวทวาป ----------
