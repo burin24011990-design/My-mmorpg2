@@ -1,0 +1,22 @@
+name: Delete Old Functions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Write service account key
+        env:
+          SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: echo "$SA_KEY" > "$HOME/key.json"
+
+      - name: Delete old functions
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /home/runner/key.json
+        run: npx -y firebase-tools functions:delete marketSync buyPass cancelItem deposit withdraw ackMail --region asia-southeast1 --project newworld-ae666 --force --non-interactive
