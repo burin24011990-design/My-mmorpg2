@@ -6,6 +6,7 @@
 // อัลติ  ระเบิดมหาเวท         | ชาจพลัง 1 วิ แล้วระเบิดรอบตัววงกว้างมาก รุนแรง ติดแช่แข็ง + ไฟช็อต + เติมมานาเต็ม | คูลดาวน์ 60 วิ
 // dmg = ค่าฐาน | range = ระยะ/รัศมี | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส (ap = พลังเวท)
+// ** ตัวคูณดาเมจเวท (% ของพลังเวท) แก้ที่ AP_PCT ด้านล่างที่เดียว (1.2 = +120%) **
 (function () {
   const Classes = window.Classes;
   if (!Classes) throw new Error('mage.js: ไม่พบ window.Classes -> _shared.js ไม่ทำงาน/โหลดไม่ขึ้น (ดู error ก่อนหน้า)');
@@ -19,9 +20,14 @@
   const ARMOR_STAT = null;      // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติจาก pdef/def/armor/defense)
   const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
   const MANA_TICK = 500;        // บัพรีเจนมานาเติมทุกกี่มิลลิวินาที
-  const CRIT_MUL = 1.5;         // ตัวคูณดาเมจเมื่อคริ (ใช้เฉพาะกรณีหาสเตตัสคริใน stats.js ไม่เจอ แล้วใช้ระบบคริสำรองในไฟล์นี้)
-  const CRIT_STAT = null;       // ชื่อสเตตัสคริใน stats.js (null = เดาอัตโนมัติจาก CRIT_KEYS)
-  const CRIT_KEYS = ['crit', 'critRate', 'critChance', 'cri', 'cr'];
+  const CRIT_MUL = 1.5;         // ตัวคูณดาเมจเมื่อคริ (ใช้เฉพาะกรณี addStatBuff ใช้ไม่ได้ แล้วใช้ระบบคริสำรองในไฟล์นี้)
+  const CRIT_STAT = 'crit';     // ชื่อสเตตัสคริใน stats.js (ธนูตรึงขาใช้ 'crit' ค่าเป็น % ตรงๆ เช่น 40 = +40%)
+  const CRIT_KEYS = ['crit', 'critRate', 'critChance', 'cri', 'cr'];   // (ไม่ได้ใช้แล้ว เก็บไว้เผื่ออ้างอิง)
+
+  // ตัวคูณดาเมจเวทเป็น % ของพลังเวท (ap) ของแต่ละสกิล: 1.2 = ดาเมจฐาน + 120% ของพลังเวท
+  // ธารน้ำแข็งโดน 3 ครั้ง จึงตั้งต่อครั้งต่ำกว่า | เวทวาปไม่มีดาเมจ
+  const AP_PCT = { mg_bolt: 1.2, mg_fire: 1.5, mg_ice: 0.8, ulti: 3.0 };
+  const pctText = v => ' • +' + Math.round(v * 100) + '% ดาเมจเวท';
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('mage', { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' });
@@ -32,8 +38,8 @@
     name: 'สายฟ้า', class: 'mage', type: 'mbolt', noInfo: true,
     dmg: 39, range: 380, halfW: 60, cd: 3500, mp: 20, shockMul: 0.25, shockMs: 4000, critBuff: 0.4, critMs: 3000,
   }, {
-    scale: { ap: 1 },
-    info: (def, lv, S) => 'ยิงสายฟ้าแนวใหญ่ ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+    scale: { ap: AP_PCT.mg_bolt },
+    info: (def, lv, S) => 'ยิงสายฟ้าแนวใหญ่ ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + pctText(AP_PCT.mg_bolt) +
       ' • บัพคริติคอล +' + Math.round(def.critBuff * 100) + '% นาน ' + (def.critMs / 1000) + ' วิ' +
       ' ติดไฟช็อต ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.shockMul) + '/วิ นาน ' + (def.shockMs / 1000) +
       ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
@@ -56,8 +62,8 @@
     name: 'ลูกไฟ', class: 'mage', type: 'mfire', noInfo: true,
     dmg: 45, range: 200, cd: 7000, mp: 24, delay: 400, hits: 2, hitMs: 450, stunMs: 1500,
   }, {
-    scale: { ap: 1 }, ground: { cast: 340 },
-    info: (def, lv, S) => 'วางลูกไฟวงกว้างลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
+    scale: { ap: AP_PCT.mg_fire }, ground: { cast: 340 },
+    info: (def, lv, S) => 'วางลูกไฟวงกว้างลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + pctText(AP_PCT.mg_fire) +
       ' x ' + def.hits + ' ครั้ง สตั้น ' + (def.stunMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
@@ -67,8 +73,8 @@
     dmg: 20, range: 170, cd: 6000, mp: 20,
     ticks: 3, tickMs: 900, freezeChance: 0.4, freezeMs: 1800,
   }, {
-    scale: { ap: 1 }, ground: { cast: 320 },
-    info: (def, lv, S) => 'วางวงน้ำแข็งลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' x ' + def.ticks +
+    scale: { ap: AP_PCT.mg_ice }, ground: { cast: 320 },
+    info: (def, lv, S) => 'วางวงน้ำแข็งลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + pctText(AP_PCT.mg_ice) + ' x ' + def.ticks +
       ' ครั้ง โอกาสแช่แข็ง ' + Math.round(def.freezeChance * 100) + '% ต่อครั้ง (' + (def.freezeMs / 1000) + ' วิ) • คูลดาวน์ ' + Classes.cdText(def, S),
   });
 
@@ -77,7 +83,7 @@
   Classes.ulti('mage', {
     name: 'ระเบิดมหาเวท', dmg: 220, range: 420, cd: 60000, mp: 60, type: 'mult',
     chargeMs: 1000, freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true,
-  }, { scale: { ap: 1 } });
+  }, { scale: { ap: AP_PCT.ulti } });
 
   if (TEST_UNLOCK) Classes.testUnlock(MG_IDS);
 
@@ -161,24 +167,20 @@
   }
 
   // บัพคริติคอลให้ตัวเอง (จากสายฟ้า) | ร่ายซ้ำ = รีเฟรชเวลา ไม่ซ้อนกัน
-  // ถ้าหาสเตตัสคริไม่เจอ จะใช้ระบบสำรอง: ระหว่างบัพ ดาเมจจากสกิลเมจมีโอกาสคริ x CRIT_MUL
+  // ใช้วิธีเดียวกับธนูตรึงขา: addStatBuff({ crit: เปอร์เซ็นต์ตรงๆ }) เช่น 40 = +40%
+  // ถ้า addStatBuff ใช้ไม่ได้ จะใช้ระบบสำรอง: ระหว่างบัพ ดาเมจจากสกิลเมจมีโอกาสคริ x CRIT_MUL
   function critBuff(scene, def) {
-    let key = CRIT_STAT, val = def.critBuff;
-    try {
-      const S = scene.getStats ? scene.getStats() : null;
-      if (!key) key = CRIT_KEYS.find(k => S && (k in S));
-      if (key && S && Math.abs(S[key]) > 1) val = def.critBuff * 100;   // สเตตัสเก็บเป็น % (เช่น 15) ไม่ใช่ 0.15
-    } catch (e) { console.error('critBuff', e); }
-    if (statBuff(scene, 'mg_crit', key, val, def.critMs)) {
+    const pct = Math.round(def.critBuff * 100);   // 0.4 -> 40
+    if (statBuff(scene, 'mg_crit', CRIT_STAT, pct, def.critMs)) {
       scene._mgCrit = null;
     } else {
       scene._mgCrit = { until: scene.time.now + def.critMs, chance: def.critBuff };
       if (scene.time.now > (scene._mgWarnAt || 0)) {
         scene._mgWarnAt = scene.time.now + 4000;
-        console.warn('mage.js: ไม่พบสเตตัสคริ/addStatBuff -> ใช้ระบบคริสำรอง (ใส่ชื่อที่ CRIT_STAT)');
+        console.warn('mage.js: addStatBuff ใช้ไม่ได้ -> ใช้ระบบคริสำรอง');
       }
     }
-    scene.toastMsg('💥 คริติคอล +' + Math.round(def.critBuff * 100) + '% นาน ' + (def.critMs / 1000) + ' วิ');
+    scene.toastMsg('💥 คริติคอล +' + pct + '% นาน ' + (def.critMs / 1000) + ' วิ');
   }
   // ระบบคริสำรอง (ทำงานเฉพาะเมื่อ critBuff ใช้สเตตัสจริงไม่ได้)
   function critDmg(scene, e, dmg) {
@@ -242,7 +244,7 @@
   }
 
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
-  // สกิล 1: สายฟ้าแนวใหญ่ + ไฟช็อต + โอกาสคริ
+  // สกิล 1: สายฟ้าแนวใหญ่ + ไฟช็อต + บัพคริ
   Classes.handlers.mbolt = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player, u = unit(fx, fy), len = def.range, hw = def.halfW;
     drawBolt(scene, p, u, len, hw);
