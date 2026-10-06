@@ -1,14 +1,15 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v7.1 — เมืองจีนย้อนยุคพลังภายใน =====
+// ===== ฉากเมืองเริ่มต้น (Town) v7.2 — เมืองจีนย้อนยุคพลังภายใน =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
-// - ตาย = กลับเมือง (เติม HP/MP) | ปุ่ม "🏠 เมือง" ในฉากล่ามอนกลับเมืองได้
+// - ตาย = กลับเมือง (เติม HP/MP) + หัก EXP 1% (PvP ไม่หัก) | ปุ่ม "🏠 เมือง" ในฉากล่ามอนกลับเมืองได้
 // - ต้องใช้คู่กับ main.js ที่ตั้งค่า scene: [Main, Town]
 // - v6: ตัวละคร hero + อนิเมชันเดิน/ยืน, จอยสติ๊กลอยแบบเดียวกับข้างนอก (แตะซ้าย 40% ของจอ), ความเร็ว 190
 // - v7: ใช้ภาพจริง (อะตลาส assets/town/town.json + town-0.png), แผนผังเมืองใหม่ 2400x1900,
 //       ชนอาคาร/พรอพ, NPC เป็นสไปรต์, พื้นหญ้า/ถนนหินสร้างด้วยโค้ด (ไม่ต้องมีไฟล์)
 //       ถ้าไม่มีไฟล์ภาพ จะถอยกลับไปใช้กล่องสีเหมือนเดิม เกมไม่พัง
 // - v7.1: หน้าสเตตัสในเมืองแสดงสเตตัสครบเหมือนหน้าสเตตัสจริง (มีคริติคอล ฯลฯ) อ่านจาก STAT_DEFS ใน stats.js
+// - v7.2: ตายจริง (fixes.js เรียก townGoToTown) + หัก EXP 1% (ไม่หักใน PvP) + เซฟตอนตาย + อมตะ 3 วิตอนออกจากเมือง
 
 const TOWN = {
   w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190,
@@ -143,6 +144,7 @@ const TOWN_PROPS = [
 window.TownHooks = window.TownHooks || {};
 
 const TOWN_DEAD_MSG = '💀 คุณตายแล้ว ฟื้นคืนชีพที่เมือง';
+const DEATH_EXP_LOSS = 0.01;   // ตายแล้วเสีย EXP 1% ของ EXP ที่มีในเลเวลปัจจุบัน (PvP ไม่เสีย)
 
 // ----- หาฉาก Main (ไม่ผูกกับชื่อ key) -----
 function townMain(sc) {
@@ -156,15 +158,49 @@ function townMain(sc) {
   return null;
 }
 
-// ----- ชุบชีวิตหลังตาย -----
+// ----- อยู่ในโหมด PvP ไหม (ตายใน PvP ไม่หัก EXP) -----
+// เช็กชื่อตัวแปรที่พบบ่อย ถ้า pvp.js ใช้ชื่ออื่น ให้ตั้ง scene.inPvp = true ตอนเข้า PvP และ false ตอนออก
+function townInPvp(m) {
+  try {
+    if (m && (m.inPvp || m.pvpActive || m.pvpMode || m.noDeathPenalty)) return true;
+    if (m && m.pvp && (m.pvp.active || m.pvp.inMatch || m.pvp.inRoom)) return true;
+    const P = window.PVP || window.Pvp || window.pvp;
+    if (P && typeof P === 'object' && (P.active || P.inMatch || P.inRoom || P.inArena)) return true;
+    if (typeof window.isPvp === 'function' && window.isPvp()) return true;
+  } catch (e) {}
+  return false;
+}
+
+// ----- ชุบชีวิตหลังตาย: หัก EXP 1% (ยกเว้น PvP), ฟื้น HP/MP, ล้างมอน, เซฟ -----
 function townRevive(m) {
   try {
+    // 1) หัก EXP 1% (ปัดขึ้น ไม่ติดลบ ไม่ลดเลเวล) | PvP ไม่หัก
+    let lost = 0;
+    if (!townInPvp(m)) {
+      const cur = m.stats.exp || 0;
+      lost = Math.min(cur, Math.ceil(cur * DEATH_EXP_LOSS));
+      m.stats.exp = cur - lost;
+    }
+    const base = window.TOWN_NOTICE || TOWN_DEAD_MSG;
+    window.TOWN_NOTICE = base + (lost > 0 ? '\nเสีย EXP ' + lost + ' (1%)' : '\n(ไม่เสีย EXP)');
+
+    // 2) หยุดบอท ล้างเป้าหมาย มอนเลิกไล่ ล้างกระสุนมอน
+    m.autoMode = false; m.target = null; m.manualTarget = null;
+    if (m.enemies) m.enemies.getChildren().forEach(function (e) { if (e.state === 'chase') e.state = 'return'; });
+    if (m.enemyShots) m.enemyShots.getChildren().slice().forEach(function (s) { s.destroy(); });
+
+    // 3) ฟื้น HP/MP + วางตัวละครที่จุดเกิดของด่านปัจจุบัน
     m.stats.hp = m.maxHp();
     m.stats.mp = m.maxMp();
     if (m.player && typeof ZONES !== 'undefined') {
-      m.player.setPosition(ZONES[0].x, ZONES[0].y);
+      const z = ZONES[m.stageIdx] || ZONES[0];
+      m.player.setPosition(z.x, z.y);
       if (m.player.body) m.player.body.setVelocity(0, 0);
     }
+
+    // 4) เซฟทันที (กันปิดเกมแล้ว EXP กลับมา)
+    if (typeof m.saveSoon === 'function') m.saveSoon();
+    else if (typeof m.saveGame === 'function') m.saveGame();
   } catch (e) { console.warn('revive failed', e); }
 }
 
@@ -188,6 +224,7 @@ function townLeave(m) {
   try { if (m.closePanel) m.closePanel(); } catch (e) {}   // ปิดแผงของ Main ที่อาจค้างอยู่ (กันเดินไม่ได้)
   const b = document.getElementById('btn-to-town');
   if (b) b.style.display = '';
+  try { m.invulnUntil = m.time.now + 3000; } catch (e) {}   // อมตะ 3 วินาทีหลังออกจากเมือง
   m.scene.resume();
   m.scene.stop('Town');
 }
@@ -702,7 +739,7 @@ class Town extends Phaser.Scene {
     h.style.cssText = 'font-size:20px;color:#ffe28a;margin-bottom:8px';
     h.textContent = title;
     const t = document.createElement('div');
-    t.style.cssText = 'font-size:15px;line-height:1.5;margin-bottom:14px';
+    t.style.cssText = 'font-size:15px;line-height:1.5;margin-bottom:14px;white-space:pre-line';
     t.textContent = text;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap';
