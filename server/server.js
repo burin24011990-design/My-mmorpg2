@@ -4,6 +4,7 @@
 // - ผู้เล่นเห็น/ได้รับสกิลเฉพาะคนในห้องเดียวกัน
 // - v2: มอนสเตอร์ถูกสร้างและคุมโดยเซิร์ฟเวอร์ "แยกตามห้อง" คนในห้องเดียวกันเห็น/ตีมอนชุดเดียวกัน
 //       ห้องที่ไม่มีคนจะไม่มีมอน (สร้างใหม่ทั้งชุดเมื่อมีคนเข้า)
+// - v3: เพิ่มระบบเพื่อน + ปาร์ตี้ (social.js) และส่งเลเวลผู้เล่น
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -270,7 +271,7 @@ function pickFree(stage, ch, rm) {
   return null;
 }
 
-const pub = p => ({ id: p.id, name: p.name, x: p.x, y: p.y, stage: p.stage });
+const pub = p => ({ id: p.id, name: p.name, x: p.x, y: p.y, stage: p.stage, lv: p.lv });
 
 function playersInRoom(key) {
   const out = {};
@@ -305,9 +306,12 @@ function enterRoom(socket, stage, ch, rm) {
   socket.to(key).emit('joined', pub(p));
 }
 
+// ระบบเพื่อน + ปาร์ตี้ (ไฟล์ social.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
+require('./social')(io, players);
+
 // ---------- การเชื่อมต่อ ----------
 io.on('connection', socket => {
-  // เข้าเกม: d = { name, stage, ch, rm, cid }
+  // เข้าเกม: d = { name, stage, ch, rm, cid, lv }
   socket.on('join', d => {
     if (players[socket.id]) return;
     if (typeof d === 'string') d = { name: d };
@@ -317,6 +321,7 @@ io.on('connection', socket => {
     players[socket.id] = {
       id: socket.id, name, x: 1800, y: 1125, stage, ch: 0, rm: 0, room: null,
       cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0,
+      lv: clamp(parseInt(d.lv, 10) || 1, 1, 999),
       hitCd: 0, hitWin: 0, hitN: 0,
     };
     const f = pickFree(stage, d.ch, d.rm);
@@ -421,7 +426,7 @@ io.on('connection', socket => {
 setInterval(() => {
   for (const key in rooms) {
     const list = [];
-    rooms[key].forEach(id => { const p = players[id]; if (p) list.push([p.id, p.x, p.y, p.stage]); });
+    rooms[key].forEach(id => { const p = players[id]; if (p) list.push([p.id, p.x, p.y, p.stage, p.lv]); });
     if (list.length) io.to(key).emit('state', list);
   }
 }, 50);
