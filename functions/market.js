@@ -13,6 +13,7 @@
 //  H) ยอมรับเฉพาะ provider google.com (เดิมกันแค่ anonymous)
 //  I) market_flags (ให้คุณตรวจ) + adminBan (แบน/อายัดกล่องรับ)
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 if (!admin.apps.length) admin.initializeApp();
@@ -441,4 +442,30 @@ exports.claimInbox = onCall(OPT, async (req) => {
     audit(tx, { type: 'claim', uid: uid, entryId: id, kind: e.type });
     return { entry: { type: e.type, item: e.item || null, amount: e.amount || 0 } };
   });
+});
+
+// ---------- คืนของหมดอายุอัตโนมัติ (ทุก 60 นาที) ----------
+// ชื่อต้องเป็น expireListings (ชื่อเดิมที่ deploy ค้างอยู่ในระบบ)
+exports.expireListings = onSchedule({ schedule: 'every 60 minutes', region: REGION, timeZone: 'Asia/Bangkok', maxInstances: 1 }, async () => {
+  const now = Date.now();
+  const q = await db.collection('market_listings').where('expiresAt', '<=', now).limit(100).get();
+  for (const doc of q.docs) {
+    if (doc.data().status !== 'active') continue;
+    const pubRef = doc.ref;
+    const privRef = db.collection('market_private').doc(doc.id);
+    try {
+      await db.runTransaction(async (tx) => {
+        const pub = await tx.get(pubRef);
+        const priv = await tx.get(privRef);
+        if (!pub.exists || !priv.exists || pub.data().status !== 'active') return;
+        const t = Date.now();
+        const sellerId = priv.data().sellerId;
+        tx.update(pubRef, { status: 'expired' });
+        tx.update(privRef, { status: 'expired', cancelledAt: t });
+        tx.set(db.collection('market_inbox').doc(sellerId).collection('entries').doc(),
+          { type: 'item', item: pub.data().item, note: 'คืนจากตลาด (หมดอายุ)', at: t, availableAt: t });
+        audit(tx, { type: 'expire', uid: sellerId, listingId: doc.id });
+      });
+    } catch (e) {}
+  }
 });
