@@ -1,4 +1,4 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v7.2 — เมืองจีนย้อนยุคพลังภายใน =====
+// ===== ฉากเมืองเริ่มต้น (Town) v7.3 — เมืองจีนย้อนยุคพลังภายใน =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
@@ -9,6 +9,7 @@
 //       ชนอาคาร/พรอพ, NPC เป็นสไปรต์, พื้นหญ้า/ถนนหินสร้างด้วยโค้ด (ไม่ต้องมีไฟล์)
 //       ถ้าไม่มีไฟล์ภาพ จะถอยกลับไปใช้กล่องสีเหมือนเดิม เกมไม่พัง
 // - v7.1: หน้าสเตตัสในเมืองแสดงสเตตัสครบเหมือนหน้าสเตตัสจริง (มีคริติคอล ฯลฯ) อ่านจาก STAT_DEFS ใน stats.js
+// - v7.3: ปุ่ม "💬 คุย" ลอยเหนือหัว NPC + พื้นที่กดใหญ่ขึ้น (แก้จุดกดเพี้ยน) + กดไกลแล้วเดินไปคุยให้เอง
 // - v7.2: ตายจริง (fixes.js เรียก townGoToTown) + หัก EXP 1% (ไม่หักใน PvP) + เซฟตอนตาย + อมตะ 3 วิตอนออกจากเมือง
 
 const TOWN = {
@@ -614,12 +615,15 @@ class Town extends Phaser.Scene {
   }
 
   // ----- NPC: ใช้สไปรต์จากอะตลาส (ไม่มีภาพ = กล่องสีเดิม) | n.x,n.y = จุดเท้า -----
+  // v7.2: มีปุ่ม "💬 คุย" ลอยเหนือหัว NPC + พื้นที่กดใหญ่ (ใช้ Zone เพราะกดติดง่ายกว่า Container)
+  //       กดตอนอยู่ไกล = ตัวละครเดินไปหา NPC แล้วเปิดบทสนทนาให้เอง
   makeNpc(n) {
     const c = this.add.container(n.x, n.y).setDepth(n.y);
     const g = this.add.graphics();
     const textStyle = { fontFamily: 'Mitr, sans-serif', fontSize: '16px', color: '#ffe28a', stroke: '#000', strokeThickness: 4 };
     const titleStyle = { fontFamily: 'Mitr, sans-serif', fontSize: '13px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 6, y: 2 } };
-    let hit;
+    let box;      // กรอบกดตัว NPC: ศูนย์กลางเทียบจุดเท้า (cx, cy) + ขนาด (w, h)
+    let nameY;    // ตำแหน่งชื่อ NPC (เทียบจุดเท้า) ใช้วางปุ่มไว้เหนือชื่อ
 
     if (this.hasAtlas && this.textures.getFrame('town', n.sprite)) {
       g.fillStyle(0x000000, 0.35).fillEllipse(0, 2, 62, 16);
@@ -632,30 +636,58 @@ class Town extends Phaser.Scene {
         targets: spr, scaleY: k * 1.018, yoyo: true, repeat: -1,
         duration: 950 + Math.floor(Math.random() * 400), ease: 'Sine.easeInOut',
       });
-      const name = this.add.text(0, 8 - h - 14, n.name, textStyle).setOrigin(0.5);
+      nameY = 8 - h - 14;
+      const name = this.add.text(0, nameY, n.name, textStyle).setOrigin(0.5);
       const title = this.add.text(0, 26, n.title, titleStyle).setOrigin(0.5);
       c.add([g, spr, name, title]);
-      hit = new Phaser.Geom.Rectangle(-w / 2 - 12, 8 - h - 28, w + 24, h + 56);
+      box = { cx: 0, cy: 8 - h / 2, w: Math.max(w + 40, 130), h: h + 60 };
     } else {
       g.fillStyle(0x000000, 0.35).fillEllipse(0, 30, 54, 16);
       g.fillStyle(n.color, 1).fillRoundedRect(-28, -28, 56, 56, 14);
       g.lineStyle(4, 0xffffff, 1).strokeRoundedRect(-28, -28, 56, 56, 14);
       const icon = this.add.text(0, 0, n.icon, { fontSize: '32px' }).setOrigin(0.5);
-      const name = this.add.text(0, -52, n.name, textStyle).setOrigin(0.5);
+      nameY = -52;
+      const name = this.add.text(0, nameY, n.name, textStyle).setOrigin(0.5);
       const title = this.add.text(0, 46, n.title, titleStyle).setOrigin(0.5);
       c.add([g, icon, name, title]);
-      hit = new Phaser.Geom.Rectangle(-55, -65, 110, 130);
+      box = { cx: 0, cy: 0, w: 130, h: 140 };
     }
 
-    c.setSize(hit.width, hit.height);
-    c.setInteractive({ hitArea: hit, hitAreaCallback: Phaser.Geom.Rectangle.Contains, useHandCursor: true });
-    c.on('pointerdown', function () {
-      if (this.modal) return;
-      const p = this.player;
-      if (Math.hypot(n.x - p.x, n.y - (p.y + 20)) < 150) this.talk(n);
-      else this.flash('เดินเข้าไปใกล้ ๆ ก่อน');
-    }, this);
+    // ----- ปุ่ม "💬 คุย" ลอยเหนือชื่อ (เด้งขึ้นลงเบา ๆ ให้เห็นชัด) -----
+    const BW = 112, BH = 42, btnY = nameY - 42;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.35).fillRoundedRect(-BW / 2 + 2, -BH / 2 + 4, BW, BH, 14);   // เงา
+    bg.fillStyle(0xffd45c, 1).fillRoundedRect(-BW / 2, -BH / 2, BW, BH, 14);
+    bg.lineStyle(3, 0x26090f, 1).strokeRoundedRect(-BW / 2, -BH / 2, BW, BH, 14);
+    const bt = this.add.text(0, 0, '💬 คุย', {
+      fontFamily: 'Mitr, sans-serif', fontSize: '22px', color: '#26090f', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const btn = this.add.container(0, btnY, [bg, bt]);
+    c.add(btn);
+    this.tweens.add({ targets: btn, y: btnY - 6, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.easeInOut' });
+
+    // ----- พื้นที่กด (Zone ในพิกัดโลก) : ตัว NPC + ปุ่ม (ปุ่มกดได้กว้างกว่าที่เห็น) -----
+    // depth 50000 = อยู่เหนือของในเมือง แต่ต่ำกว่าปุ่มแถบบน (100010+) จึงไม่บังปุ่ม HUD
+    const onTap = function () { this.approachNpc(n); };
+    const zBody = this.add.zone(n.x + box.cx, n.y + box.cy, box.w, box.h).setDepth(50000).setInteractive({ useHandCursor: true });
+    zBody.on('pointerdown', onTap, this);
+    const zBtn = this.add.zone(n.x, n.y + btnY, BW + 50, BH + 36).setDepth(50001).setInteractive({ useHandCursor: true });
+    zBtn.on('pointerdown', onTap, this);
     return c;
+  }
+
+  // กด NPC/ปุ่มคุย: ใกล้พอ = คุยเลย | ไกล = เดินไปหาแล้วคุยให้อัตโนมัติ (update() เช็กระยะ 110)
+  approachNpc(n) {
+    if (this.modal) return;
+    const p = this.player;
+    if (Math.hypot(n.x - p.x, n.y - (p.y + 20)) < 150) {
+      this.target = null; this.pending = null;
+      this.talk(n);
+      return;
+    }
+    this.pending = n;
+    this.target = { x: n.x, y: n.y - 20 };   // p.y = จุดเท้า - 20
+    this.flash('กำลังเดินไปหา ' + n.name);
   }
 
   update(time, delta) {
