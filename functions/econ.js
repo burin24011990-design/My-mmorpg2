@@ -11,7 +11,9 @@ const FV = admin.firestore.FieldValue;
 // ---------- ค่าที่ปรับได้ ----------
 const REGION = 'asia-southeast1';
 const ENFORCE_APP_CHECK = false;
-const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };   // <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
+const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };
+// redeploy
+// <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
 const DAY = 24 * 3600000;
 
 const COLORS = ['blue', 'red', 'gold'];
