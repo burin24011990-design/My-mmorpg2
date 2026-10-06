@@ -1,8 +1,9 @@
 // ===== PvP ฝั่งเกม: ล็อบบี้ในเมือง (NPC ผู้ดูแลสนามประลอง) + สนามประลอง 1v1 / 3v3 / 5v5 =====
 // ห้อง: ไม่จุติ / จุติไม่เกิน 3, 6, 8, 11, 15, 19, 24 (ต้องตรงกับ server/pvpServer.js)
+// กติกา: ตายแล้วเกิดใหม่ในวงปลอดภัย | ฆ่าได้มากกว่าชนะ | วงปลอดภัยบีบเข้าเมื่อเวลาผ่านไป (ใครอยู่นอกวงเสียเลือด)
 // วิธีทำงาน: ฝั่งตรงข้ามถูกสร้างเป็น "เป้าหมายแบบมอน" ในกลุ่ม enemies เพื่อให้สกิล/กระสุนเดิมตีโดนทุกแบบ
 //            ดาเมจที่ตีส่งให้เซิร์ฟเวอร์ -> เซิร์ฟเวอร์ส่งไปให้คนที่โดน -> คนที่โดนหักเลือดตัวเอง (คิดเกราะ/หลบ/บล็อกของตัวเอง)
-// โหลดหลังไฟล์อื่นทั้งหมด (หลัง town.js, roomMonsters.js, rockGuard.js ฯลฯ) และก่อน main.js
+// โหลดหลังไฟล์อื่นทั้งหมด (หลัง town.js, roomMonsters.js, rockGuard.js, heroPatch.js ฯลฯ) และก่อน main.js
 (function () {
   const P = Main.prototype;
   const FORMATS = [{ size: 1, label: '1 ปะทะ 1' }, { size: 3, label: '3 ปะทะ 3' }, { size: 5, label: '5 ปะทะ 5' }];
@@ -10,10 +11,15 @@
   const capLabel = c => (c === 0 ? 'ไม่จุติ' : 'จุติไม่เกิน ' + c);
   const ARENA_STAGE = 0;                       // ใช้แผนที่ด่าน 1 เป็นสนาม (หินเหมือนกันทุกเครื่อง)
   const SPAWN_X = [1250, 2350], SPAWN_Y = 1125;
-  const ALLY_TINT = 0x66aaff, FOE_TINT = 0xff6655, NAME_Y = 40;
+  const ALLY_TINT = 0x66aaff, FOE_TINT = 0xff6655;          // ใช้กับวงกลมสำรอง (ถ้าไม่มี hero.png)
+  const ALLY_TINT_HERO = 0xb4d2ff, FOE_TINT_HERO = 0xffb0a0; // ใช้กับตัวละครจริง (อ่อนกว่า จะได้เห็นหน้าตา)
+  const HERO_SCALE = 0.75;                     // ต้องตรงกับ heroPatch.js
+  const ATTACK_MS = 420;
+  const ATTACK_BY_CLASS = { sword: 'sword', rogue: 'sword', mage: 'staff', priest: 'staff', archer: 'bow' };
   const fmtTime = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const pvOn = () => !!(window._pvp && window._pvp.active);
-  const sty = (e, css) => { e.style.cssText = css; return e; };
+  const heroOn = m => !!(window.HeroAnims && m.textures && m.textures.exists('hero'));
+  const dirFromVec = (x, y) => (Math.abs(x) >= Math.abs(y) ? (x < 0 ? 'left' : 'right') : (y < 0 ? 'up' : 'down'));
   let lobbyRef = null;
 
   // ในสนาม PvP ไม่ให้เกราะของคนที่ถูกตีลดดาเมจฝั่งคนตี (ไปคิดฝั่งคนโดนแทน กันหักซ้ำ)
@@ -87,7 +93,9 @@
       act.disabled = !L.queued && L.bi === null;
       act.onclick = () => {
         if (L.queued) { s.emit('pvpCancel'); L.queued = false; render(); return; }
-        s.emit('pvpQueue', { size: L.size, bi: L.bi, level: m.stats.level, rebirth, maxHp: m.maxHp() }, res => {
+        let cls = 'sword';
+        try { if (typeof m.currentClass === 'function') cls = m.currentClass() || 'sword'; } catch (e) { /* ignore */ }
+        s.emit('pvpQueue', { size: L.size, bi: L.bi, level: m.stats.level, rebirth, maxHp: m.maxHp(), cls }, res => {
           res = res || {};
           if (res.ok) { L.queued = true; L.waiting = res.waiting; L.need = res.need; }
           else m.toastMsg(res.reason === 'rebirth' ? 'ขั้นจุติของคุณเกินเพดานห้องนี้' : 'เข้าคิวไม่สำเร็จ (' + (res.reason || '?') + ')');
@@ -122,12 +130,15 @@
   // =====================================================================
   // สนามประลอง
   // =====================================================================
-  function freePoint(m, x, y) {
+  // หาจุดที่ไม่ติดหิน และ (ถ้าระบุวง zi) ต้องอยู่ในวงปลอดภัยด้วย
+  function freePoint(m, x, y, zi) {
+    const inside = (px, py) => !zi || Math.hypot(px - zi.x, py - zi.y) <= zi.r - 30;
     if (!m.pointInRock) return { x, y };
-    for (let r = 0; r <= 400; r += 20) {
+    if (!m.pointInRock(x, y, 50) && inside(x, y)) return { x, y };
+    for (let r = 20; r <= 400; r += 20) {
       for (let k = 0; k < 12; k++) {
         const a = k * Math.PI / 6, px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
-        if (!m.pointInRock(px, py, 50)) return { x: px, y: py };
+        if (!m.pointInRock(px, py, 50) && inside(px, py)) return { x: px, y: py };
       }
     }
     return { x, y };
@@ -136,6 +147,15 @@
 
   function resetCooldowns(m) { if (m.cdEnd) Object.keys(m.cdEnd).forEach(k => { m.cdEnd[k] = 0; }); }
   function fullHeal(m) { m.stats.hp = m.maxHp(); m.stats.mp = m.maxMp(); }
+
+  // รัศมีวงปลอดภัยตอนนี้ (สูตรเดียวกับเซิร์ฟเวอร์) | null = ยังไม่เริ่ม
+  function zoneInfo(pv) {
+    const z = pv.zone;
+    if (!z || !pv.liveAt || !pv.total) return null;
+    const k = (Date.now() - pv.liveAt) / pv.total;
+    const t = Math.min(1, Math.max(0, (k - z.from) / (z.to - z.from)));
+    return { x: z.x, y: z.y, r: z.r0 + (z.r1 - z.r0) * t, t, k };
+  }
 
   function startArena(m, d) {
     if (window._pvp) return;
@@ -146,8 +166,11 @@
     const pv = window._pvp = {
       active: true, id: d.id, team: d.team, size: d.size, cap: d.cap, teams: d.teams, me: myId,
       frozen: true, dead: false, over: false, allowLoad: true, prevStage: m.stageIdx || 0,
-      units: {}, st: {}, hits: {}, lastSend: 0, lastHit: 0, lastHud: 0, endAt: 0, startAt: Date.now() + d.countdown,
+      units: {}, st: {}, hits: {}, info: {}, teamOf: {},
+      lastSend: 0, lastHit: 0, lastHud: 0, lastZone: 0, endAt: 0, startAt: Date.now() + d.countdown,
+      zone: null, liveAt: 0, total: 0, protUntil: 0, respawnMs: 3000,
     };
+    d.teams.forEach((list, t) => list.forEach(u => { pv.info[u.id] = u; pv.teamOf[u.id] = t; }));
     // เลิกเชื่อมห้องล่ามอน (เซิร์ฟเวอร์พาออกแล้ว) กันระบบเครือข่ายพาเข้าห้องซ้ำ
     Object.keys(m.others || {}).forEach(id => m.removeOther(id));
     m.inRoom = false; m._netStage = null;
@@ -175,26 +198,63 @@
     m.socket.emit('pvpMove', { x: m.player.x, y: m.player.y, hp: m.stats.hp, maxHp: m.maxHp() });
   }
 
+  // สร้างยูนิตของผู้เล่นคนอื่น (ศัตรูเป็นเป้าหมายในกลุ่ม enemies / เพื่อนร่วมทีมเป็นสไปรต์ธรรมดา)
+  // ถ้ามี hero.png จะใช้ตัวละครจริง + อนิเมชัน ถ้าไม่มีจะใช้วงกลมสำรอง
   function makeUnit(m, pv, u, team, sp) {
-    const foe = team !== pv.team;
+    const foe = team !== pv.team, hero = heroOn(m);
     let spr;
     if (foe) {
-      spr = m.enemies.create(sp.x, sp.y, 'player').setTint(FOE_TINT);
+      spr = hero ? m.enemies.create(sp.x, sp.y, 'hero', 18) : m.enemies.create(sp.x, sp.y, 'player');
       spr.isPvp = true; spr.pid = u.id; spr.level = u.level; spr.kind = 'pvp';
       spr.isBoss = false; spr.ranged = false; spr.state = 'idle';
       spr.hp = u.maxHp; spr.maxHp = u.maxHp;
       spr.def = { name: u.name, scale: 1, key: 'player', hasSheet: false };
+      if (hero) {
+        spr.setScale(HERO_SCALE);
+        if (spr.body) { spr.body.setSize(28, 24); spr.body.setOffset(34, 64); }
+      }
+      spr.setTint(hero ? FOE_TINT_HERO : FOE_TINT);
       if (spr.body) spr.body.setImmovable(true);
       spr.setInteractive();
       spr.on('pointerdown', () => { if (!pv.dead && !pv.frozen) m.manualTarget = spr; });
     } else {
-      spr = m.add.sprite(sp.x, sp.y, 'player').setTint(ALLY_TINT);
+      spr = hero ? m.add.sprite(sp.x, sp.y, 'hero', 18) : m.add.sprite(sp.x, sp.y, 'player');
+      if (hero) spr.setScale(HERO_SCALE);
+      spr.setTint(hero ? ALLY_TINT_HERO : ALLY_TINT);
     }
     spr.setDepth(30);
-    const label = m.add.text(sp.x, sp.y - NAME_Y, (foe ? '' : '🛡 ') + u.name + ' Lv.' + u.level + (u.rebirth ? ' (จุติ ' + u.rebirth + ')' : ''), {
+    const nameY = hero ? 56 : 40;
+    const label = m.add.text(sp.x, sp.y - nameY, (foe ? '' : '🛡 ') + u.name + ' Lv.' + u.level + (u.rebirth ? ' (จุติ ' + u.rebirth + ')' : ''), {
       fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: foe ? '#ff9a8a' : '#a8d0ff', stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(40);
-    pv.units[u.id] = { id: u.id, name: u.name, foe, sprite: spr, label, alive: true, tx: sp.x, ty: sp.y, hp: u.maxHp, maxHp: u.maxHp };
+    pv.units[u.id] = {
+      id: u.id, name: u.name, cls: u.cls || 'sword', foe, hero, nameY, sprite: spr, label, alive: true,
+      tx: sp.x, ty: sp.y, hp: u.maxHp, maxHp: u.maxHp,
+      dir: team === 0 ? 'right' : 'left', atkUntil: 0, protUntil: 0,
+    };
+  }
+
+  // เล่นท่าเดิน/ยืน ตามการเคลื่อนที่
+  function animateUnit(u, dx, dy) {
+    if (!u.hero || Date.now() < u.atkUntil) return;
+    const moving = Math.hypot(dx, dy) > 4;
+    if (moving) u.dir = dirFromVec(dx, dy);
+    try { HeroAnims.play(u.sprite, moving ? 'walk' : 'idle', u.dir); } catch (e) { /* ignore */ }
+  }
+
+  // เล่นท่าโจมตี (ตอนได้รับอีเวนต์สกิลจากเซิร์ฟเวอร์)
+  function playUnitAttack(m, pv, u) {
+    if (!u.hero) return;
+    const sp = u.sprite;
+    let tx = null;
+    if (u.foe) tx = m.player.x;
+    else {
+      let best = 1e9;
+      Object.values(pv.units).forEach(o => { if (o.foe && o.alive) { const dd = Math.abs(o.sprite.x - sp.x); if (dd < best) { best = dd; tx = o.sprite.x; } } });
+    }
+    if (tx !== null) u.dir = tx < sp.x ? 'left' : 'right';
+    u.atkUntil = Date.now() + ATTACK_MS;
+    try { HeroAnims.play(sp, ATTACK_BY_CLASS[u.cls] || 'sword', u.dir); } catch (e) { /* ignore */ }
   }
 
   // ---------- HUD ด้านบน ----------
@@ -220,18 +280,49 @@
   function updateHud(pv) {
     const t = document.getElementById('pvp-hud-txt');
     if (!t) return;
-    const units = Object.values(pv.units);
-    const foe = units.filter(u => u.foe && u.alive).length;
-    const ally = units.filter(u => !u.foe && u.alive).length + (pv.dead ? 0 : 1);
-    let time;
+    let ka = 0, kb = 0;
+    Object.keys(pv.st).forEach(id => {
+      const k = pv.st[id].kills || 0;
+      if (pv.teamOf[id] === pv.team) ka += k; else kb += k;
+    });
+    let time, zone = '';
     if (pv.frozen) time = 'เริ่มใน ' + Math.max(0, Math.ceil((pv.startAt - Date.now()) / 1000));
-    else time = fmtTime(pv.endAt - Date.now());
-    t.textContent = '⚔ ' + pv.size + 'v' + pv.size + ' • ทีมเรา ' + ally + ' vs ศัตรู ' + foe + ' • ⏱ ' + time + (pv.dead ? ' • 👻 ดูต่อ' : '');
+    else {
+      time = fmtTime(pv.endAt - Date.now());
+      const zi = zoneInfo(pv);
+      if (zi) {
+        if (zi.t <= 0) zone = ' • 🌀 บีบใน ' + fmtTime(pv.zone.from * pv.total - (Date.now() - pv.liveAt));
+        else if (zi.t < 1) zone = ' • 🌀 วงกำลังบีบ';
+        else zone = ' • 🌀 วงเล็กสุด';
+      }
+    }
+    t.textContent = '⚔ ' + pv.size + 'v' + pv.size + ' • ฆ่า ' + ka + ' : ' + kb + ' • ⏱ ' + time + zone + (pv.dead ? ' • 👻 กำลังเกิดใหม่' : '');
+  }
+
+  // ตัวเราตาย (เลือดหมดหรืออยู่นอกวงนานเกิน)
+  function onMyDeath(m, pv) {
+    if (pv.dead || pv.over) return;
+    pv.dead = true;
+    m.stats.hp = 1;
+    if (m.player) m.player.setAlpha(0.35);
+    m.manualTarget = null; m.target = null;
+    m.socket.emit('pvpDead');
+  }
+
+  // เสียเลือดจากอยู่นอกวง (หักตรง ไม่ผ่านเกราะ/หลบ)
+  function zoneHurt(m, pv, dmg) {
+    m.stats.hp = Math.max(0, m.stats.hp - dmg);
+    try { showDamage(m, m.player.x, m.player.y - 30, dmg, 'normal'); } catch (e) { /* ignore */ }
+    if (!pv.warned) {
+      pv.warned = true; m.toastMsg('⚠ คุณอยู่นอกวง! รีบเข้าไปในวงสีฟ้า');
+      setTimeout(() => { pv.warned = false; }, 3000);
+    }
+    if (m.stats.hp <= 0) onMyDeath(m, pv);
   }
 
   // ---------- อัปเดตทุกเฟรมในสนาม ----------
   function pvpUpdate(m, time) {
-    const pv = window._pvp;
+    const pv = window._pvp, now = Date.now();
     if (!m._pvpGfx) m._pvpGfx = m.add.graphics().setDepth(41);
     const g = m._pvpGfx; g.clear();
     Object.values(pv.units).forEach(u => {
@@ -239,15 +330,42 @@
       const s = pv.st[u.id];
       if (s) { u.tx = s.x; u.ty = s.y; u.hp = s.hp; u.maxHp = s.maxHp || u.maxHp; }
       const sp = u.sprite;
-      sp.x += (u.tx - sp.x) * 0.3; sp.y += (u.ty - sp.y) * 0.3;
+      const dx = u.tx - sp.x, dy = u.ty - sp.y;
+      sp.x += dx * 0.3; sp.y += dy * 0.3;
       if (sp.body) sp.body.setVelocity(0, 0);
-      if (u.foe) { sp.hp = u.hp; sp.maxHp = u.maxHp; }
-      u.label.setPosition(sp.x, sp.y - NAME_Y);
-      const w = 54, r = Math.max(0, Math.min(1, u.hp / Math.max(1, u.maxHp))), x = Math.round(sp.x - w / 2), y = Math.round(sp.y - NAME_Y + 12);
+      if (u.foe) {
+        sp.hp = u.hp; sp.maxHp = u.maxHp;
+        if (!sp.isTinted) sp.setTint(u.hero ? FOE_TINT_HERO : FOE_TINT);   // คืนสีหลังแฟลชโดนตี
+      }
+      animateUnit(u, dx, dy);
+      if (u.protUntil) {                                  // กะพริบตอนอมตะหลังเกิดใหม่
+        if (now < u.protUntil) sp.setAlpha(Math.floor(now / 150) % 2 ? 0.4 : 1);
+        else { u.protUntil = 0; sp.setAlpha(1); }
+      }
+      u.label.setPosition(sp.x, sp.y - u.nameY);
+      const w = 54, r = Math.max(0, Math.min(1, u.hp / Math.max(1, u.maxHp))), x = Math.round(sp.x - w / 2), y = Math.round(sp.y - u.nameY + 12);
       g.fillStyle(0x000000, 0.8).fillRect(x - 1, y - 1, w + 2, 9);
       g.fillStyle(0x3a0d0d, 1).fillRect(x, y, w, 7);
       if (r > 0) g.fillStyle(u.foe ? 0xff4a4a : 0x5aa8ff, 1).fillRect(x, y, Math.round(w * r), 7);
     });
+
+    // ตัวเราตอนอมตะ: กะพริบ
+    if (!pv.dead) {
+      if (now < pv.protUntil) { m.player.setAlpha(Math.floor(now / 150) % 2 ? 0.4 : 1); pv._wasProt = true; }
+      else if (pv._wasProt) { pv._wasProt = false; m.player.setAlpha(1); }
+    }
+
+    // วงปลอดภัย: วาดวงฟ้า + พื้นที่นอกวงสีแดง และหักเลือดคนที่อยู่นอกวง
+    const zi = zoneInfo(pv);
+    if (zi) {
+      g.lineStyle(1200, 0xff2222, 0.22).strokeCircle(zi.x, zi.y, zi.r + 600);
+      g.lineStyle(6, 0x55aaff, 0.95).strokeCircle(zi.x, zi.y, zi.r);
+      if (!pv.dead && !pv.over && now >= pv.protUntil && time - pv.lastZone > 500 &&
+          Math.hypot(m.player.x - zi.x, m.player.y - zi.y) > zi.r) {
+        pv.lastZone = time;
+        zoneHurt(m, pv, Math.ceil(m.maxHp() * (0.03 + 0.05 * zi.t)));   // 3% -> 8% ต่อครึ่งวินาที (แรงขึ้นตามวงที่เล็กลง)
+      }
+    }
 
     if (!pv.over && time - pv.lastSend > 66) {
       pv.lastSend = time;
@@ -288,22 +406,13 @@
     if (h.vamp > 0 && this.vampHeal) this.vampHeal(final * h.vamp / 100);
   };
 
-  // ---------- ตัวเราโดนตี / ตาย ----------
-  function onMyDeath(m, pv) {
-    if (pv.dead || pv.over) return;
-    pv.dead = true;
-    m.stats.hp = 1;
-    if (m.player) m.player.setAlpha(0.35);
-    m.manualTarget = null; m.target = null;
-    m.socket.emit('pvpDead');
-    m.toastMsg('💀 คุณพ่ายแพ้ ดูเพื่อนร่วมทีมต่อจนจบแมตช์');
-  }
-
+  // ---------- ตัวเราโดนตี ----------
   const _hurt = P.hurtPlayer;
   P.hurtPlayer = function () {
     const pv = window._pvp;
     if (!pv || !pv.active) return _hurt.apply(this, arguments);
     if (pv.frozen || pv.dead || pv.over) return;          // ช่วงนับถอยหลัง/ตายแล้ว/จบแล้ว = ไม่โดน
+    if (Date.now() < pv.protUntil) return;                // อมตะหลังเกิดใหม่
     const r = _hurt.apply(this, arguments);
     if (this.stats.hp <= 0) onMyDeath(this, pv);
     return r;
@@ -397,18 +506,25 @@
     card.appendChild(h);
     const sub = document.createElement('div');
     sub.style.cssText = 'font-size:12px;color:#c9b27a;margin-bottom:8px';
-    sub.textContent = d.reason === 'time' ? 'หมดเวลา ตัดสินจากเลือดที่เหลือ' : (d.reason === 'draw' ? 'ตายพร้อมกัน' : 'อีกฝ่ายถูกกำจัดหมด');
+    sub.textContent = ({
+      time: 'หมดเวลา ตัดสินจากจำนวนฆ่า',
+      timeDmg: 'ฆ่าเท่ากัน ตัดสินจากดาเมจรวม',
+      draw: 'ฆ่าและดาเมจเท่ากัน',
+      forfeit: 'อีกฝ่ายออกจากแมตช์',
+    })[d.reason] || 'จบแมตช์';
     card.appendChild(sub);
     [0, 1].forEach(t => {
+      const rows = d.rows.filter(r => r.team === t);
+      const total = rows.reduce((s, r) => s + r.kills, 0);
       const tt = document.createElement('div');
-      tt.style.cssText = 'text-align:left;font-size:12px;color:' + (t === pv.team ? '#a8d0ff' : '#ff9a8a') + ';margin:6px 0 2px';
-      tt.textContent = t === pv.team ? 'ทีมเรา' : 'ทีมศัตรู';
+      tt.style.cssText = 'text-align:left;font-size:13px;color:' + (t === pv.team ? '#a8d0ff' : '#ff9a8a') + ';margin:6px 0 2px';
+      tt.textContent = (t === pv.team ? 'ทีมเรา' : 'ทีมศัตรู') + ' • ฆ่ารวม ' + total;
       card.appendChild(tt);
-      d.rows.filter(r => r.team === t).forEach(r => {
+      rows.forEach(r => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 8px;margin-bottom:3px;border-radius:8px;background:#3a1620;font-size:13px';
-        const a = document.createElement('span'); a.textContent = r.name + (r.id === pv.me ? ' (คุณ)' : '') + (r.alive ? '' : ' 💀');
-        const b = document.createElement('span'); b.style.color = '#ffe28a'; b.textContent = 'ฆ่า ' + r.kills + ' • ดาเมจ ' + r.dmg.toLocaleString();
+        row.style.cssText = 'display:flex;justify-content:space-between;gap:8px;padding:4px 8px;margin-bottom:3px;border-radius:8px;background:#3a1620;font-size:13px';
+        const a = document.createElement('span'); a.textContent = r.name + (r.id === pv.me ? ' (คุณ)' : '') + (r.left ? ' 🏳' : '');
+        const b = document.createElement('span'); b.style.color = '#ffe28a'; b.textContent = 'ฆ่า ' + r.kills + ' • ตาย ' + (r.deaths || 0) + ' • ดาเมจ ' + r.dmg.toLocaleString();
         row.append(a, b); card.appendChild(row);
       });
     });
@@ -430,12 +546,13 @@
     s.on('pvpFound', d => startArena(m, d));
     s.on('pvpGo', d => {
       const pv = window._pvp; if (!pv) return;
-      pv.frozen = false; pv.endAt = Date.now() + d.ms;
-      m.toastMsg('⚔️ เริ่ม!');
+      pv.frozen = false; pv.total = d.ms; pv.liveAt = Date.now(); pv.endAt = pv.liveAt + d.ms;
+      pv.zone = d.zone || null; pv.respawnMs = d.respawn || 3000;
+      m.toastMsg('⚔️ เริ่ม! ใครฆ่าได้มากกว่าชนะ');
     });
     s.on('pvpState', list => {
       const pv = window._pvp; if (!pv) return;
-      list.forEach(a => { pv.st[a[0]] = { x: a[1], y: a[2], hp: a[3], maxHp: a[4], alive: !!a[5] }; });
+      list.forEach(a => { pv.st[a[0]] = { x: a[1], y: a[2], hp: a[3], maxHp: a[4], alive: !!a[5], kills: a[6] || 0 }; });
     });
     s.on('pvpHurt', d => {
       const pv = window._pvp;
@@ -443,16 +560,47 @@
       m.hurtPlayer(d.dmg);
     });
     s.on('pvpDead', d => {
-      const pv = window._pvp; if (!pv || d.id === pv.me) return;
+      const pv = window._pvp; if (!pv) return;
+      const killer = d.by === pv.me ? 'คุณ' : (pv.units[d.by] ? pv.units[d.by].name : null);
+      if (d.id === pv.me) {
+        if (!d.left) m.toastMsg('💀 ' + (killer ? 'ถูก ' + killer + ' ' : '') + 'กำจัด • เกิดใหม่ใน ' + Math.round(pv.respawnMs / 1000) + ' วิ');
+        return;
+      }
       const u = pv.units[d.id]; if (!u) return;
       u.alive = false;
-      if (u.foe) {
+      if (u.foe || d.left) {
         if (m.target === u.sprite) m.target = null;
         if (m.manualTarget === u.sprite) m.manualTarget = null;
         try { u.sprite.destroy(); u.label.destroy(); } catch (e) { /* ignore */ }
       } else { u.sprite.setAlpha(0.3); u.label.setAlpha(0.5); }
-      const killer = d.by === pv.me ? 'คุณ' : (pv.units[d.by] ? pv.units[d.by].name : null);
-      m.toastMsg('☠ ' + u.name + ' ถูกกำจัด' + (killer ? ' โดย ' + killer : ''));
+      m.toastMsg(d.left ? u.name + ' ออกจากแมตช์' : '☠ ' + u.name + ' ถูกกำจัด' + (killer ? ' โดย ' + killer : ''));
+    });
+    // เกิดใหม่: ตัวเรา = วาร์ปไปจุดที่เซิร์ฟเวอร์สุ่ม (ในวงปลอดภัย) / คนอื่น = สร้างยูนิตใหม่ที่จุดนั้น
+    s.on('pvpRespawn', d => {
+      const pv = window._pvp; if (!pv || !pv.active || pv.over) return;
+      const zi = zoneInfo(pv);
+      if (d.id === pv.me) {
+        const p = freePoint(m, d.x, d.y, zi);
+        pv.dead = false; pv.protUntil = Date.now() + (d.prot || 0); pv._wasProt = true;
+        m.player.setPosition(p.x, p.y); m.player.setVelocity(0, 0); m.player.setAlpha(1);
+        m.cameras.main.centerOn(p.x, p.y);
+        fullHeal(m); resetCooldowns(m);
+        m.toastMsg('✨ เกิดใหม่!');
+        return;
+      }
+      const info = pv.info[d.id], team = pv.teamOf[d.id];
+      if (!info || team === undefined) return;
+      const old = pv.units[d.id];
+      if (old) { try { old.sprite.destroy(); old.label.destroy(); } catch (e) { /* ignore */ } }
+      delete pv.st[d.id];
+      makeUnit(m, pv, info, team, { x: d.x, y: d.y });
+      pv.units[d.id].protUntil = Date.now() + (d.prot || 0);
+    });
+    // ศัตรู/เพื่อนใช้สกิล -> เล่นท่าโจมตี
+    s.on('skill', d => {
+      const pv = window._pvp; if (!pv || !d) return;
+      const u = pv.units[d.id];
+      if (u && u.alive) playUnitAttack(m, pv, u);
     });
     s.on('pvpEnd', d => {
       const pv = window._pvp; if (!pv) return;
