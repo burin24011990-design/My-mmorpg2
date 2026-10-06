@@ -5,6 +5,7 @@
 // - v2: มอนสเตอร์ถูกสร้างและคุมโดยเซิร์ฟเวอร์ "แยกตามห้อง" คนในห้องเดียวกันเห็น/ตีมอนชุดเดียวกัน
 //       ห้องที่ไม่มีคนจะไม่มีมอน (สร้างใหม่ทั้งชุดเมื่อมีคนเข้า)
 // - v3: เพิ่มระบบเพื่อน + ปาร์ตี้ (social.js) และส่งเลเวลผู้เล่น
+// - v4: เพิ่มระบบ PvP 1v1 / 3v3 / 5v5 + เพดานจุติต่อห้อง (pvpServer.js)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -308,6 +309,9 @@ function enterRoom(socket, stage, ch, rm) {
 
 // ระบบเพื่อน + ปาร์ตี้ (ไฟล์ social.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
 require('./social')(io, players);
+
+// ระบบ PvP 1v1 / 3v3 / 5v5 (ไฟล์ pvpServer.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
+require('./pvpServer')(io, players, { leaveRoom });
 
 // ---------- การเชื่อมต่อ ----------
 io.on('connection', socket => {
