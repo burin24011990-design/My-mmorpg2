@@ -5,6 +5,8 @@
 // กติกา: ตายแล้วเกิดใหม่ (สุ่มจุดในวงปลอดภัย) | ทีมที่ฆ่าได้มากกว่าเมื่อหมดเวลาชนะ | วงปลอดภัยบีบเข้าเรื่อยๆ
 // ล็อบบี้แบบห้องรอ: เจ้าห้องสร้างห้อง (เลือก 1v1/3v3/5v5 + เพดานจุติ) | คนอื่นกดเข้าร่วม เลือก/ย้ายฝั่งแดง-น้ำเงินได้ | เจ้าห้องกดเริ่ม
 // เซิร์ฟเวอร์คุม: ห้องรอ/นับถอยหลัง/นับฆ่า/เกิดใหม่/ตัดสินผล/เวลา | เครื่องผู้เล่นคุม: ดาเมจที่ตัวเองโดน
+// v2: สถานะสกิลใน PvP (อีเวนต์ 'pvpFx'): สตั้น/แช่แข็ง/ล็อกขา/เดินช้า/ตีเบาลง ส่งไปให้ "คนที่โดน" เป็นคนล็อกตัวเอง
+//     กันล็อกต่อเนื่อง: สตั้น/แช่แข็ง/ล็อกขา ติดซ้ำไม่ได้ขณะยังติดอยู่ + มีช่วงภูมิคุ้มกัน CC_IMMUNE_MS หลังหมด
 module.exports = function attachPvp(io, players, helpers) {
   const SIZES = [1, 3, 5];                                  // ผู้เล่นต่อทีม
   const CAPS = [0, 3, 6, 8, 11, 15, 19, 24];                // เพดานจุติของแต่ละห้อง
@@ -18,6 +20,15 @@ module.exports = function attachPvp(io, players, helpers) {
   // วงปลอดภัย: r0 = รัศมีเริ่มต้น, r1 = รัศมีเล็กสุด (ยิ่งมากยิ่งมีที่หลบ/ใช้สกิล) | เริ่มบีบที่ 30% ของเวลา ถึงเล็กสุดที่ 90%
   const ZONE = { x: 1800, y: 1125, r0: 1100, r1: 560, from: 0.30, to: 0.90 };
   const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9]{2,16}$/;
+
+  // สถานะสกิลที่ใช้ใน PvP (ปรับบาลานซ์ตรงนี้)
+  const PFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };
+  const PFX_HARD = { stun: 1, freeze: 1, root: 1 };         // สถานะล็อกตัว (ติดซ้ำไม่ได้ + มีภูมิคุ้มกันต่อ)
+  const PFX_HARD_MAX = 2000;                                // ล็อกตัวนานสุดต่อครั้ง (ms)
+  const PFX_SOFT_MAX = 3000;                                // เดินช้า/ตีเบาลง นานสุดต่อครั้ง (ms)
+  const CC_IMMUNE_MS = 1500;                                // ภูมิคุ้มกันล็อกตัวหลังหมด CC (ms) กันโดนล็อกวน
+  const SLOW_MIN_MUL = 0.4;                                 // เดินช้าสุด = เหลือ 40% (ช้าลงสูงสุด 60%)
+  const WEAK_MAX_PCT = 0.5;                                 // ตีเบาลงสูงสุด 50%
 
   const socks = {};        // socket.id -> socket
   const st = {};           // socket.id -> { room: id ห้องรอ | null, match: id | null }
@@ -97,6 +108,7 @@ module.exports = function attachPvp(io, players, helpers) {
         x: SPAWN_X[team], y: SPAWN_Y + (idx - (list.length - 1) / 2) * 110,
         kills: 0, deaths: 0, dmg: 0, lastBy: null, lastAt: 0, hitWin: 0, hitN: 0,
         protUntil: 0, noMoveUntil: 0, rt: null,
+        fxWin: 0, fxN: 0, ccImmune: 0,
       };
       st[id].room = null; st[id].match = m.id;
       try { helpers.leaveRoom(socks[id]); } catch (e) { /* ignore */ }   // ออกจากห้องล่ามอนก่อน
@@ -120,7 +132,7 @@ module.exports = function attachPvp(io, players, helpers) {
       const pt = pickSpawn(m, p), now = Date.now();
       p.alive = true; p.hp = p.maxHp; p.x = pt.x; p.y = pt.y;
       p.protUntil = now + PROTECT_MS; p.noMoveUntil = now + 400;
-      p.lastBy = null;
+      p.lastBy = null; p.ccImmune = 0;
       emitMatch(m, 'pvpRespawn', { id, x: Math.round(pt.x), y: Math.round(pt.y), prot: PROTECT_MS });
     }, RESPAWN_MS);
   }
@@ -289,6 +301,35 @@ module.exports = function attachPvp(io, players, helpers) {
         t.lastBy = socket.id; t.lastAt = now; s.dmg += dmg;
       }
       Object.keys(sum).forEach(id => { if (socks[id]) socks[id].emit('pvpHurt', { dmg: sum[id], by: socket.id }); });
+    });
+
+    // ใส่สถานะให้คู่ต่อสู้ (สตั้น/แช่แข็ง/ล็อกขา/เดินช้า/ตีเบาลง): d = [id เป้าหมาย, ชนิด, มิลลิวินาที, { mul | pct }]
+    // เซิร์ฟเวอร์ตรวจ (คนละทีม/ระยะ/ไม่อมตะ/กันล็อกวน) แล้วส่งให้ "คนที่โดน" ล็อกตัวเอง
+    socket.on('pvpFx', d => {
+      const me = st[socket.id], m = me && matches[me.match];
+      if (!m || m.state !== 'live' || !Array.isArray(d)) return;
+      const s = m.pl[socket.id];
+      if (!s || !s.alive || s.left) return;
+      const now = Date.now();
+      if (now - s.fxWin > 1000) { s.fxWin = now; s.fxN = 0; }
+      if (++s.fxN > 150) return;                            // กันส่งถี่ผิดปกติ
+      const t = m.pl[d[0]], type = d[1];
+      if (!t || !t.alive || t.left || t.team === s.team) return;
+      if (typeof type !== 'string' || !PFX_TYPES[type]) return;
+      if (now < t.protUntil) return;                        // เป้าหมายยังอมตะหลังเกิดใหม่
+      if (Math.hypot(s.x - t.x, s.y - t.y) > HIT_MAX_DIST) return;
+      const hard = !!PFX_HARD[type];
+      const ms = clamp(Math.floor(num(d[2])), 0, hard ? PFX_HARD_MAX : PFX_SOFT_MAX);
+      if (!ms) return;
+      if (hard) {
+        if (now < t.ccImmune) return;                       // ยังติดล็อกอยู่ หรืออยู่ในช่วงภูมิคุ้มกัน
+        t.ccImmune = now + ms + CC_IMMUNE_MS;
+      }
+      const par = d[3] && typeof d[3] === 'object' ? d[3] : {};
+      const out = { t: type, ms, by: socket.id };
+      if (type === 'slow') out.mul = clamp(num(par.mul) || 1, SLOW_MIN_MUL, 1);   // 0.5 = เดินเหลือครึ่งหนึ่ง
+      if (type === 'weak') out.pct = clamp(num(par.pct), 0, WEAK_MAX_PCT);        // 0.25 = ตีเบาลง 25%
+      if (socks[t.id]) socks[t.id].emit('pvpFx', out);
     });
 
     // เอฟเฟกต์สกิล (ให้คนในแมตช์เห็น)
