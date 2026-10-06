@@ -29,10 +29,12 @@
     hits: 2, hitMul: 0.6, hitR: 75,
     recasts: 1, recastMs: 2500, recastRange: 280, recastMul: 2,
     dodgeMs: 3000,
+    critBonus: 60, critMs: 4000,   // บัฟคริติคอล +60% นาน 4 วิ ทุกครั้งที่พุ่ง (รวมพุ่งต่อ)
   }, {
     scale: { patk: 1 },
     info: (def, lv, S) => 'พุ่งฟัน ' + def.hits + ' ครั้ง ครั้งละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
       ' • หลบการโจมตี 1 ครั้ง (นาน ' + (def.dodgeMs / 1000) + ' วิ) ทุกครั้งที่พุ่ง' +
+      ' • เพิ่มคริติคอล ' + def.critBonus + '% นาน ' + (def.critMs / 1000) + ' วิ' +
       ' • ฟันโดนแล้วพุ่งต่อได้ ' + def.recasts + ' ครั้ง แรง x' + def.recastMul + ' (≈' +
       Math.round(Classes.power(def.id, def, lv, S) * def.hitMul * def.recastMul) + ' ต่อครั้ง) • คูลดาวน์ ' + Classes.cdText(def, S),
   });
@@ -142,6 +144,11 @@
     // หลบการโจมตีได้ 1 ครั้ง ทุกครั้งที่พุ่ง (รวมพุ่งต่อ) หมดอายุตาม def.dodgeMs
     scene.rogueDodge = { until: scene.time.now + (def.dodgeMs || 3000) };
     scene.popText(p.x, p.y - 62, 'พร้อมหลบ!', '#9be7ff');
+    // บัฟคริติคอลทุกครั้งที่พุ่ง
+    if (scene.addStatBuff && def.critBonus) {
+      scene.addStatBuff('dashCrit', { crit: def.critBonus }, def.critMs || 4000);
+      scene.popText(p.x, p.y - 80, '🎯 คริ +' + def.critBonus + '%', '#ffb86b');
+    }
 
     const chase = towards && !dir;
     let dx, dy;
