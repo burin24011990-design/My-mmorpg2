@@ -48,6 +48,15 @@ REBIRTH_ZONE_STEPS.forEach(function (r, i) {
       return (sc && sc.stats && (sc.stats.rebirth || 0) >= r) ? 1 : 999;
     },
   });
-  ZONES.push({ id: 99, name: 'เมือง', town: true, safe: true, x: 1800, y: 1535,
-  count: 0, rangedCount: 0, reqLv: 1, minLv: 1, maxLv: 1, boxLevel: 1, bg: 0x1b241b, line: 0x1b241b });
+  ZONES.push(z);
+});
+
+// ===== เมือง (ด่านสุดท้ายของรายการ: ปลอดภัย ไม่มีมอน เจอผู้เล่นคนอื่นได้ ใช้ระบบแชนแนลร่วมกับด่านอื่น) =====
+// ต้องอยู่นอกวงวนด้านบน และมีแค่ครั้งเดียว | town.js หาด่านนี้จาก town:true
+// x,y = จุดเกิด (town.js ตั้งตำแหน่งเกิดเองตามผังเมืองอีกที)
+ZONES.push({
+  id: 99, name: 'เมือง', town: true, safe: true, look: 0,
+  x: 1800, y: 1535, count: 0, rangedCount: 0,
+  reqLv: 1, minLv: 1, maxLv: 1, boxLevel: 1,
+  bg: 0x1b241b, line: 0x1b241b,
 });
