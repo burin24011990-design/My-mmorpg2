@@ -83,9 +83,10 @@
   }
 
   // เปิดกล่อง (แทนของเดิมใน serverBoxes.js) ทองที่ได้เข้ากระเป๋าเซิร์ฟเวอร์
+  const origOpen = SB.open;
   SB.open = function (color, sets) {
     if (!user()) { toast('ต้องล็อกอินด้วย Google ก่อน'); return Promise.resolve(); }
-    if (!ready) { toast('กำลังเชื่อมต่อทองกับเซิร์ฟเวอร์ ลองใหม่อีกครั้ง'); return Promise.resolve(); }
+    if (!ready) return origOpen.call(SB, color, sets);   // ยังเชื่อมทองไม่สำเร็จ: เปิดแบบเดิมไปก่อน
     return enqueue(function () {
       return callRetry('openBoxes', { color: color, sets: sets || 1, reqId: rid() }, 2).then(function (r) {
         if (r.server) credit(r.gold); else addGold(r.gold);
