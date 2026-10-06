@@ -1,6 +1,7 @@
-// js/systems/goldSync.js — ซิงก์ทองกับเซิร์ฟเวอร์ (ไม่ต้องแก้ไฟล์อื่นที่แตะ stats.gold)
+// js/systems/goldSync.js — ซิงก์ทองกับเซิร์ฟเวอร์ (v5)
 // โหลดหลัง serverBoxes.js | ผู้เล่นแบบผู้เยี่ยมไม่ซิงก์ (ทองอยู่ในเครื่องเหมือนเดิม)
 // หลักการ: stats.gold = ยอดที่ซิงก์แล้ว + ส่วนที่เปลี่ยนในเครื่องและยังไม่ส่ง
+// v5: เพิ่ม GoldSync.tx / run / credit ให้ตลาดกลางใช้ (ซื้อ = เซิร์ฟเวอร์หักทองเอง, รับกล่อง = เซิร์ฟเวอร์เติมทองเอง)
 (function () {
   const SB = window.ServerBoxes;
   if (!SB) return;
@@ -31,15 +32,18 @@
   function addGold(n) { const s = sc(); if (s && s.stats && n) s.stats.gold += n; }
   function saveNow() { const s = sc(); if (s && s.saveSoon) s.saveSoon(); }
 
-  // ทุกคำสั่งที่คุยกับเซิร์ฟเวอร์เรื่องทองเข้าคิวเดียว ทำทีละอัน (กันยอดเพี้ยนตอนซิงก์ชนกับเปิดกล่อง)
+  // ทุกคำสั่งที่คุยกับเซิร์ฟเวอร์เรื่องทองเข้าคิวเดียว ทำทีละอัน (กันยอดเพี้ยนตอนซิงก์ชนกับเปิดกล่อง/ซื้อ/รับของ)
   function enqueue(fn) {
     const p = queue.then(fn);
     queue = p.catch(function () {});
     return p;
   }
 
-  // ทองที่เซิร์ฟเวอร์บวกให้เองแล้ว (เปิดกล่อง): ปรับทั้งยอดในเกมและยอดที่ซิงก์ ไม่ให้นับเป็นส่วนต่างซ้ำ
+  // ทองที่เซิร์ฟเวอร์ปรับให้เองแล้ว (เปิดกล่อง/ซื้อของ/รับทองจากตลาด): ปรับทั้งยอดในเกมและยอดที่ซิงก์ ไม่ให้นับเป็นส่วนต่างซ้ำ
+  // g เป็นบวก = ได้ทอง, เป็นลบ = เสียทอง
   function credit(g) {
+    g = Math.floor(Number(g) || 0);
+    if (!g) return;
     addGold(g); synced += g;
     if (fl) fl.credited = (fl.credited || 0) + g;
   }
@@ -64,25 +68,36 @@
     }).then(function () { initing = false; });
   }
 
+  // ส่งส่วนต่างทองหนึ่งรอบ (ต้องเรียกภายในคิวเท่านั้น)
+  function syncBody() {
+    if (!fl) {
+      const c = cur(), d = c - synced;
+      if (d === 0) return Promise.resolve();
+      fl = { delta: d, reqId: rid(), sent: c, credited: 0 };
+    }
+    const f = fl;                      // ส่งไม่แน่ใจว่าถึงไหม -> ใช้ reqId เดิมซ้ำ ไม่นับซ้ำ
+    return call('syncGold', { delta: f.delta, reqId: f.reqId }).then(function (r) {
+      fl = null;
+      addGold(r.balance - f.sent);     // ปรับให้ตรงเซิร์ฟเวอร์ (ส่วนที่เปลี่ยนระหว่างรอยังอยู่)
+      synced = r.balance + (f.credited || 0);
+      if (f.delta > 0 && r.granted < f.delta) toast('ทองส่วนเกินถูกปรับตามเซิร์ฟเวอร์');
+      if (r.balance !== f.sent) saveNow();
+    }).catch(function (e) { if (!uncertain(e)) fl = null; });
+  }
+
   function sync() {
     if (!ready || queued) return;
     queued = true;
-    enqueue(function () {
-      if (!fl) {
-        const c = cur(), d = c - synced;
-        if (d === 0) return;
-        fl = { delta: d, reqId: rid(), sent: c, credited: 0 };
-      }
-      const f = fl;                      // ส่งไม่แน่ใจว่าถึงไหม -> ใช้ reqId เดิมซ้ำ ไม่นับซ้ำ
-      return call('syncGold', { delta: f.delta, reqId: f.reqId }).then(function (r) {
-        fl = null;
-        addGold(r.balance - f.sent);     // ปรับให้ตรงเซิร์ฟเวอร์ (ส่วนที่เปลี่ยนระหว่างรอยังอยู่)
-        synced = r.balance + (f.credited || 0);
-        if (f.delta > 0 && r.granted < f.delta) toast('ทองส่วนเกินถูกปรับตามเซิร์ฟเวอร์');
-        if (r.balance !== f.sent) saveNow();
-      }).catch(function (e) { if (!uncertain(e)) fl = null; });
-    }).then(function () { queued = false; });
+    enqueue(syncBody).then(function () { queued = false; }, function () { queued = false; });
   }
+
+  // รันคำสั่งในคิวทอง "หลังซิงก์ยอดล่าสุดขึ้นเซิร์ฟเวอร์แล้ว" (ใช้ตอนซื้อของ เพื่อให้เซิร์ฟเวอร์เห็นทองตรงกับในเกม)
+  function tx(fn) {
+    if (!user() || !ready) return Promise.reject(new Error('ทองยังซิงก์กับเซิร์ฟเวอร์ไม่เสร็จ ลองใหม่อีกครั้งในสักครู่'));
+    return enqueue(function () { return syncBody().then(fn); });
+  }
+  // รันคำสั่งในคิวทองโดยไม่ซิงก์ก่อน (ใช้ตอนรับทองจากตลาด)
+  function run(fn) { return enqueue(fn); }
 
   // เปิดกล่อง (แทนของเดิมใน serverBoxes.js) ทองที่ได้เข้ากระเป๋าเซิร์ฟเวอร์
   const origOpen = SB.open;
@@ -106,5 +121,9 @@
   setInterval(sync, SYNC_MS);
   document.addEventListener('visibilitychange', function () { if (document.hidden) sync(); });
   window.addEventListener('pagehide', sync);
-  window.GoldSync = { sync: sync, isReady: function () { return ready; }, synced: function () { return synced; } };
+  window.GoldSync = {
+    sync: sync, tx: tx, run: run, credit: credit,
+    isReady: function () { return ready; },
+    synced: function () { return synced; }
+  };
 })();
