@@ -11,8 +11,11 @@
   const capLabel = c => (c === 0 ? 'ไม่จุติ' : 'จุติไม่เกิน ' + c);
   const ARENA_STAGE = 0;                       // ใช้แผนที่ด่าน 1 เป็นสนาม (หินเหมือนกันทุกเครื่อง)
   const SPAWN_X = [1250, 2350], SPAWN_Y = 1125;
-  const ALLY_TINT = 0x66aaff, FOE_TINT = 0xff6655;          // ใช้กับวงกลมสำรอง (ถ้าไม่มี hero.png)
-  const ALLY_TINT_HERO = 0xb4d2ff, FOE_TINT_HERO = 0xffb0a0; // ใช้กับตัวละครจริง (อ่อนกว่า จะได้เห็นหน้าตา)
+  // สีทีม (ตายตัวทุกเครื่อง): ทีม 0 = แดง, ทีม 1 = น้ำเงิน
+  const TINT = [0xff6655, 0x66aaff];                         // ใช้กับวงกลมสำรอง (ถ้าไม่มี hero.png)
+  const TINT_HERO = [0xffb0a0, 0xb4d2ff];                    // ใช้กับตัวละครจริง (อ่อนกว่า จะได้เห็นหน้าตา)
+  const LABEL_COL = ['#ff9a8a', '#a8d0ff'];
+  const BAR_COL = [0xff4a4a, 0x5aa8ff];
   const HERO_SCALE = 0.75;                     // ต้องตรงกับ heroPatch.js
   const ATTACK_MS = 420;
   const ATTACK_BY_CLASS = { sword: 'sword', rogue: 'sword', mage: 'staff', priest: 'staff', archer: 'bow' };
@@ -42,85 +45,172 @@
     openLobby(town, m);
   };
 
+  const TEAM_NAME = ['🔴 ทีมแดง', '🔵 ทีมน้ำเงิน'];
+  const TEAM_COL = ['#ff7a6a', '#6aa8ff'];
+  const fmtLabel = n => (FORMATS.find(f => f.size === n) || FORMATS[0]).label;
+  const JOIN_ERR = { full: 'ห้องเต็มแล้ว', rebirth: 'ขั้นจุติของคุณเกินเพดานห้องนี้', gone: 'ห้องนี้ปิดไปแล้ว', inmatch: 'คุณอยู่ในแมตช์อยู่' };
+
   function openLobby(town, m) {
     const s = m.socket, rebirth = Math.floor(m.stats.rebirth || 0);
-    const L = { size: 1, bi: null, queued: false, counts: {}, waiting: 0, need: 0 };
+    const L = { size: 1, bi: null, rooms: [], room: null, sig: '' };
     const card = town.domCard('⚔️ ห้อง PvP');
     const box = town.modal;
     let poll = null;
 
     const mk = (tag, css, text) => { const e = document.createElement(tag); e.style.cssText = css; if (text != null) e.textContent = text; return e; };
+    const btn = (label, css, fn, disabled) => {
+      const b = mk('button', 'font-family:inherit;border-radius:10px;cursor:' + (disabled ? 'default' : 'pointer') + ';' + css, label);
+      b.disabled = !!disabled;
+      if (!disabled) b.onclick = fn;
+      return b;
+    };
+    const myInfo = () => {
+      let cls = 'sword';
+      try { if (typeof m.currentClass === 'function') cls = m.currentClass() || 'sword'; } catch (e) { /* ignore */ }
+      return { level: m.stats.level, rebirth, maxHp: m.maxHp(), cls };
+    };
 
-    function render() {
-      card.textContent = '';
-      card.appendChild(mk('div', 'font-size:18px;color:#ffe28a;margin-bottom:4px', '⚔️ ห้อง PvP'));
-      card.appendChild(mk('div', 'font-size:12px;color:#c9b27a;margin-bottom:8px',
+    // รูปตัวละครในช่อง (ตัดจาก hero.png เฟรมยืนหันหน้า ถ้าไม่มีรูปใช้อีโมจิแทน)
+    function avatar(color) {
+      const wrap = mk('div', 'position:relative;width:68px;height:68px;margin:0 auto;overflow:hidden;border-radius:10px;background:#1a0a0e;border:2px solid ' + color);
+      const fb = mk('div', 'position:absolute;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:32px', '🧑');
+      const spr = mk('div', 'position:absolute;left:0;top:0;width:96px;height:96px;transform:scale(.7);transform-origin:top left;background-position:0 -288px;background-repeat:no-repeat;image-rendering:pixelated');
+      const img = new Image();
+      img.onload = () => { spr.style.backgroundImage = 'url(assets/hero.png)'; fb.style.display = 'none'; };
+      img.src = 'assets/hero.png';
+      wrap.appendChild(fb); wrap.appendChild(spr);
+      return wrap;
+    }
+
+    // ---------- หน้ารายการห้อง + สร้างห้อง ----------
+    function renderBrowse() {
+      const wrap = mk('div', 'max-height:78vh;overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch');
+      wrap.appendChild(mk('div', 'font-size:18px;color:#ffe28a;margin-bottom:2px', '⚔️ ห้อง PvP'));
+      wrap.appendChild(mk('div', 'font-size:12px;color:#c9b27a;margin-bottom:6px',
         'ขั้นจุติของคุณ: ' + rebirth + ' • เข้าได้เฉพาะห้องที่เพดานจุติ ≥ ขั้นของคุณ'));
 
-      const row = mk('div', 'display:flex;gap:6px;justify-content:center;margin-bottom:8px');
+      wrap.appendChild(mk('div', 'font-size:13px;color:#ffe28a;margin:4px 0', 'สร้างห้องใหม่'));
+      const row = mk('div', 'display:flex;gap:6px;justify-content:center;margin-bottom:6px');
       FORMATS.forEach(f => {
         const on = L.size === f.size;
-        const b = mk('button', 'font-family:inherit;font-size:14px;padding:7px 12px;border-radius:10px;cursor:pointer;border:2px solid ' +
-          (on ? '#ffe28a' : '#7a5f2c') + ';color:' + (on ? '#26090f' : '#ffe28a') + ';background:' + (on ? '#ffd45c' : '#26090f'), f.label);
-        b.disabled = L.queued;
-        b.onclick = () => { L.size = f.size; render(); };
-        row.appendChild(b);
+        row.appendChild(btn(f.label, 'font-size:14px;padding:6px 12px;border:2px solid ' + (on ? '#ffe28a' : '#7a5f2c') +
+          ';color:' + (on ? '#26090f' : '#ffe28a') + ';background:' + (on ? '#ffd45c' : '#26090f'), () => { L.size = f.size; render(); }));
       });
-      card.appendChild(row);
+      wrap.appendChild(row);
 
-      const grid = mk('div', 'display:grid;grid-template-columns:repeat(4,1fr);gap:6px');
+      const grid = mk('div', 'display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:6px');
       CAPS.forEach((cap, bi) => {
         const locked = rebirth > cap, sel = L.bi === bi;
-        const n = L.counts[L.size + '-' + bi] || 0;
-        const b = mk('button', 'font-family:inherit;padding:7px 2px;border-radius:10px;line-height:1.3;cursor:' + (locked || L.queued ? 'default' : 'pointer') +
-          ';border:2px solid ' + (sel ? '#ffe28a' : (locked ? '#5a3a3a' : '#4f9a5a')) + ';color:' + (locked ? '#8a7a7a' : '#fff') +
-          ';background:' + (sel ? '#3a5a2a' : (locked ? '#2a2424' : '#24402a')));
-        b.appendChild(mk('div', 'font-size:12px', capLabel(cap)));
-        b.appendChild(mk('div', 'font-size:11px;opacity:.85', locked ? 'จุติเกิน' : 'รอ ' + n + '/' + (L.size * 2)));
-        b.disabled = locked || L.queued;
-        b.onclick = () => { L.bi = bi; render(); };
-        grid.appendChild(b);
+        grid.appendChild(btn(capLabel(cap), 'font-size:12px;padding:6px 2px;color:' + (locked ? '#8a7a7a' : '#fff') +
+          ';border:2px solid ' + (sel ? '#ffe28a' : (locked ? '#5a3a3a' : '#4f9a5a')) +
+          ';background:' + (sel ? '#3a5a2a' : (locked ? '#2a2424' : '#24402a')), () => { L.bi = bi; render(); }, locked));
       });
-      card.appendChild(grid);
+      wrap.appendChild(grid);
 
-      const msg = L.queued
-        ? '🔎 กำลังหาคู่... ' + L.waiting + '/' + L.need + ' คน (' + FORMATS.find(f => f.size === L.size).label + ' • ' + capLabel(CAPS[L.bi]) + ')'
-        : (L.bi === null ? 'เลือกรูปแบบและห้องก่อน' : 'พร้อมเข้าคิว: ' + FORMATS.find(f => f.size === L.size).label + ' • ' + capLabel(CAPS[L.bi]));
-      card.appendChild(mk('div', 'margin:10px 0 6px;font-size:13px;color:' + (L.queued ? '#9be39b' : '#ccc'), msg));
+      wrap.appendChild(btn('➕ สร้างห้อง' + (L.bi === null ? '' : ' (' + fmtLabel(L.size) + ' • ' + capLabel(CAPS[L.bi]) + ')'),
+        'font-size:15px;padding:7px 18px;border:2px solid #ffd45c;color:#26090f;background:' + (L.bi === null ? '#555' : '#ffd45c'),
+        () => {
+          s.emit('pvpCreate', Object.assign({ size: L.size, bi: L.bi }, myInfo()), res => {
+            res = res || {};
+            if (res.ok) { L.room = res.room; render(); }
+            else m.toastMsg(JOIN_ERR[res.reason] || 'สร้างห้องไม่สำเร็จ (' + (res.reason || '?') + ')');
+          });
+        }, L.bi === null));
 
-      const act = mk('button', 'font-family:inherit;font-size:16px;padding:8px 22px;border-radius:10px;cursor:pointer;border:2px solid #ffd45c;' +
-        'color:#26090f;background:' + (L.queued ? '#e08a8a' : (L.bi === null ? '#555' : '#ffd45c')), L.queued ? 'ยกเลิกคิว' : '⚔️ เข้าคิว');
-      act.disabled = !L.queued && L.bi === null;
-      act.onclick = () => {
-        if (L.queued) { s.emit('pvpCancel'); L.queued = false; render(); return; }
-        let cls = 'sword';
-        try { if (typeof m.currentClass === 'function') cls = m.currentClass() || 'sword'; } catch (e) { /* ignore */ }
-        s.emit('pvpQueue', { size: L.size, bi: L.bi, level: m.stats.level, rebirth, maxHp: m.maxHp(), cls }, res => {
-          res = res || {};
-          if (res.ok) { L.queued = true; L.waiting = res.waiting; L.need = res.need; }
-          else m.toastMsg(res.reason === 'rebirth' ? 'ขั้นจุติของคุณเกินเพดานห้องนี้' : 'เข้าคิวไม่สำเร็จ (' + (res.reason || '?') + ')');
-          render();
-        });
-      };
-      card.appendChild(act);
+      wrap.appendChild(mk('div', 'font-size:13px;color:#ffe28a;margin:10px 0 4px', 'ห้องที่เปิดอยู่ (' + L.rooms.length + ')'));
+      if (!L.rooms.length) wrap.appendChild(mk('div', 'font-size:12px;color:#aaa;padding:6px', 'ยังไม่มีห้อง — สร้างห้องแล้วรอเพื่อนมาเข้าได้เลย'));
+      L.rooms.forEach(r => {
+        const total = r.size * 2, locked = rebirth > r.cap, full = r.n >= total;
+        const line = mk('div', 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 8px;margin-bottom:4px;border-radius:8px;background:#3a1620;font-size:13px;text-align:left');
+        line.appendChild(mk('span', '', '#' + r.id + ' • ' + fmtLabel(r.size) + ' • ' + capLabel(r.cap) + ' • 👑 ' + r.host + ' • ' + r.n + '/' + total));
+        line.appendChild(btn(full ? 'เต็ม' : (locked ? 'จุติเกิน' : 'เข้าร่วม'), 'font-size:13px;padding:4px 12px;border:2px solid #ffd45c;color:#26090f;background:' + (full || locked ? '#777' : '#ffd45c'),
+          () => {
+            s.emit('pvpJoin', Object.assign({ roomId: r.id }, myInfo()), res => {
+              res = res || {};
+              if (res.ok) { L.room = res.room; render(); }
+              else { m.toastMsg(JOIN_ERR[res.reason] || 'เข้าห้องไม่สำเร็จ (' + (res.reason || '?') + ')'); L.sig = ''; fetchInfo(); }
+            });
+          }, full || locked));
+        wrap.appendChild(line);
+      });
 
-      const close = mk('button', 'font-family:inherit;font-size:14px;padding:7px 18px;border-radius:10px;cursor:pointer;margin:6px 0 0 8px;' +
-        'border:2px solid #ffd45c;color:#ffe28a;background:#26090f', 'ปิด');
-      close.onclick = () => town.closeDialog();
-      card.appendChild(close);
+      wrap.appendChild(btn('ปิด', 'font-size:14px;padding:7px 18px;margin-top:8px;border:2px solid #ffd45c;color:#ffe28a;background:#26090f', () => town.closeDialog()));
+      return wrap;
+    }
+
+    // ---------- หน้าในห้องรอ: ฝั่งแดง / ฝั่งน้ำเงิน ----------
+    function renderRoom() {
+      const r = L.room, isHost = r.host === s.id;
+      const myTeam = r.teams[0].some(u => u.id === s.id) ? 0 : 1;
+      const wrap = mk('div', 'max-height:78vh;overflow:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch');
+      wrap.appendChild(mk('div', 'font-size:17px;color:#ffe28a;margin-bottom:2px', '⚔️ ห้อง #' + r.id + ' • ' + fmtLabel(r.size) + ' • ' + capLabel(r.cap)));
+      wrap.appendChild(mk('div', 'font-size:12px;color:#c9b27a;margin-bottom:6px', 'กดช่องว่างฝั่งที่ต้องการเพื่อย้าย • เจ้าห้อง (👑) เป็นคนกดเริ่ม'));
+
+      const cols = mk('div', 'display:grid;grid-template-columns:1fr 1fr;gap:8px');
+      [0, 1].forEach(t => {
+        const col = mk('div', 'border:2px solid ' + TEAM_COL[t] + ';border-radius:12px;padding:6px;background:#1a0a0e');
+        col.appendChild(mk('div', 'font-size:14px;color:' + TEAM_COL[t] + ';margin-bottom:4px', TEAM_NAME[t] + ' (' + r.teams[t].length + '/' + r.size + ')'));
+        const slots = mk('div', 'display:flex;flex-wrap:wrap;gap:6px;justify-content:center');
+        for (let i = 0; i < r.size; i++) {
+          const u = r.teams[t][i];
+          const slot = mk('div', 'width:' + (r.size > 3 ? '78px' : '96px') + ';text-align:center;font-size:11px;line-height:1.25');
+          if (u) {
+            slot.appendChild(avatar(u.id === s.id ? '#ffe28a' : TEAM_COL[t]));
+            slot.appendChild(mk('div', 'color:#fff;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap', (u.id === r.host ? '👑 ' : '') + u.name + (u.id === s.id ? ' (คุณ)' : '')));
+            slot.appendChild(mk('div', 'color:#c9b27a', 'Lv.' + u.level + (u.rebirth ? ' จุติ ' + u.rebirth : '')));
+          } else if (t !== myTeam) {
+            const b = btn('ย้ายมา\nตรงนี้', 'width:68px;height:68px;font-size:11px;white-space:pre-line;border:2px dashed ' + TEAM_COL[t] + ';color:' + TEAM_COL[t] + ';background:#26090f',
+              () => s.emit('pvpSwitch', { team: t }, res => { if (res && !res.ok) m.toastMsg(JOIN_ERR[res.reason] || 'ย้ายไม่สำเร็จ'); }));
+            slot.appendChild(b);
+          } else {
+            slot.appendChild(mk('div', 'width:68px;height:68px;margin:0 auto;display:flex;align-items:center;justify-content:center;border:2px dashed #555;border-radius:10px;color:#777', 'ว่าง'));
+          }
+          slots.appendChild(slot);
+        }
+        col.appendChild(slots);
+        cols.appendChild(col);
+      });
+      wrap.appendChild(cols);
+
+      const ready = r.teams[0].length > 0 && r.teams[1].length > 0;
+      wrap.appendChild(mk('div', 'margin:8px 0 6px;font-size:13px;color:' + (ready ? '#9be39b' : '#ccc'),
+        ready ? (isHost ? 'พร้อมแล้ว กดเริ่มได้เลย' : 'รอเจ้าห้องกดเริ่ม...') : 'ต้องมีผู้เล่นอย่างน้อยฝั่งละ 1 คน'));
+      if (isHost) {
+        wrap.appendChild(btn('▶ เริ่มแมตช์', 'font-size:16px;padding:8px 22px;border:2px solid #ffd45c;color:#26090f;background:' + (ready ? '#ffd45c' : '#555'),
+          () => s.emit('pvpStart', res => {
+            if (res && !res.ok) m.toastMsg(res.reason === 'needboth' ? 'ต้องมีผู้เล่นฝั่งละ 1 คนขึ้นไป' : 'เริ่มไม่สำเร็จ (' + (res.reason || '?') + ')');
+          }), !ready));
+      }
+      wrap.appendChild(btn('ออกจากห้อง', 'font-size:14px;padding:7px 18px;margin-left:' + (isHost ? '8px' : '0') + ';border:2px solid #ffd45c;color:#ffe28a;background:#26090f',
+        () => { s.emit('pvpLeaveRoom'); L.room = null; L.sig = ''; render(); fetchInfo(); }));
+      return wrap;
+    }
+
+    function render() {
+      const old = card.firstChild, top = old ? old.scrollTop : 0;
+      card.textContent = '';
+      const v = L.room ? renderRoom() : renderBrowse();
+      card.appendChild(v);
+      v.scrollTop = top;
     }
 
     const ref = lobbyRef = {
-      onWait: d => { if (d && d.key === L.size + '-' + L.bi) { L.waiting = d.waiting; L.need = d.need; render(); } },
-      close: () => { L.queued = false; stop(); town.closeDialog(); },
+      onRoom: d => { L.room = d || null; render(); },
+      close: () => { L.room = null; stop(); town.closeDialog(); },
     };
     function stop() { if (poll) { clearInterval(poll); poll = null; } if (lobbyRef === ref) lobbyRef = null; }
     function fetchInfo() {
-      if (town.modal !== box) {                         // ปิดหน้าต่างแล้ว: ยกเลิกคิวและเลิกอัปเดต
-        if (L.queued) s.emit('pvpCancel');
-        stop(); return;
+      if (town.modal !== box) {                         // ปิดหน้าต่างแล้ว: ออกจากห้องและเลิกอัปเดต
+        if (L.room) s.emit('pvpLeaveRoom');
+        L.room = null; stop(); return;
       }
-      s.emit('pvpInfo', res => { if (res && res.queues && town.modal === box) { L.counts = res.queues; render(); } });
+      if (L.room) return;
+      s.emit('pvpRooms', res => {
+        if (!res || !res.rooms || town.modal !== box || L.room) return;
+        const sig = JSON.stringify(res.rooms);
+        if (sig === L.sig) return;                      // ไม่เปลี่ยน ไม่ต้องวาดใหม่ (กันเลื่อนหน้าจอเด้ง)
+        L.sig = sig; L.rooms = res.rooms; render();
+      });
     }
     poll = setInterval(fetchInfo, 2000);
     fetchInfo();
@@ -213,22 +303,22 @@
         spr.setScale(HERO_SCALE);
         if (spr.body) { spr.body.setSize(28, 24); spr.body.setOffset(34, 64); }
       }
-      spr.setTint(hero ? FOE_TINT_HERO : FOE_TINT);
+      spr.setTint(hero ? TINT_HERO[team] : TINT[team]);
       if (spr.body) spr.body.setImmovable(true);
       spr.setInteractive();
       spr.on('pointerdown', () => { if (!pv.dead && !pv.frozen) m.manualTarget = spr; });
     } else {
       spr = hero ? m.add.sprite(sp.x, sp.y, 'hero', 18) : m.add.sprite(sp.x, sp.y, 'player');
       if (hero) spr.setScale(HERO_SCALE);
-      spr.setTint(hero ? ALLY_TINT_HERO : ALLY_TINT);
+      spr.setTint(hero ? TINT_HERO[team] : TINT[team]);
     }
     spr.setDepth(30);
     const nameY = hero ? 56 : 40;
     const label = m.add.text(sp.x, sp.y - nameY, (foe ? '' : '🛡 ') + u.name + ' Lv.' + u.level + (u.rebirth ? ' (จุติ ' + u.rebirth + ')' : ''), {
-      fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: foe ? '#ff9a8a' : '#a8d0ff', stroke: '#000', strokeThickness: 4,
+      fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: LABEL_COL[team], stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(40);
     pv.units[u.id] = {
-      id: u.id, name: u.name, cls: u.cls || 'sword', foe, hero, nameY, sprite: spr, label, alive: true,
+      id: u.id, name: u.name, cls: u.cls || 'sword', foe, hero, nameY, team, sprite: spr, label, alive: true,
       tx: sp.x, ty: sp.y, hp: u.maxHp, maxHp: u.maxHp,
       dir: team === 0 ? 'right' : 'left', atkUntil: 0, protUntil: 0,
     };
@@ -296,7 +386,7 @@
         else zone = ' • 🌀 วงเล็กสุด';
       }
     }
-    t.textContent = '⚔ ' + pv.size + 'v' + pv.size + ' • ฆ่า ' + ka + ' : ' + kb + ' • ⏱ ' + time + zone + (pv.dead ? ' • 👻 กำลังเกิดใหม่' : '');
+    t.textContent = (pv.team === 0 ? '🔴' : '🔵') + ' ⚔ ' + pv.size + 'v' + pv.size + ' • ฆ่า ' + ka + ' : ' + kb + ' • ⏱ ' + time + zone + (pv.dead ? ' • 👻 กำลังเกิดใหม่' : '');
   }
 
   // ตัวเราตาย (เลือดหมดหรืออยู่นอกวงนานเกิน)
@@ -335,7 +425,7 @@
       if (sp.body) sp.body.setVelocity(0, 0);
       if (u.foe) {
         sp.hp = u.hp; sp.maxHp = u.maxHp;
-        if (!sp.isTinted) sp.setTint(u.hero ? FOE_TINT_HERO : FOE_TINT);   // คืนสีหลังแฟลชโดนตี
+        if (!sp.isTinted) sp.setTint(u.hero ? TINT_HERO[u.team] : TINT[u.team]);   // คืนสีหลังแฟลชโดนตี
       }
       animateUnit(u, dx, dy);
       if (u.protUntil) {                                  // กะพริบตอนอมตะหลังเกิดใหม่
@@ -346,7 +436,7 @@
       const w = 54, r = Math.max(0, Math.min(1, u.hp / Math.max(1, u.maxHp))), x = Math.round(sp.x - w / 2), y = Math.round(sp.y - u.nameY + 12);
       g.fillStyle(0x000000, 0.8).fillRect(x - 1, y - 1, w + 2, 9);
       g.fillStyle(0x3a0d0d, 1).fillRect(x, y, w, 7);
-      if (r > 0) g.fillStyle(u.foe ? 0xff4a4a : 0x5aa8ff, 1).fillRect(x, y, Math.round(w * r), 7);
+      if (r > 0) g.fillStyle(BAR_COL[u.team], 1).fillRect(x, y, Math.round(w * r), 7);
     });
 
     // ตัวเราตอนอมตะ: กะพริบ
@@ -542,7 +632,7 @@
   // =====================================================================
   function attach(m) {
     const s = m.socket;
-    s.on('pvpWait', d => { if (lobbyRef) lobbyRef.onWait(d); });
+    s.on('pvpRoom', d => { if (lobbyRef) lobbyRef.onRoom(d); });
     s.on('pvpFound', d => startArena(m, d));
     s.on('pvpGo', d => {
       const pv = window._pvp; if (!pv) return;
