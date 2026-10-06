@@ -81,7 +81,13 @@
     // 'sword' = ตีปกติ, 'skill' = ท่าสกิลหมุน/แทง (ชุดที่ 2 ของแต่ละคลาส)
     play: function (sprite, action, dir, skin) {
       if (!sprite || !sprite.scene || !sprite.scene.textures.exists('hero')) return;
-      skin = skin || sprite.heroSkin || 'hero';
+      if (!skin) skin = sprite.heroSkin;
+      if (!skin) {
+        // ตัวของผู้เล่นเอง -> เลือกสกินตามอาวุธที่สวม (Main.currentClass())
+        var sc = sprite.scene;
+        var mine = sc && sc.currentClass && (sprite === sc.player || sprite === sc.hero || sprite === sc.me);
+        skin = mine ? HeroAnims.skinOf(sc.currentClass()) : 'hero';
+      }
       var defs = SKINS[skin];
       var key = skin, d = defs && defs[action];
       if (!d) { key = 'hero'; d = BASE[action]; }
