@@ -432,10 +432,44 @@ function townBlocked(T, x, y) {
 
 // มอนของด่านก่อนหน้าต้องไม่เหลือในเมือง (กันกรณี loadStage ยังเสกมอน/บอสมาให้)
 function townClearMonsters(m) {
+  const GO = (typeof Phaser !== 'undefined') ? Phaser.GameObjects : null;
+  const keep = new Set();
+  if (m.player) keep.add(m.player);
+  if (m.myLabel) keep.add(m.myLabel);
+  Object.values(m.others || {}).forEach(function (o) { if (o) { keep.add(o.s); keep.add(o.t); } });
+  const kill = function (o) { if (o && !keep.has(o) && o.scrollFactorX !== 0) { try { o.destroy(); } catch (e) {} } };
+  const isVisual = function (o) {
+    return !!(GO && o && (o instanceof GO.Text || o instanceof GO.Image || o instanceof GO.Graphics || o instanceof GO.Container));
+  };
+
+  // 1) ทำลายของที่ผูกกับมอนแต่ละตัว (ป้ายชื่อ ไอคอน หลอดเลือด) ก่อนลบตัวมอน
+  ['enemies', 'bosses', 'miniBosses'].forEach(function (k) {
+    const g = m[k];
+    if (!g || typeof g.getChildren !== 'function') return;
+    g.getChildren().slice().forEach(function (e) {
+      Object.keys(e).forEach(function (key) {
+        const v = e[key];
+        if (v === e) return;
+        if (isVisual(v)) kill(v);
+        else if (Array.isArray(v)) v.forEach(function (x) { if (x !== e && isVisual(x)) kill(x); });
+      });
+    });
+  });
   ['enemies', 'bosses', 'miniBosses', 'enemyShots'].forEach(function (k) {
     const g = m[k];
     if (g && typeof g.clear === 'function') { try { g.clear(true, true); } catch (e) {} }
   });
+
+  // 2) กวาดป้ายชื่อมอนที่ไม่ได้ผูกกับตัวมอน + ของตกแต่งด่านเก่า (หญ้า/หิน/บ่อ) ที่ loadStage วางไว้
+  const deco = (typeof MAP_IMAGES !== 'undefined') ? MAP_IMAGES : {};
+  m.children.list.slice().forEach(function (o) {
+    if (keep.has(o) || o.scrollFactorX === 0) return;
+    const key = o.texture && o.texture.key;
+    const lvText = function (t) { return t && t.type === 'Text' && /Lv\.\s?\d+/.test(t.text || ''); };
+    if (lvText(o) || (o.type === 'Container' && o.list && o.list.some(lvText)) ||
+        (key && deco[key] && key !== 'floor_grass')) kill(o);
+  });
+
   m.autoMode = false; m.target = null; m.manualTarget = null;
 }
 
