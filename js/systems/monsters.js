@@ -397,12 +397,12 @@ Object.assign(Main.prototype, {
   },
 
   dropLoot(x, y, monsterLv, boxLevel, isBoss, isEpic) {
-    // เงินเข้ากระเป๋าทันที ไม่ต้องเดินเก็บ
-    const mult = isBoss ? BOSS_MULT : (isEpic ? EPIC_MULT : 1);
-    const amount = Phaser.Math.Between(2 + monsterLv, 5 + monsterLv * 2) * mult;
-    this.stats.gold += amount;
-    const t = this.add.text(x, y - 30, '+' + amount + ' G', { fontSize: '12px', color: '#ffd45c' }).setOrigin(0.5).setDepth(50);
-    this.tweens.add({ targets: t, y: y - 60, alpha: 0, duration: 900, onComplete: () => t.destroy() });
+    // v2: มอนไม่ดรอปทองเข้ากระเป๋าตรงๆ อีกแล้ว (กันโกง/ปั๊ม)
+    // รายงานการฆ่าให้เซิร์ฟเวอร์ (serverBoxes.js -> functions/econ.js) แล้วเซิร์ฟเวอร์สุ่ม "กล่องเงิน" ให้
+    // Epic นับเป็นมอนธรรมดา 1 ครั้ง (เซิร์ฟเวอร์ไม่มีชนิด epic) | ผู้เยี่ยมที่ไม่ล็อกอิน Google จะไม่ได้กล่อง
+    if (window.ServerBoxes && ZONES[this.stageIdx]) {
+      window.ServerBoxes.kill(ZONES[this.stageIdx].id, isBoss ? 'boss' : 'normal');
+    }
 
     // Epic: มีโอกาสดรอปกล่องแดง
     if (isEpic && Math.random() < EPIC_RED_BOX_CHANCE) {
