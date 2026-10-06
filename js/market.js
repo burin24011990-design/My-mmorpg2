@@ -1,13 +1,15 @@
-// ===== ตลาดกลาง (js/market.js) v6 — ผูกกับ NPC id 'market' ใน town.js =====
-// ต้องโหลดหลัง town.js และหลัง firebase-functions-compat.js
+// ===== ตลาดกลาง (js/market.js) v7 — ผูกกับ NPC id 'market' ใน town.js =====
+// ต้องโหลดหลัง town.js, หลัง goldSync.js และหลัง firebase-functions-compat.js
 // ฟีเจอร์: หมวดหมู่ + ค้นหา + เรียงราคา | ขายได้เฉพาะของแรร์ | ตั๋วลงขาย (เก็บที่เซิร์ฟเวอร์) | ผู้ขายนิรนาม
-// v6: หน้าต่างตั้งจำนวน/ราคาแบบใหม่ (แทน prompt) มีปุ่ม +/- , MAX, ปุ่มลัดราคา, สรุปภาษี/ตั๋วแบบสด
-// กฎ/เพดานราคาทั้งหมดอ่านมาจากเซิร์ฟเวอร์ (getWallet → rules) จึงแก้ที่ functions/market.js ที่เดียว
+// v7: ซื้อของ = เซิร์ฟเวอร์หักทองเอง (ผ่าน GoldSync.tx) | รับทองจากกล่อง = เซิร์ฟเวอร์เติมให้ (GoldSync.credit)
+//     ส่ง reqId + ลองใหม่เมื่อเน็ตสะดุด (ซื้อ/ลงขาย/รับของ ไม่ซ้ำ ไม่หาย) | เก็บรายการลงขายที่ค้างไว้ตรวจใหม่ตอนเปิดตลาด
+//     แก้บั๊ก: รับของหลายชิ้นตอนกระเป๋าใกล้เต็มแล้วของหาย
 (function () {
   const REGION = 'asia-southeast1';   // ต้องตรงกับ functions/market.js
   const SHOW_LIMIT = 100;             // แสดงสูงสุดกี่รายการในหน้าซื้อ
   const BUY_TICKET_URL = '';          // หน้าชำระเงินสำหรับซื้อตั๋ว (ว่าง = ยังไม่เปิดขาย)
   const TIER_RANK = ['white', 'blue', 'red', 'gold'];
+  const PEND_KEY = 'mkt_pending_list_v1';
 
   // หมวดหมู่ในหน้าซื้อ
   const CATS = [
@@ -63,6 +65,19 @@
     return fns.httpsCallable(name)(data || {}).then(function (r) { return r.data; });
   }
   function errMsg(e) { return (e && e.message) ? e.message : 'เกิดข้อผิดพลาด'; }
+  // ข้อผิดพลาดที่ "ไม่แน่ใจว่าเซิร์ฟเวอร์ทำไปหรือยัง" (เน็ตหลุด/หมดเวลา) -> ส่งซ้ำด้วย reqId เดิมได้อย่างปลอดภัย
+  function uncertain(e) { return /unavailable|deadline|internal|unknown/.test(String((e && e.code) || '')); }
+  function callRetry(name, data, n) {
+    return call(name, data).catch(function (e) {
+      if (n > 0 && uncertain(e)) return new Promise(function (r) { setTimeout(r, 1500); }).then(function () { return callRetry(name, data, n - 1); });
+      throw e;
+    });
+  }
+  function rid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
+  // รายการลงขายที่ยังไม่รู้ผล (เก็บในเครื่อง เผื่อปิดเกม/เน็ตหลุดกลางคัน)
+  function pendGet() { try { return JSON.parse(localStorage.getItem(PEND_KEY) || 'null'); } catch (e) { return null; } }
+  function pendSet(v) { try { if (v) localStorage.setItem(PEND_KEY, JSON.stringify(v)); else localStorage.removeItem(PEND_KEY); } catch (e) {} }
 
   // ---------- ช่วยจัดการกระเป๋า ----------
   function capOf(it) {
@@ -372,22 +387,48 @@
       if (busy) return; busy = true; msg('กำลังดำเนินการ...');
       p.then(ok).catch(function (e) { m.toastMsg(errMsg(e)); }).then(function () { busy = false; show(tab); });
     }
+    function goldReady() { return !!(window.GoldSync && window.GoldSync.isReady()); }
 
-    // รับของจากกล่อง (ทองเข้าทันที / ไอเทมเข้ากระเป๋าถ้ามีที่)
+    // ตรวจรายการลงขายที่ค้างอยู่ (เน็ตหลุดตอนลงขาย) ด้วย reqId เดิม: ถ้าลงไปแล้วเซิร์ฟเวอร์จะคืนผลเดิม ไม่ลงซ้ำ
+    function resolvePending() {
+      const p = pendGet();
+      if (!p || !p.item) { if (p) pendSet(null); return Promise.resolve(); }
+      return callRetry('listItem', { item: p.item, price: p.price, reqId: p.reqId }, 2).then(function () {
+        pendSet(null); m.toastMsg('ตรวจสอบรายการลงขายที่ค้างอยู่เรียบร้อย');
+      }).catch(function (e) {
+        if (uncertain(e)) return;                     // ยังไม่แน่ใจ เก็บไว้ตรวจรอบหน้า
+        if (!canAdd(m, p.item)) { m.toastMsg('มีของที่ลงขายไม่สำเร็จรอคืน แต่กระเป๋าเต็ม เว้นที่ว่างแล้วเปิดตลาดใหม่'); return; }
+        pendSet(null); addToBag(m, p.item); save();
+        m.toastMsg('ลงขายไม่สำเร็จ คืนของเข้ากระเป๋าแล้ว');
+      });
+    }
+
+    // รับของจากกล่อง (ทองเข้าที่เซิร์ฟเวอร์ / ไอเทมเข้ากระเป๋าถ้ามีที่)
     function claimAll() {
       return call('listInbox').then(function (r) {
-        let p = Promise.resolve(), n = 0;
+        let p = Promise.resolve(), n = 0, skipped = 0;
         r.entries.forEach(function (e) {
-          if (e.type === 'item' && !canAdd(m, e.item)) return;   // กระเป๋าเต็ม: รอไว้ก่อน
-          p = p.then(function () { return call('claimInbox', { id: e.id }); }).then(function (c) {
-            if (!c || !c.entry) return;                          // ยังอยู่ในช่วงพัก (wait) ข้ามไปก่อน
-            const en = c.entry;
-            if (en.type === 'gold') m.stats.gold += en.amount; else addToBag(m, en.item);
-            n++;
-            save();                                              // เซฟทันทีหลังรับแต่ละชิ้น กันของหายถ้าปิดเกมกลางคัน
+          p = p.then(function () {
+            // ตรวจ "ตอนถึงคิวของชิ้นนี้" (ไม่ใช่ตอนสร้างคิว) เพราะชิ้นก่อนหน้าอาจใช้ที่กระเป๋าไปแล้ว
+            if (e.type === 'item' && !canAdd(m, e.item)) { skipped++; return; }
+            if (e.type === 'gold' && !goldReady()) { skipped++; return; }
+            const doClaim = function () { return callRetry('claimInbox', { id: e.id, reqId: 'c_' + e.id }, 3); };
+            const pr = e.type === 'gold'
+              ? GoldSync.run(function () {
+                  return doClaim().then(function (c) { if (c && c.entry && c.server) GoldSync.credit(c.entry.amount); return c; });
+                })
+              : doClaim();
+            return pr.then(function (c) {
+              if (!c || !c.entry) { skipped++; return; }         // ยังอยู่ในช่วงพัก (wait) ข้ามไปก่อน
+              if (c.entry.type !== 'gold') {
+                if (!addToBag(m, c.entry.item)) m.toastMsg('กระเป๋าเต็มระหว่างรับของ กรุณาแจ้งผู้ดูแล');
+              }
+              n++;
+              save();                                            // เซฟทันทีหลังรับแต่ละชิ้น กันของหายถ้าปิดเกมกลางคัน
+            });
           });
         });
-        return p.then(function () { if (n) m.toastMsg('รับของจากตลาด ' + n + ' รายการ'); return r.entries.length - n; });
+        return p.then(function () { if (n) m.toastMsg('รับของจากตลาด ' + n + ' รายการ'); return skipped; });
       });
     }
 
@@ -487,15 +528,21 @@
       render();
     }
 
+    // ซื้อ: ซิงก์ทองขึ้นเซิร์ฟเวอร์ก่อน -> เซิร์ฟเวอร์ตรวจ/หักทองเอง -> เกมปรับยอดตาม (ไม่หักล่วงหน้าในเครื่องอีกแล้ว)
     function buyRow(l) {
       const lt = leftTxt(l);
       return row('<b>' + esc(label(l.item)) + '</b><br><small style="color:#bbb">' + priceTxt(l) + (lt ? ' • ' + lt : '') + '</small>',
         btn('ซื้อ', function () {
           if (busy) return;
+          if (!goldReady()) { m.toastMsg('ทองยังซิงก์กับเซิร์ฟเวอร์ไม่เสร็จ รอสักครู่แล้วลองใหม่'); return; }
           if (m.stats.gold < l.price) { m.toastMsg('ทองไม่พอ'); return; }
-          m.stats.gold -= l.price;                           // หักก่อน ล้มเหลวค่อยคืน
-          run(call('buyItem', { id: l.id }).then(function () { m.toastMsg('ซื้อสำเร็จ ของอยู่ในกล่องรับ'); })
-            .catch(function (e) { m.stats.gold += l.price; throw e; }), function () { save(); });
+          const rq = rid();
+          run(GoldSync.tx(function () {
+            return callRetry('buyItem', { id: l.id, reqId: rq }, 3).then(function () {
+              GoldSync.credit(-l.price);                         // เซิร์ฟเวอร์หักแล้ว ปรับยอดในเกมให้ตรง
+              m.toastMsg('ซื้อสำเร็จ ของอยู่ในกล่องรับ');
+            });
+          }), function () { save(); });
         }, true), icon(m, l.item));
     }
 
@@ -516,11 +563,19 @@
           const qty = it.kind === 'stone' ? it.count : Math.min(res.qty, it.count === undefined ? 1 : it.count);
           const total = res.unit * qty;
           const sold = it.count !== undefined ? Object.assign({}, it, { count: qty }) : it;
+          const rq = rid();
           if (it.count !== undefined && qty < it.count) it.count -= qty; else m.bag[i] = null;   // หักของออกจากกระเป๋าก่อน
+          pendSet({ reqId: rq, item: sold, price: total });   // จดไว้ก่อน เผื่อเน็ตหลุดหรือปิดเกมกลางคัน
           save();
-          run(call('listItem', { item: sold, price: total })
-            .then(function () { m.toastMsg('ลงขายแล้ว (' + w.rules.listHours + ' ชม.)'); })
-            .catch(function (e) { addToBag(m, sold); save(); throw e; }), function () {});
+          run(callRetry('listItem', { item: sold, price: total, reqId: rq }, 3)
+            .then(function () { pendSet(null); m.toastMsg('ลงขายแล้ว (' + w.rules.listHours + ' ชม.)'); })
+            .catch(function (e) {
+              if (uncertain(e)) {                              // ไม่รู้ว่าลงสำเร็จไหม: ไม่คืนของ รอตรวจใหม่ตอนเปิดตลาดครั้งหน้า
+                m.toastMsg('เน็ตไม่เสถียร ระบบจะตรวจรายการนี้ให้เมื่อเปิดตลาดครั้งหน้า');
+                return;
+              }
+              pendSet(null); addToBag(m, sold); save(); throw e;
+            }), function () {});
         });
       }).catch(function (e) { busy = false; m.toastMsg('ตรวจสอบไม่สำเร็จ: ' + errMsg(e)); show(tab); });
     }
@@ -600,7 +655,8 @@
       }).catch(function (e) { msg('โหลดไม่สำเร็จ: ' + errMsg(e)); });
     }
 
-    show('buy');
+    msg('กำลังโหลด...');
+    resolvePending().then(function () { show('buy'); });
   }
 
   window.TownHooks = window.TownHooks || {};
