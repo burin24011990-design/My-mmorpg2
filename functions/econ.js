@@ -1,5 +1,6 @@
 // functions/econ.js — กล่องเงิน + กระเป๋าทองฝั่งเซิร์ฟเวอร์
 // ใน functions/index.js ต้องมี:  Object.assign(exports, require('./econ'));
+// ชื่อฟังก์ชันต้องไม่ซ้ำกับของตลาด (ตลาดใช้ getWallet, listItem, buyItem, ... อยู่แล้ว)
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -26,7 +27,13 @@ const BUCKET_MAX = 120;
 const MIN_REPORT_GAP_MS = 10000;
 const MAX_REPORT_KILLS = 150;
 const DAY_CAP = { blue: 3000, red: 800, gold: 80 };
-const IMPORT_CAP = 100000000;              // ทองสูงสุดที่ยอมให้ย้ายขึ้นเซิร์ฟเวอร์ "ครั้งเดียว" (0 = ทุกคนเริ่มใหม่)
+
+// ----- กระเป๋าทอง -----
+const IMPORT_CAP = 1000000000;   // ทองสูงสุดที่ย้ายขึ้นเซิร์ฟเวอร์ "ครั้งเดียว" ตั้งให้มากกว่าผู้เล่นจริงที่รวยสุด
+const GAIN_ENFORCE = false;      // false = แค่จดบันทึกทองที่เพิ่มผิดปกติ | true = ตัดส่วนเกินทิ้ง (เปิดหลังย้ายตลาดมาเครดิตที่เซิร์ฟเวอร์)
+const GAIN_PER_MIN = 3000000;    // ทองที่ได้เพิ่มต่อนาทีที่ยอมรับ (ดูตัวเลขจริงจาก econ_audit แล้วปรับ)
+const GAIN_START = 5000000;      // โควตาตอนเริ่ม
+const GAIN_MAX = 50000000;       // สะสมโควตาได้สูงสุด
 
 // ---------- ตัวช่วย ----------
 function bad(msg) { throw new HttpsError('invalid-argument', msg); }
@@ -96,8 +103,7 @@ exports.reportKills = onCall(OPT, async (req) => {
 });
 
 // ---------- เปิดกล่อง ----------
-// ถ้าบัญชีย้ายทองขึ้นเซิร์ฟเวอร์แล้ว (goldImported) -> บวกทองเข้ากระเป๋าเซิร์ฟเวอร์ คืน server:true + balance
-// ถ้ายังไม่ย้าย -> คืน gold ให้ไคลเอนต์บวกเองเหมือนเดิม (server:false)
+// ย้ายทองแล้ว (goldImported) -> บวกทองเข้ากระเป๋าเซิร์ฟเวอร์ คืน server:true | ยังไม่ย้าย -> server:false
 exports.openBoxes = onCall(OPT, async (req) => {
   const uid = googleUid(req);
   const d = req.data || {};
@@ -145,14 +151,14 @@ exports.getBoxes = onCall(OPT, async (req) => {
 });
 
 // ---------- กระเป๋าทองฝั่งเซิร์ฟเวอร์ ----------
-exports.getWallet = onCall(OPT, async (req) => {
+exports.getGoldWallet = onCall(OPT, async (req) => {
   const uid = googleUid(req);
   const s = await db.collection('econ').doc(uid).get();
   const e = s.exists ? s.data() : {};
   return { imported: !!e.goldImported, gold: e.gold || 0 };
 });
 
-// ย้ายทองในเครื่องขึ้นเซิร์ฟเวอร์ "ครั้งเดียวต่อบัญชี" (ครั้งนี้เซิร์ฟเวอร์เชื่อค่าจากเครื่อง จึงมีเพดาน IMPORT_CAP)
+// ย้ายทองในเครื่องขึ้นเซิร์ฟเวอร์ "ครั้งเดียวต่อบัญชี" (เชื่อค่าจากเครื่องครั้งนี้ครั้งเดียว จึงมีเพดาน IMPORT_CAP)
 exports.importGold = onCall(OPT, async (req) => {
   const uid = googleUid(req);
   const amt = Math.floor(Number((req.data || {}).amount));
@@ -170,28 +176,43 @@ exports.importGold = onCall(OPT, async (req) => {
   });
 });
 
-// หักทอง (ซื้อของ/ตีบวก ฯลฯ) — เซิร์ฟเวอร์เช็กว่ามีพอ
-exports.spendGold = onCall(OPT, async (req) => {
+// ไคลเอนต์ส่ง "ส่วนต่างทอง" (+ได้ / -ใช้) ทุก ~10 วินาที  reqId ซ้ำ = คืนผลเดิม ไม่นับซ้ำ
+exports.syncGold = onCall(OPT, async (req) => {
   const uid = googleUid(req);
   const d = req.data || {};
-  const amt = d.amount;
-  if (!Number.isInteger(amt) || amt < 1 || amt > 1e12) bad('จำนวนไม่ถูกต้อง');
+  const delta = d.delta;
+  if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 1e12) bad('จำนวนไม่ถูกต้อง');
   const reqId = cleanReq(d.reqId);
+  if (!reqId) bad('reqId ไม่ถูกต้อง');
   const ref = db.collection('econ').doc(uid);
-  const reqRef = reqId ? db.collection('econ_reqs').doc(uid + '_' + reqId) : null;
+  const reqRef = db.collection('econ_reqs').doc(uid + '_' + reqId);
   const now = Date.now();
+
   return db.runTransaction(async (tx) => {
-    const r = await Promise.all([tx.get(ref), reqRef ? tx.get(reqRef) : null]);
+    const r = await Promise.all([tx.get(ref), tx.get(reqRef)]);
     const s = r[0], dup = r[1];
-    if (dup && dup.exists) return dup.data().result;
+    if (dup.exists) return dup.data().result;
     const e = s.exists ? s.data() : {};
     if (!e.goldImported) throw new HttpsError('failed-precondition', 'ยังไม่ได้ย้ายทองขึ้นเซิร์ฟเวอร์');
+
     const bal = e.gold || 0;
-    if (bal < amt) throw new HttpsError('failed-precondition', 'ทองไม่พอ');
-    const result = { balance: bal - amt };
-    tx.set(ref, { gold: FV.increment(-amt) }, { merge: true });
-    if (reqRef) tx.set(reqRef, { result: result, at: now, expireAt: new Date(now + 2 * DAY) });
-    tx.set(db.collection('econ_audit').doc(), { at: now, uid: uid, type: 'spend', amount: amt, reason: String(d.reason || '').slice(0, 40) });
+    let tokens = e.goldTokens === undefined ? GAIN_START : e.goldTokens;
+    if (e.goldTokAt) tokens += (now - e.goldTokAt) / 60000 * GAIN_PER_MIN;
+    tokens = Math.min(GAIN_MAX, tokens);
+
+    let granted = delta, over = 0;
+    if (delta > 0) {
+      over = Math.max(0, delta - Math.floor(tokens));
+      if (over > 0 && GAIN_ENFORCE) granted = delta - over;
+      tokens = Math.max(0, tokens - granted);
+    }
+    const newBal = Math.max(0, bal + granted);
+    const result = { balance: newBal, granted: granted, over: over };
+
+    tx.set(ref, { gold: newBal, goldTokens: tokens, goldTokAt: now }, { merge: true });
+    tx.set(reqRef, { result: result, at: now, expireAt: new Date(now + 2 * DAY) });
+    if (over > 0)
+      tx.set(db.collection('econ_audit').doc(), { at: now, uid: uid, type: 'gold_over', delta: delta, over: over, balance: bal, enforced: GAIN_ENFORCE });
     return result;
   });
 });
