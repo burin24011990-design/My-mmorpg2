@@ -448,12 +448,12 @@
     // วงปลอดภัย: วาดวงฟ้า + พื้นที่นอกวงสีแดง และหักเลือดคนที่อยู่นอกวง
     const zi = zoneInfo(pv);
     if (zi) {
-      g.lineStyle(1200, 0xff2222, 0.22).strokeCircle(zi.x, zi.y, zi.r + 600);
+      g.lineStyle(1200, 0xff2222, 0.12).strokeCircle(zi.x, zi.y, zi.r + 600);
       g.lineStyle(6, 0x55aaff, 0.95).strokeCircle(zi.x, zi.y, zi.r);
       if (!pv.dead && !pv.over && now >= pv.protUntil && time - pv.lastZone > 500 &&
           Math.hypot(m.player.x - zi.x, m.player.y - zi.y) > zi.r) {
         pv.lastZone = time;
-        zoneHurt(m, pv, Math.ceil(m.maxHp() * (0.03 + 0.05 * zi.t)));   // 3% -> 8% ต่อครึ่งวินาที (แรงขึ้นตามวงที่เล็กลง)
+        zoneHurt(m, pv, Math.ceil(m.maxHp() * (0.02 + 0.03 * zi.t)));   // 2% -> 5% ต่อครึ่งวินาที (แรงขึ้นตามวงที่เล็กลง)
       }
     }
 
