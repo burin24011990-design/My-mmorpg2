@@ -13,7 +13,6 @@
 //  H) ยอมรับเฉพาะ provider google.com (เดิมกันแค่ anonymous)
 //  I) market_flags (ให้คุณตรวจ) + adminBan (แบน/อายัดกล่องรับ)
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
-const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 if (!admin.apps.length) admin.initializeApp();
@@ -390,7 +389,8 @@ exports.buyItem = onCall(OPT, async (req) => {
   return { ok: true };
 });
 
-// ---------- ยกเลิก (ไม่คืนตั๋ว ไม่คืนโควตา) ----------
+// ---------- ยกเลิก / รับคืน (ไม่คืนตั๋ว ไม่คืนโควตา) ----------
+// ของที่ยกเลิก (หรือหมดอายุแล้วกด "รับคืน") จะถูกส่งกลับเข้ากล่องรับของผู้ขายทันที
 exports.cancelListing = onCall(OPT, async (req) => {
   const uid = authOnly(req);
   const id = String((req.data || {}).id || '');
@@ -402,4 +402,43 @@ exports.cancelListing = onCall(OPT, async (req) => {
     const priv = await tx.get(privRef);
     if (!pub.exists || !priv.exists || pub.data().status !== 'active') throw new HttpsError('not-found', 'รายการนี้ไม่อยู่แล้ว');
     if (priv.data().sellerId !== uid) throw new HttpsError('permission-denied', 'ไม่ใช่ของคุณ');
-    tx.update(pu
+    const now = Date.now();
+    tx.update(pubRef, { status: 'cancelled' });
+    tx.update(privRef, { status: 'cancelled', cancelledAt: now });
+    tx.set(db.collection('market_inbox').doc(uid).collection('entries').doc(),
+      { type: 'item', item: pub.data().item, note: 'คืนจากตลาด', at: now, availableAt: now });
+    audit(tx, { type: 'cancel', uid: uid, listingId: id });
+  });
+  return { ok: true };
+});
+
+// ---------- กล่องรับ ----------
+exports.listInbox = onCall(OPT, async (req) => {
+  const uid = authOnly(req);
+  const q = await db.collection('market_inbox').doc(uid).collection('entries').limit(100).get();
+  return {
+    entries: q.docs.map(function (d) {
+      const e = d.data();
+      return { id: d.id, type: e.type, item: e.item, amount: e.amount, note: e.note, at: e.at, availableAt: e.availableAt };
+    })
+  };
+});
+
+exports.claimInbox = onCall(OPT, async (req) => {
+  const uid = authOnly(req);
+  const id = String((req.data || {}).id || '');
+  if (!id) bad('ไม่มี id');
+  const ban = await db.collection('market_bans').doc(uid).get();
+  if (ban.exists && ban.data().freeze) throw new HttpsError('permission-denied', 'บัญชีนี้ถูกอายัดการรับของ');
+  const ref = db.collection('market_inbox').doc(uid).collection('entries').doc(id);
+  const now = Date.now();
+  return db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) return { entry: null };
+    const e = s.data();
+    if ((e.availableAt || 0) > now) return { entry: null, wait: e.availableAt - now };   // ยังอยู่ในช่วงพัก
+    tx.delete(ref);
+    audit(tx, { type: 'claim', uid: uid, entryId: id, kind: e.type });
+    return { entry: { type: e.type, item: e.item || null, amount: e.amount || 0 } };
+  });
+});
