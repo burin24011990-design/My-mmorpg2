@@ -5,6 +5,11 @@
 // - เซิร์ฟเวอร์คุม: ตำแหน่ง AI เลือด การตาย การเกิดใหม่ | เครื่องผู้เล่น: ตีมอน (ส่ง hits) รับดาเมจ ยิงกระสุน EXP/ดรอป
 // - คนที่ตีมอนก่อนมอนตายทุกคนได้ EXP | คนที่ตีตัวสุดท้ายได้ของดรอป+ทอง
 // - แก้: โหมดห้องเรียก P.calcHit (stats.js) เพื่อคิดเกราะมอน/คริติคอล/ดูดเลือด เหมือนโหมดมอนในเครื่อง
+// - v2: แก้สถานะสกิลหาย (ล็อกขา/สตั้น/แช่แข็ง/ไฟช็อต/ลดสเตตัส/รีเจนมานา)
+//       สาเหตุเดิม: โหมดห้องไม่เรียกตัวอัปเดตมอนของไฟล์ classes/* เลย (ไฟล์เหล่านั้นครอบ updateEnemies ไว้)
+//       ตอนนี้โหมดห้องเรียกมันทุกเฟรม (ต้องมีบรรทัด "if (this.rmActive) return;" ที่หัว updateEnemies ใน monsters.js)
+//       + มอนที่ติดสตั้น/แช่แข็ง ไม่โจมตีเรา และยืนอยู่กับที่ | ล็อกขา = ยืนอยู่กับที่
+//       + ส่งสถานะขึ้นเซิร์ฟเวอร์ผ่านอีเวนต์ 'mfx' ([id, ชนิดสถานะ, มิลลิวินาที, พารามิเตอร์]) ให้ server.js ทำ CC จริง
 
 (function () {
   const P = Main.prototype;
@@ -73,6 +78,39 @@
     this.spawnDueBosses();
   };
 
+  // ----- มอนติดสถานะควบคุมไหม (ใช้สถานะที่ classes/* ใส่ไว้ที่ e._fx) -----
+  // stun / freeze = ขยับและโจมตีไม่ได้ | root = เดินไม่ได้ (ยังโจมตีได้ถ้าเซิร์ฟเวอร์ว่าอยู่ในระยะ)
+  function ccActive(sc, e, kinds) {
+    const fx = e && e._fx;
+    if (!fx) return false;
+    const now = sc.time.now;
+    for (let i = 0; i < kinds.length; i++) {
+      const s = fx[kinds[i]];
+      if (s && now < s.until) return true;
+    }
+    return false;
+  }
+  const NO_ATTACK = ['stun', 'freeze'];
+  const NO_MOVE = ['stun', 'freeze', 'root'];
+
+  // ----- ส่งสถานะที่เราใส่ให้มอนขึ้นเซิร์ฟเวอร์ (server.js ฟังอีเวนต์ 'mfx' เพื่อทำ CC จริงให้ทุกคนในห้อง) -----
+  (function hookStatus() {
+    const C = window.Classes;
+    if (!C || typeof C.status !== 'function' || C.status._rmWrapped) return;
+    const orig = C.status;
+    const wrapped = function (scene, e, type, params, ms) {
+      const r = orig.apply(this, arguments);
+      try {
+        if (scene && scene.rmActive && scene.socket && e && e.sid !== undefined) {
+          scene.socket.emit('mfx', [e.sid, type, Math.round(ms || 0), params || {}]);
+        }
+      } catch (err) { /* ไม่ให้พังการใช้สกิล */ }
+      return r;
+    };
+    wrapped._rmWrapped = true;
+    C.status = wrapped;
+  })();
+
   // ----- อัปเดตมอนทุกเฟรม: โหมดห้อง = เดินตามตำแหน่งจากเซิร์ฟเวอร์ (ไม่คิด AI เอง) -----
   const oUpd = P.updateEnemies;
   P.updateEnemies = function (time) {
@@ -80,20 +118,27 @@
     if (this.updatePlayerHidden) this.updatePlayerHidden(time);
     flushHits(this, time);
 
+    // เรียกตัวอัปเดตสถานะของ classes/* (ล็อกขา สตั้น แช่แข็ง ไฟช็อต ลดสเตตัส รีเจนมานา ฯลฯ)
+    // ตัวในสุดคือ monsters.js ซึ่งต้องมี "if (this.rmActive) return;" ที่หัวฟังก์ชัน จะได้ไม่คิด AI ซ้ำ
+    try { oUpd.call(this, time); } catch (err) { console.error('roomMonsters: status update', err); }
+
     if (!this.enemyBarGfx) this.enemyBarGfx = this.add.graphics().setDepth(41);
     const g = this.enemyBarGfx;
     g.clear();
     const self = this;
     this.enemies.getChildren().forEach(function (e) {
       if (!e.active || e.sid === undefined) return;
+      const held = ccActive(self, e, NO_MOVE);               // ติดสถานะ = ยืนอยู่กับที่
       const dx = e.tx - e.x, dy = e.ty - e.y, d = Math.hypot(dx, dy);
-      if (d > 400) e.setPosition(e.tx, e.ty);
-      else if (d > 0.5) e.setPosition(e.x + dx * 0.3, e.y + dy * 0.3);
+      if (!held) {
+        if (d > 400) e.setPosition(e.tx, e.ty);
+        else if (d > 0.5) e.setPosition(e.x + dx * 0.3, e.y + dy * 0.3);
+      }
       if (e.body) e.body.setVelocity(0, 0);
       if (e.def && e.def.hasSheet) {
-        const st = time < e.atkUntil ? 'attack' : (d > 3 ? 'walk' : 'idle');
+        const st = time < e.atkUntil ? 'attack' : ((!held && d > 3) ? 'walk' : 'idle');
         if (e.animState !== st) { e.animState = st; e.play(e.def.key + '_' + st, true); }
-        if (Math.abs(dx) > 3) e.setFlipX(dx < 0);
+        if (!held && Math.abs(dx) > 3) e.setFlipX(dx < 0);
       }
       if (e.levelText) e.levelText.setPosition(e.x, e.y - e.labelOff);
       self.drawEnemyBar(g, e);
@@ -162,6 +207,7 @@
   function onSkill(sc, d) {
     const e = sc.rmMap[d.id];
     if (!e || !e.active) return;
+    if (ccActive(sc, e, NO_ATTACK)) return;                // สตั้น/แช่แข็งอยู่ = ใช้สกิลไม่ได้
     e.atkUntil = sc.time.now + 500;
     const p = sc.player, a = d.a;
     if (d.t === 'epic') {
@@ -216,6 +262,9 @@
     s.on('mdead', function (d) { if (sc.rmActive) onDead(sc, d); });
     s.on('mhurt', function (d) {                     // มอนชนตัวเรา (ในเมืองไม่โดน)
       if (!sc.rmActive || window._townBusy) return;
+      // ถ้าเซิร์ฟเวอร์ส่ง id มอนมาด้วย และมอนตัวนั้นติดสตั้น/แช่แข็งอยู่ = ไม่โดน
+      const e = (d && d.id !== undefined) ? sc.rmMap[d.id] : null;
+      if (e && ccActive(sc, e, NO_ATTACK)) return;
       sc.hurtPlayer(d.dmg);
     });
     s.on('matk', function (id) {
@@ -225,6 +274,7 @@
     s.on('mshot', function (d) {                     // มอนยิงไกล
       const e = sc.rmMap[d.id];
       if (!sc.rmActive || !e || !e.active) return;
+      if (ccActive(sc, e, NO_ATTACK)) return;        // สตั้น/แช่แข็งอยู่ = ยิงไม่ได้
       e.atkUntil = sc.time.now + 400;
       sc.fireShot(e, d.a, d.sp, d.sc, d.dm);
     });
