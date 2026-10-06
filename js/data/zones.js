@@ -48,5 +48,6 @@ REBIRTH_ZONE_STEPS.forEach(function (r, i) {
       return (sc && sc.stats && (sc.stats.rebirth || 0) >= r) ? 1 : 999;
     },
   });
-  ZONES.push(z);
+  ZONES.push({ id: 99, name: 'เมือง', town: true, safe: true, x: 1800, y: 1535,
+  count: 0, rangedCount: 0, reqLv: 1, minLv: 1, maxLv: 1, boxLevel: 1, bg: 0x1b241b, line: 0x1b241b });
 });
