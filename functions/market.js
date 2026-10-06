@@ -1,17 +1,14 @@
-// functions/market.js — ตลาดกลาง v3 (กันเปิดหลายบัญชีปั๊มของเข้าตัวหลัก)
+// functions/market.js — ตลาดกลาง v4  (บันทึกไว้เป็น functions/market.js)
 // ใน functions/index.js ต้องมี:  Object.assign(exports, require('./market'));
 //
-// ของเดิม v2 (ยังอยู่ครบ): ตั๋วลงขาย, โควตาลงขาย, เพดานราคา, ผู้ขายนิรนาม, audit, คืนของหมดอายุ
-// เพิ่มใน v3:
-//  A) ราคาขั้นต่ำ (กันโอนของฟรี/ราคา 1 ทอง)
-//  B) จำกัดจำนวน "คู่ค้าต่างคน" ต่อวัน (ตัวหลักรับของจากหลายบัญชีไม่ได้)
-//  C) เพดานยอดซื้อ/ขายรวมต่อ 7 วัน
-//  D) กันเทรดย้อนกลับ A->B แล้ว B->A (ล้างของวนกัน)
-//  E) เทียบ IP: ผู้ซื้อ/ผู้ขายเคยใช้ IP เดียวกันภายใน 7 วัน = บล็อก + บันทึก flag
-//  F) ของที่ได้จากการซื้อเข้ากล่องแบบ "พักไว้" (hold) ให้มีเวลาตรวจ/แบนก่อนรับได้
-//  G) reqId กันเครดิต/ลงขาย/ซื้อซ้ำเมื่อเน็ตหลุดแล้วยิงใหม่ (กันบั๊กของหาย/ของเบิ้ล)
-//  H) ยอมรับเฉพาะ provider google.com (เดิมกันแค่ anonymous)
-//  I) market_flags (ให้คุณตรวจ) + adminBan (แบน/อายัดกล่องรับ)
+// ของเดิม v3 (ยังอยู่ครบ): ตั๋วลงขาย, โควตา, เพดาน/ขั้นต่ำราคา, ผู้ขายนิรนาม, audit, คืนของหมดอายุ,
+//   จำกัดคู่ค้า/IP/ยอดรวม, พักของ, reqId, เฉพาะ Google, market_flags, adminBan
+// เพิ่มใน v4:
+//  J) ซื้อ: เซิร์ฟเวอร์ตรวจและหักทองผู้ซื้อเองจาก econ.gold (ไม่เชื่อว่าเกมหักแล้ว)
+//  K) รับกล่อง: ทองจากการขายเข้า econ.gold ที่เซิร์ฟเวอร์ ในธุรกรรมเดียวกับการลบรายการ + reqId กันรับซ้ำ
+//  L) ตรวจโครงสร้างไอเทมเข้มขึ้น (คีย์/ชนิดค่า/ความยาว/อักขระต้องห้าม)
+//  M) expireListings กรอง status=active (ต้องมี index: status + expiresAt)
+//  N) buyItem คืนผล (balance) และ dup คืนผลเดิม
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const admin = require('firebase-admin');
@@ -34,12 +31,12 @@ const MAX_PRICE = 9999999;                   // ราคารวมสูง�
 const MIN_PRICE_RATIO = 0.10;                // ราคาต่อชิ้นต้องไม่ต่ำกว่า 10% ของเพดานไอเทมนั้น
 const BUY_DAILY_GOLD = 20000000;             // ยอดซื้อรวมสูงสุดต่อ 24 ชม.
 const BUY_WEEKLY_GOLD = 60000000;            // ยอดซื้อรวมสูงสุดต่อ 7 วัน
-const SELL_WEEKLY_GOLD = 60000000;           // ยอดขายรวมสูงสุดต่อ 7 วัน (กันตัวหลักรับทองจากหลายบัญชี)
+const SELL_WEEKLY_GOLD = 60000000;           // ยอดขายรวมสูงสุดต่อ 7 วัน
 const PAIR_LIMIT = 2;                        // ซื้อจากผู้ขายคนเดิมได้กี่ครั้งต่อ 24 ชม.
 const MAX_SELLERS_DAY = 4;                   // ซื้อจากผู้ขายต่างคนได้กี่คนต่อ 24 ชม.
 const MAX_BUYERS_DAY = 4;                    // ขายให้ผู้ซื้อต่างคนได้กี่คนต่อ 24 ชม.
 const REVERSE_BLOCK_MS = 72 * HOUR;          // เคยขายให้เขา -> ซื้อจากเขากลับไม่ได้ภายในเวลานี้
-const BLOCK_SHARED_IP = true;                // บล็อกคู่ซื้อ-ขายที่เคยใช้ IP เดียวกันใน 7 วัน (เน็ตมือถือ CGNAT อาจชนกันได้บ้าง ปิดได้)
+const BLOCK_SHARED_IP = true;                // บล็อกคู่ซื้อ-ขายที่เคยใช้ IP เดียวกันใน 7 วัน
 const IP_FLAG_UIDS = 3;                      // IP เดียวมีกี่บัญชีใน 7 วัน ถึงบันทึก flag (ไม่บล็อก)
 const HOLD_MS = 30 * 60000;                  // พักของ/ทองที่ได้จากตลาดก่อนรับได้ (ปกติ)
 const HOLD_HIGH_MS = 12 * HOUR;              // พักนานขึ้น: ของแพง หรือผู้ซื้ออายุบัญชีน้อย
@@ -47,8 +44,8 @@ const MIN_AGE_H = 72;                        // อายุบัญชีข�
 const HIGH_VALUE = 5000000;                  // รายการราคาตั้งแต่นี้ถือเป็นของแพง
 const HIGH_VALUE_AGE_H = 168;                // อายุบัญชีขั้นต่ำสำหรับของแพง (ชม.)
 const STONE_STACK = 9999;                    // ต้องตรงกับ MAX_STONE_STACK ในเกม
-const IP_SALT = 'x7Kq2mVd9RtLp4Zw8NcB1yHs5Fg3JaUe';   // <-- แก้ (ใช้แฮช IP ไม่เก็บ IP ดิบ) ห้ามเปลี่ยนบ่อย เพราะข้อมูล IP เก่าจะใช้เทียบไม่ได้
-const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan  เช่น ['abc123...']
+const IP_SALT = 'x7Kq2mVd9RtLp4Zw8NcB1yHs5Fg3JaUe';   // <-- แก้เป็นค่าสุ่มของคุณเอง (ถ้า repo เป็น public ควรเปลี่ยน/ย้ายไปเป็น secret)
+const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan
 
 const TICKET_MAX = { 1: 2000000, 2: 5000000, 3: MAX_PRICE };
 const TIERS = ['white', 'blue', 'red', 'gold'];
@@ -66,8 +63,8 @@ const CAP = {
 };
 const RULES = { dailyLimit: DAILY_LIMIT, listHours: LIST_HOURS, maxPrice: MAX_PRICE, tax: TAX, stoneStack: STONE_STACK, ticketMax: TICKET_MAX, cap: CAP, minPriceRatio: MIN_PRICE_RATIO };
 
-const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };  
-// redeploy // <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
+const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };
+// redeploy
 
 // ---------- ตัวช่วย ----------
 function bad(msg) { throw new HttpsError('invalid-argument', msg); }
@@ -131,11 +128,26 @@ async function guard(req, minAgeH) {
   return { uid: uid, ageH: ageH, ipH: h };
 }
 
+// L) ตรวจโครงสร้างค่าในไอเทมทุกชั้น: คีย์ต้องเป็นตัวอักษร/ตัวเลข/_ สั้นๆ, ค่าเป็นตัวเลขจำกัดขนาด/ข้อความสั้นไม่มีอักขระอันตราย
+function safeVal(v, depth) {
+  if (v === null || typeof v === 'boolean') return true;
+  if (typeof v === 'number') return Number.isFinite(v) && Math.abs(v) <= 1e9;
+  if (typeof v === 'string') return v.length <= 80 && !/[<>&"'`\\]/.test(v);
+  if (depth >= 4) return false;
+  if (Array.isArray(v)) return v.length <= 12 && v.every(function (x) { return safeVal(x, depth + 1); });
+  if (typeof v === 'object') {
+    const ks = Object.keys(v);
+    return ks.length <= 24 && ks.every(function (k) { return /^[A-Za-z0-9_]{1,24}$/.test(k) && safeVal(v[k], depth + 1); });
+  }
+  return false;
+}
+
 function validateItem(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) bad('ไอเทมไม่ถูกต้อง');
   const json = JSON.stringify(raw);
   if (json.length > 2000) bad('ไอเทมไม่ถูกต้อง');
   const it = JSON.parse(json);
+  if (!safeVal(it, 0)) bad('ไอเทมไม่ถูกต้อง');
   const int = function (v, lo, hi) { return Number.isInteger(v) && v >= lo && v <= hi; };
   if (it.tier !== undefined && TIERS.indexOf(it.tier) < 0) bad('ไอเทมไม่ถูกต้อง');
   if (it.opts !== undefined && (!Array.isArray(it.opts) || it.opts.length > 10)) bad('ไอเทมไม่ถูกต้อง');
@@ -234,7 +246,6 @@ exports.adminGrantTickets = onCall(OPT, async (req) => {
 });
 
 // แบน/อายัด: { target: uid, on: true|false, freeze: true|false, note }
-//  on:true  = ใช้ตลาดไม่ได้ | freeze:true (ค่าเริ่มต้น) = รับของจากกล่องไม่ได้ด้วย | on:false = ปลดแบน
 exports.adminBan = onCall(OPT, async (req) => {
   const uid = authOnly(req);
   if (ADMIN_UIDS.indexOf(uid) < 0) throw new HttpsError('permission-denied', 'ไม่มีสิทธิ์');
@@ -308,14 +319,16 @@ exports.buyItem = onCall(OPT, async (req) => {
   const privRef = db.collection('market_private').doc(id);
   const limitRef = db.collection('market_limits').doc(uid);
   const myLinkRef = db.collection('market_links').doc(uid);
+  const econRef = db.collection('econ').doc(uid);
   let pendingFlag = null;
+  let out;
 
   try {
-    await db.runTransaction(async (tx) => {
+    out = await db.runTransaction(async (tx) => {
       pendingFlag = null;
       const first = await Promise.all([tx.get(pubRef), tx.get(privRef), reqRef ? tx.get(reqRef) : null]);
       const pub = first[0], priv = first[1], dup = first[2];
-      if (dup && dup.exists) return;                                  // ยิงซ้ำ: ซื้อสำเร็จไปแล้ว
+      if (dup && dup.exists) return dup.data().result || { ok: true, dup: true };   // ยิงซ้ำ: ซื้อสำเร็จไปแล้ว คืนผลเดิม
       if (!pub.exists || !priv.exists || pub.data().status !== 'active') throw new HttpsError('not-found', 'สินค้านี้ถูกขายหรือยกเลิกแล้ว');
       const L = pub.data(), P = priv.data();
       const sellerId = P.sellerId;
@@ -327,13 +340,18 @@ exports.buyItem = onCall(OPT, async (req) => {
       const revRef = db.collection('market_pairs').doc(uid + '_' + sellerId);
       const sLimRef = db.collection('market_limits').doc(sellerId);
       const sLinkRef = db.collection('market_links').doc(sellerId);
-      const r = await Promise.all([tx.get(limitRef), tx.get(pairRef), tx.get(revRef), tx.get(sLimRef), tx.get(myLinkRef), tx.get(sLinkRef)]);
-      const lim = r[0], pr = r[1], rv = r[2], slim = r[3], myLink = r[4], sLink = r[5];
+      const r = await Promise.all([tx.get(limitRef), tx.get(pairRef), tx.get(revRef), tx.get(sLimRef), tx.get(myLinkRef), tx.get(sLinkRef), tx.get(econRef)]);
+      const lim = r[0], pr = r[1], rv = r[2], slim = r[3], myLink = r[4], sLink = r[5], ec = r[6];
       const now = Date.now();
       const block = function (type, extra) {
         pendingFlag = Object.assign({ type: type, uid: uid, sellerId: sellerId, listingId: id, price: L.price }, extra || {});
         throw new HttpsError('failed-precondition', NEUTRAL);
       };
+
+      // J) ทองผู้ซื้อต้องมีจริงบนเซิร์ฟเวอร์ (ไม่เชื่อค่าจากเครื่อง)
+      const eg = ec.exists ? ec.data() : {};
+      if (!eg.goldImported) throw new HttpsError('failed-precondition', 'ทองยังซิงก์กับเซิร์ฟเวอร์ไม่เสร็จ รอสักครู่แล้วลองใหม่');
+      if ((eg.gold || 0) < L.price) throw new HttpsError('failed-precondition', 'ทองไม่พอ');
 
       // E) IP เดียวกัน
       if (BLOCK_SHARED_IP) {
@@ -371,7 +389,10 @@ exports.buyItem = onCall(OPT, async (req) => {
       const hold = (L.price >= HIGH_VALUE || g.ageH < HIGH_VALUE_AGE_H) ? HOLD_HIGH_MS : HOLD_MS;
       const availableAt = now + hold;
       const gain = L.price - Math.floor(L.price * TAX);
+      const newBal = (eg.gold || 0) - L.price;
+      const result = { ok: true, balance: newBal, price: L.price };
 
+      tx.set(econRef, { gold: FV.increment(-L.price) }, { merge: true });       // J) หักทองผู้ซื้อที่เซิร์ฟเวอร์
       tx.update(pubRef, { status: 'sold' });
       tx.update(privRef, { status: 'sold', buyerId: uid, soldAt: now });
       tx.set(limitRef, { buys: buys }, { merge: true });
@@ -381,18 +402,18 @@ exports.buyItem = onCall(OPT, async (req) => {
         { type: 'item', item: L.item, note: 'ซื้อจากตลาด', at: now, availableAt: availableAt });
       tx.set(db.collection('market_inbox').doc(sellerId).collection('entries').doc(),
         { type: 'gold', amount: gain, note: 'ขาย ' + L.item.kind + ' (หักภาษี 5%)', at: now, availableAt: availableAt });
-      if (reqRef) tx.set(reqRef, { at: now, listingId: id, expireAt: new Date(now + 2 * DAY) });
+      if (reqRef) tx.set(reqRef, { at: now, listingId: id, result: result, expireAt: new Date(now + 2 * DAY) });
       audit(tx, { type: 'buy', uid: uid, sellerId: sellerId, listingId: id, price: L.price, sig: sig(L.item), ip: g.ipH, hold: hold });
+      return result;
     });
   } catch (e) {
     if (pendingFlag) await flag(pendingFlag.uid, pendingFlag.type, pendingFlag);
     throw e;
   }
-  return { ok: true };
+  return out || { ok: true };
 });
 
 // ---------- ยกเลิก / รับคืน (ไม่คืนตั๋ว ไม่คืนโควตา) ----------
-// ของที่ยกเลิก (หรือหมดอายุแล้วกด "รับคืน") จะถูกส่งกลับเข้ากล่องรับของผู้ขายทันที
 exports.cancelListing = onCall(OPT, async (req) => {
   const uid = authOnly(req);
   const id = String((req.data || {}).id || '');
@@ -426,32 +447,50 @@ exports.listInbox = onCall(OPT, async (req) => {
   };
 });
 
+// K) รับของ: ทอง -> เติมเข้า econ.gold ที่เซิร์ฟเวอร์ (คืน server:true ให้เกมใช้ GoldSync.credit) | ไอเทม -> คืนให้เกมใส่กระเป๋า
+//    reqId เดียวกัน (ส่งซ้ำตอนเน็ตสะดุด) = คืนผลเดิม ไม่รับซ้ำ
 exports.claimInbox = onCall(OPT, async (req) => {
   const uid = authOnly(req);
-  const id = String((req.data || {}).id || '');
+  const d = req.data || {};
+  const id = String(d.id || '');
   if (!id) bad('ไม่มี id');
+  const reqId = cleanReq(d.reqId);
   const ban = await db.collection('market_bans').doc(uid).get();
   if (ban.exists && ban.data().freeze) throw new HttpsError('permission-denied', 'บัญชีนี้ถูกอายัดการรับของ');
   const ref = db.collection('market_inbox').doc(uid).collection('entries').doc(id);
+  const reqRef = reqId ? db.collection('market_reqs').doc(uid + '_' + reqId) : null;
+  const econRef = db.collection('econ').doc(uid);
   const now = Date.now();
   return db.runTransaction(async (tx) => {
-    const s = await tx.get(ref);
+    const r = await Promise.all([tx.get(ref), reqRef ? tx.get(reqRef) : null, tx.get(econRef)]);
+    const s = r[0], dup = r[1], ec = r[2];
+    if (dup && dup.exists && dup.data().result) return dup.data().result;
     if (!s.exists) return { entry: null };
     const e = s.data();
     if ((e.availableAt || 0) > now) return { entry: null, wait: e.availableAt - now };   // ยังอยู่ในช่วงพัก
+    let result;
+    if (e.type === 'gold') {
+      if (!(ec.exists && ec.data().goldImported)) throw new HttpsError('failed-precondition', 'ทองยังซิงก์กับเซิร์ฟเวอร์ไม่เสร็จ รอสักครู่แล้วลองใหม่');
+      const amount = Math.max(0, Math.floor(Number(e.amount) || 0));
+      tx.set(econRef, { gold: FV.increment(amount) }, { merge: true });
+      result = { entry: { type: 'gold', item: null, amount: amount }, server: true };
+    } else {
+      result = { entry: { type: e.type, item: e.item || null, amount: 0 }, server: false };
+    }
     tx.delete(ref);
-    audit(tx, { type: 'claim', uid: uid, entryId: id, kind: e.type });
-    return { entry: { type: e.type, item: e.item || null, amount: e.amount || 0 } };
+    if (reqRef) tx.set(reqRef, { at: now, result: result, expireAt: new Date(now + 2 * DAY) });
+    audit(tx, { type: 'claim', uid: uid, entryId: id, kind: e.type, amount: result.entry.amount || 0 });
+    return result;
   });
 });
 
 // ---------- คืนของหมดอายุอัตโนมัติ (ทุก 60 นาที) ----------
-// ชื่อต้องเป็น expireListings (ชื่อเดิมที่ deploy ค้างอยู่ในระบบ)
+// M) ต้องมี composite index: market_listings (status ASC, expiresAt ASC) ใน firestore.indexes.json
 exports.expireListings = onSchedule({ schedule: 'every 60 minutes', region: REGION, timeZone: 'Asia/Bangkok', maxInstances: 1 }, async () => {
   const now = Date.now();
-  const q = await db.collection('market_listings').where('expiresAt', '<=', now).limit(100).get();
+  const q = await db.collection('market_listings')
+    .where('status', '==', 'active').where('expiresAt', '<=', now).limit(100).get();
   for (const doc of q.docs) {
-    if (doc.data().status !== 'active') continue;
     const pubRef = doc.ref;
     const privRef = db.collection('market_private').doc(doc.id);
     try {
