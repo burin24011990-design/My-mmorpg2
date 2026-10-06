@@ -1,4 +1,4 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v7.3 — เมืองจีนย้อนยุคพลังภายใน =====
+// ===== ฉากเมืองเริ่มต้น (Town) v7.4 — เมืองจีนย้อนยุคพลังภายใน =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
@@ -11,6 +11,8 @@
 // - v7.1: หน้าสเตตัสในเมืองแสดงสเตตัสครบเหมือนหน้าสเตตัสจริง (มีคริติคอล ฯลฯ) อ่านจาก STAT_DEFS ใน stats.js
 // - v7.3: ปุ่ม "💬 คุย" ลอยเหนือหัว NPC + พื้นที่กดใหญ่ขึ้น (แก้จุดกดเพี้ยน) + กดไกลแล้วเดินไปคุยให้เอง
 // - v7.2: ตายจริง (fixes.js เรียก townGoToTown) + หัก EXP 1% (ไม่หักใน PvP) + เซฟตอนตาย + อมตะ 3 วิตอนออกจากเมือง
+// - v7.4: แก้อนิเมชันตัวละครในเมือง (เลือกสกินดาบ/มีดตามคลาส + ส่ง skin ให้ HeroAnims.play)
+//         เพิ่มปุ่ม "จัดสกิล" มุมขวาล่างในเมือง (เปิดหน้าสกิลเดิมของ Main)
 
 const TOWN = {
   w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190,
@@ -299,6 +301,7 @@ class Town extends Phaser.Scene {
     this.pending = null;
     this.joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
     this.heroDir = 'down';
+    this.heroSkin = 'hero';
     this.blockers = [];
     this.hasAtlas = this.textures.exists('town');
 
@@ -325,11 +328,17 @@ class Town extends Phaser.Scene {
     const sh = this.add.graphics();
     sh.fillStyle(0x000000, 0.35).fillEllipse(0, 22, 34, 12);
     parts.push(sh);
-    // ตัวละครจริง (sprite 'hero' + อนิเมชันเดียวกับข้างนอก)
+    // ตัวละครจริง (sprite ตามสกินของคลาส + อนิเมชันเดียวกับข้างนอก)
     let labelY = -34;
     this.hero = null;
     if (this.textures.exists('hero')) {
-      const hero = this.add.sprite(0, 0, 'hero', 18);
+      try { HeroAnims.create(this); } catch (e) {}   // กันกรณีอนิเมชันยังไม่ถูกสร้าง
+      let skin = 'hero';
+      try { skin = HeroAnims.skinOf(mm.currentClass()); } catch (e) {}
+      if (!this.textures.exists(skin)) skin = 'hero';
+      this.heroSkin = skin;
+      const hero = this.add.sprite(0, 0, skin, 18);
+      hero.heroSkin = skin;
       hero.setScale((mp && mp.scaleX) || 1, (mp && mp.scaleY) || 1);
       this.hero = hero;
       labelY = -hero.displayHeight * 0.42;
@@ -467,7 +476,7 @@ class Town extends Phaser.Scene {
     return false;
   }
 
-  // ----- แถบปุ่มด้านบน + จอยสติ๊ก (เรียกฟังก์ชันเดิมของ Main) -----
+  // ----- แถบปุ่มด้านบน + ปุ่มจัดสกิล + จอยสติ๊ก (เรียกฟังก์ชันเดิมของ Main) -----
   buildTownHud() {
     const self0 = this;
     const M = function () { return townMain(self0); };
@@ -484,6 +493,20 @@ class Town extends Phaser.Scene {
       [r.bg, r.c, r.icon, r.t].forEach(function (o, i) { o.setDepth(100010 + i); });
       x += TB.w + TB.gap;
     }, this);
+
+    // ปุ่มจัดสกิล มุมขวาล่าง (เปิดหน้าสกิลเดิมของ Main)
+    const bx = W - 70, by = H - 70, selfT = this;
+    const sBg = this.add.circle(bx, by, 36, 0x2a2a4a, 0.95).setStrokeStyle(3, 0xffd45c)
+      .setScrollFactor(0).setDepth(100010).setInteractive({ useHandCursor: true });
+    this.add.text(bx, by - 5, '📜', { fontSize: '30px' }).setOrigin(0.5).setScrollFactor(0).setDepth(100011);
+    this.add.text(bx, by + 22, 'จัดสกิล', {
+      fontFamily: 'Mitr, sans-serif', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100011);
+    sBg.on('pointerdown', function () {
+      if (selfT.modal) return;
+      const m = townMain(selfT);
+      if (m && m.openSkillBook) m.openSkillBook();
+    });
 
     this.setupJoystick();
   }
@@ -724,13 +747,13 @@ class Town extends Phaser.Scene {
       p.setDepth(p.y + FEET);
     }
 
-    // อนิเมชันเดิน/ยืน (HeroAnims จาก heroAnims.js)
+    // อนิเมชันเดิน/ยืน (HeroAnims จาก heroAnims.js) — ส่งสกินตามคลาสเข้าไปด้วย
     if (this.hero && window.HeroAnims) {
       const moving = !!(vx || vy);
       if (moving) {
         this.heroDir = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? 'left' : 'right') : (vy < 0 ? 'up' : 'down');
       }
-      try { HeroAnims.play(this.hero, moving ? 'walk' : 'idle', this.heroDir); } catch (e) {}
+      try { HeroAnims.play(this.hero, moving ? 'walk' : 'idle', this.heroDir, this.heroSkin); } catch (e) {}
     }
 
     if (this.pending) {
