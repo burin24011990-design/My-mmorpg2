@@ -59,8 +59,7 @@
       synced = w.gold; ready = true;
       if (w.gold !== base) saveNow();
       if (w.first && w.gold < base) toast('ย้ายทองขึ้นเซิร์ฟเวอร์ได้สูงสุด ' + w.gold.toLocaleString());
-    }).catch(function () {}).then(function () { initing = false; });
-  }
+    }).catch(function (e) { if (!window.__gsErr) { window.__gsErr = 1; toast('ย้ายทองไม่สำเร็จ: ' + ((e && (e.code || e.message)) || e)); } }).then(function () { initing = false; });
 
   function sync() {
     if (!ready || queued) return;
