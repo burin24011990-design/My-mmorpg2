@@ -1,7 +1,8 @@
 // อนิเมชันตัวละครหลัก
-// - 'hero'       : assets/hero.png (ชีตเดิม ช่อง 96x96, 6 คอลัมน์) ใช้กับ mage/archer/priest + hurt/death
+// - 'hero'       : assets/hero.png (ชีตเดิม ช่อง 96x96, 6 คอลัมน์) ใช้กับ priest + hurt/death
 // - 'hero_sword' : assets/hero_sword.png (นักดาบ)  - 'hero_rogue' : assets/hero_rogue.png (นักมีด)
-// เลขเฟรม = แถว*6 + คอลัมน์ | ทิศซ้ายใช้ทิศขวา + setFlipX(true)
+// - 'hero_archer': assets/hero_archer.png (นักธนู) - 'hero_mage'  : assets/hero_mage.png (เมจ)
+// เลขเฟรม = แถว*คอลัมน์ + คอลัมน์ | สกินใหม่ (archer/mage) มีทิศซ้ายวาดแยก ไม่ต้องพลิกภาพ
 (function () {
   var COLS = 6;
   function f(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * COLS + i); return a; }
@@ -17,7 +18,16 @@
     death: { right: [56, 57, 58, 59], rate: 6, loop: false }
   };
 
-  // ชีตใหม่ (action ที่ไม่มีในนี้ เช่น hurt/death/staff/bow จะ fallback ไปใช้ชีตเดิม)
+  // ชีต archer/mage ใหม่: 9 คอลัมน์ x 12 แถว (ช่อง 96x96)
+  // แถว: 0-3 idle(down,left,right,up) | 4-7 walk | 8-11 attack
+  var NC = 9;
+  function g(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * NC + i); return a; }
+  function dirs(startRow, count) {
+    return { down: g(startRow, count), left: g(startRow + 1, count), right: g(startRow + 2, count), up: g(startRow + 3, count) };
+  }
+  function mix(o, extra) { for (var k in extra) o[k] = extra[k]; return o; }
+
+  // ชีตใหม่ (action ที่ไม่มีในนี้ เช่น hurt/death/sword จะ fallback ไปใช้ชีตเดิม)
   var SKINS = {
     hero_sword: {
       walk: { down: [0, 1, 2, 3, 4, 5], up: [6, 7, 8, 9, 10, 11], right: [12, 13, 14, 15, 16, 17], rate: 8, loop: true },
@@ -32,9 +42,26 @@
       sword: { down: [36, 37, 38, 39, 40, 41], up: [42, 43, 44, 45, 46, 47], right: [48, 49, 50, 51], rate: 14, loop: false },
       dagger: { down: [36, 37, 38, 39, 40, 41], up: [42, 43, 44, 45, 46, 47], right: [48, 49, 50, 51], rate: 14, loop: false },
       skill: { down: [54, 55, 56], up: [60, 61, 62], right: [66, 67], rate: 12, loop: false }
+    },
+    // นักธนู: idle 6 เฟรม / walk 6 เฟรม / ยิง 9 เฟรม (ใช้ท่า 'bow' + 'skill')
+    hero_archer: {
+      idle: mix(dirs(0, 6), { rate: 6, loop: true }),
+      walk: mix(dirs(4, 6), { rate: 10, loop: true }),
+      bow:  mix(dirs(8, 9), { rate: 21, loop: false })
+    },
+    // เมจ: idle 6 เฟรม / walk 6 เฟรม / ร่ายเวท 6 เฟรม (ใช้ท่า 'staff')
+    hero_mage: {
+      idle:  mix(dirs(0, 6), { rate: 6, loop: true }),
+      walk:  mix(dirs(4, 6), { rate: 10, loop: true }),
+      staff: mix(dirs(8, 6), { rate: 14, loop: false })
     }
   };
-  var SHEETS = { hero_sword: 'assets/hero_sword.png', hero_rogue: 'assets/hero_rogue.png' };
+  var SHEETS = {
+    hero_sword: 'assets/hero_sword.png',
+    hero_rogue: 'assets/hero_rogue.png',
+    hero_archer: 'assets/hero_archer.png',
+    hero_mage: 'assets/hero_mage.png'
+  };
 
   window.HeroAnims = {
     KEY: 'hero',
@@ -44,6 +71,8 @@
       cls = String(cls || '').toLowerCase();
       if (/sword|warrior|knight|fighter|ดาบ/.test(cls)) return 'hero_sword';
       if (/rogue|dagger|assassin|thief|มีด/.test(cls)) return 'hero_rogue';
+      if (/archer|bow|ranger|hunter|ธนู/.test(cls)) return 'hero_archer';
+      if (/mage|wizard|sorcer|magic|คทา|เมจ/.test(cls)) return 'hero_mage';
       return 'hero';
     },
 
@@ -59,7 +88,7 @@
         if (!scene.textures.exists(key)) return;
         Object.keys(defs).forEach(function (act) {
           var d = defs[act];
-          ['down', 'up', 'right'].forEach(function (dir) {
+          ['down', 'up', 'left', 'right'].forEach(function (dir) {
             if (!d[dir]) return;
             var name = key + '_' + act + '_' + dir;
             if (scene.anims.exists(name)) return;
@@ -76,7 +105,7 @@
       Object.keys(SKINS).forEach(function (k) { mk(k, SKINS[k]); });
     },
 
-    // HeroAnims.play(sprite, 'walk', 'left', skin?)   skin: 'hero_sword' | 'hero_rogue' | 'hero'
+    // HeroAnims.play(sprite, 'walk', 'left', skin?)   skin: 'hero_sword' | 'hero_rogue' | 'hero_archer' | 'hero_mage' | 'hero'
     // ถ้าไม่ส่ง skin จะใช้ sprite.heroSkin
     // 'sword' = ตีปกติ, 'skill' = ท่าสกิลหมุน/แทง (ชุดที่ 2 ของแต่ละคลาส)
     play: function (sprite, action, dir, skin) {
@@ -92,10 +121,11 @@
       var key = skin, d = defs && defs[action];
       if (!d) { key = 'hero'; d = BASE[action]; }
       if (!d) return;
-      var useDir = dir === 'left' ? 'right' : dir;
-      if (!d[useDir]) useDir = 'right';
+      // สกินใหม่มีทิศซ้ายวาดแยก -> ใช้ตรงๆ | ชีตเก่าใช้ทิศขวา + พลิกภาพ
+      var useDir = dir, flip = false;
+      if (!d[useDir]) { useDir = (dir === 'left') ? 'right' : 'right'; flip = (dir === 'left'); }
       if (!d[useDir]) return;
-      sprite.setFlipX(dir === 'left');
+      sprite.setFlipX(flip);
       sprite.play(key + '_' + action + '_' + useDir, true);
     }
   };
