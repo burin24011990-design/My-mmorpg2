@@ -6,6 +6,8 @@
 //       ห้องที่ไม่มีคนจะไม่มีมอน (สร้างใหม่ทั้งชุดเมื่อมีคนเข้า)
 // - v3: เพิ่มระบบเพื่อน + ปาร์ตี้ (social.js) และส่งเลเวลผู้เล่น
 // - v4: เพิ่มระบบ PvP 1v1 / 3v3 / 5v5 + เพดานจุติต่อห้อง (pvpServer.js)
+// - v5: สถานะสกิลบนมอน (อีเวนต์ 'mfx' จากผู้เล่น): สตั้น/แช่แข็ง = ขยับ+โจมตีไม่ได้ | ล็อกขา = เดินไม่ได้
+//       เดินช้าลง (slow) | ตีเบาลง (weak) -> ดาเมจที่มอนทำกับผู้เล่นลดลง
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -60,6 +62,10 @@ const CONTACT_CD = 600;              // ดีเลย์ชนตัวทำ�
 const MON_TICK_MS = 100;             // รอบคำนวณมอน (10 ครั้ง/วินาที)
 const HIT_MAX_DIST = 1200;           // โจมตีมอนที่ไกลจากผู้เล่นเกินนี้ = ไม่นับ (กันโกงเบื้องต้น)
 
+// สถานะสกิลบนมอน (ผู้เล่นส่งมาทางอีเวนต์ 'mfx' = [id มอน, ชนิด, มิลลิวินาที, พารามิเตอร์])
+const MFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };   // ชนิดอื่น (ไฟช็อต/เกราะ ฯลฯ) ฝั่งเกมคิดเองผ่านดาเมจ
+const MFX_MAX_MS = 8000;             // เวลาสถานะสูงสุดต่อครั้ง (กันส่งค่าเว่อร์)
+
 // ขนาดตัว (ใช้คำนวณระยะตีของมอน) ตรงกับ monsterDefs.js
 const SIZE_NORMAL = [1.0, 1.0, 1.0, 1.0, 1.25, 1.4, 1.55, 1.7, 1.85];
 const SIZE_BOSS   = [2.2, 2.2, 2.2, 2.2, 2.6, 2.9, 3.2, 3.5, 3.8];
@@ -82,6 +88,7 @@ function makeMonster(R, stage, kind) {
     aggressive: (stage + 1) >= AGGRESSIVE_FROM_STAGE,
     nextShot: 0, nextSkill: 0, nextTeleport: 0,
     contrib: new Set(),
+    fx: {},                          // สถานะที่ติดอยู่ { stun: {until}, slow: {until, mul}, ... }
   };
   let scale;
   if (boss) {
@@ -124,6 +131,12 @@ function moveToward(m, tx, ty, speed, dt) {
   m.x += dx / d * st; m.y += dy / d * st;
 }
 
+// สถานะที่ยังไม่หมดอายุ (คืน null ถ้าไม่มี/หมดแล้ว)
+function fxOn(m, type, now) {
+  const f = m.fx && m.fx[type];
+  return f && now < f.until ? f : null;
+}
+
 function tickRoom(key, R, now, dt) {
   const set = rooms[key];
   if (!set || !set.size) return;
@@ -143,6 +156,13 @@ function tickRoom(key, R, now, dt) {
         m.nextTeleport = now + rnd(BOSS_TELEPORT_MIN_MS, BOSS_TELEPORT_MAX_MS);
       }
     }
+
+    // สถานะสกิลที่ติดอยู่
+    const stunned = !!(fxOn(m, 'stun', now) || fxOn(m, 'freeze', now));   // ขยับ/โจมตี/ใช้สกิลไม่ได้
+    const rooted = stunned || !!fxOn(m, 'root', now);                     // เดินไม่ได้ (ล็อกขายังตีได้ถ้าอยู่ในระยะ)
+    const slowF = fxOn(m, 'slow', now), weakF = fxOn(m, 'weak', now);
+    const spdMul = slowF ? slowF.mul : 1;                                  // เดินช้าลง
+    const dmgMul = weakF ? Math.max(0, 1 - weakF.pct) : 1;                 // ตีเบาลง
 
     // ผู้เล่นที่ใกล้ที่สุด
     let near = null, nd = Infinity;
@@ -170,29 +190,31 @@ function tickRoom(key, R, now, dt) {
           m.wx = m.homeX + Math.cos(ang) * rad; m.wy = m.homeY + Math.sin(ang) * rad;
           m.nextWander = now + rnd(2000, 4000);
         }
-        moveToward(m, m.wx, m.wy, 28, dt);
+        if (!rooted) moveToward(m, m.wx, m.wy, 28 * spdMul, dt);
       } else if (m.state === 'chase' && tp) {
         if (m.kind === 'ranged') {
-          if (td > 260) moveToward(m, tp.x, tp.y, m.speed, dt);
-          else if (td < 160) {
-            const dx = m.x - tp.x, dy = m.y - tp.y, d = Math.hypot(dx, dy) || 1;
-            m.x += dx / d * 60 * dt; m.y += dy / d * 60 * dt;
+          if (!rooted) {
+            if (td > 260) moveToward(m, tp.x, tp.y, m.speed * spdMul, dt);
+            else if (td < 160) {
+              const dx = m.x - tp.x, dy = m.y - tp.y, d = Math.hypot(dx, dy) || 1;
+              m.x += dx / d * 60 * spdMul * dt; m.y += dy / d * 60 * spdMul * dt;
+            }
           }
-          if (td < 340 && now > m.nextShot) {
-            io.to(key).emit('mshot', { id: m.id, a: Math.atan2(tp.y - m.y, tp.x - m.x), sp: 240, sc: 2.2, dm: 1 });
+          if (!stunned && td < 340 && now > m.nextShot) {
+            io.to(key).emit('mshot', { id: m.id, a: Math.atan2(tp.y - m.y, tp.x - m.x), sp: 240, sc: 2.2, dm: dmgMul });
             m.nextShot = now + rnd(1600, 2200);
           }
-        } else {
-          moveToward(m, tp.x, tp.y, m.speed, dt);
+        } else if (!rooted) {
+          moveToward(m, tp.x, tp.y, m.speed * spdMul, dt);
         }
-        // ชนตัวทำดาเมจ
-        if (td < m.hitRange && now > (tp.hitCd || 0)) {
+        // ชนตัวทำดาเมจ (สตั้น/แช่แข็งทำไม่ได้)
+        if (!stunned && td < m.hitRange && now > (tp.hitCd || 0)) {
           tp.hitCd = now + CONTACT_CD;
-          io.to(tp.id).emit('mhurt', { dmg: m.dmg });
+          io.to(tp.id).emit('mhurt', { id: m.id, dmg: Math.max(1, Math.round(m.dmg * dmgMul)) });
           io.to(key).emit('matk', m.id);
         }
-        // สกิลของ epic / บอส
-        if ((m.kind === 'epic' || m.kind === 'boss') && td < 380 && now > m.nextSkill) {
+        // สกิลของ epic / บอส (สตั้น/แช่แข็งใช้ไม่ได้)
+        if (!stunned && (m.kind === 'epic' || m.kind === 'boss') && td < 380 && now > m.nextSkill) {
           const a = Math.atan2(tp.y - m.y, tp.x - m.x);
           if (m.kind === 'epic') {
             m.nextSkill = now + rnd(4000, 6000);
@@ -203,7 +225,7 @@ function tickRoom(key, R, now, dt) {
           }
         }
       } else if (m.state === 'return') {
-        moveToward(m, m.homeX, m.homeY, 60, dt);
+        if (!rooted) moveToward(m, m.homeX, m.homeY, 60 * spdMul, dt);
       }
       m.x = clamp(m.x, 20, WORLD_W - 20); m.y = clamp(m.y, 20, WORLD_H - 20);
     }
@@ -326,7 +348,7 @@ io.on('connection', socket => {
       id: socket.id, name, x: 1800, y: 1125, stage, ch: 0, rm: 0, room: null,
       cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0,
       lv: clamp(parseInt(d.lv, 10) || 1, 1, 999),
-      hitCd: 0, hitWin: 0, hitN: 0,
+      hitCd: 0, hitWin: 0, hitN: 0, fxWin: 0, fxN: 0,
     };
     const f = pickFree(stage, d.ch, d.rm);
     if (!f) { socket.emit('roomFull', { stage }); return; }
@@ -407,6 +429,30 @@ io.on('connection', socket => {
       if (m.state === 'idle') m.state = 'chase';
       if (m.hp <= 0) killMonster(key, R, m, p.id);
     }
+  });
+
+  // ผู้เล่นใส่สถานะให้มอน (สตั้น/แช่แข็ง/ล็อกขา/เดินช้า/ตีเบาลง): d = [id มอน, ชนิด, มิลลิวินาที, { mul | pct }]
+  socket.on('mfx', d => {
+    const p = players[socket.id];
+    if (!p || !p.room || !Array.isArray(d)) return;
+    const R = roomMons[p.room];
+    if (!R) return;
+    const now = Date.now();
+    if (now - p.fxWin > 1000) { p.fxWin = now; p.fxN = 0; }
+    if (++p.fxN > 200) return;                         // กันส่งถี่ผิดปกติ
+    const m = R.mons.get(d[0]);
+    const type = d[1];
+    if (!m || typeof type !== 'string' || !MFX_TYPES[type]) return;
+    if (Math.hypot(p.x - m.x, p.y - m.y) > HIT_MAX_DIST) return;
+    const ms = clamp(Math.floor(Number(d[2]) || 0), 0, MFX_MAX_MS);
+    if (!ms) return;
+    const par = d[3] && typeof d[3] === 'object' ? d[3] : {};
+    const f = { until: now + ms };
+    if (type === 'slow') f.mul = clamp(Number(par.mul) || 1, 0.1, 1);       // 0.5 = เดินเหลือครึ่งหนึ่ง
+    if (type === 'weak') f.pct = clamp(Number(par.pct) || 0, 0, 0.9);       // 0.25 = ตีเบาลง 25%
+    m.fx = m.fx || {};
+    m.fx[type] = f;
+    if (type === 'stun' || type === 'freeze') { m.provoked = true; m.tgt = p.id; m.contrib.add(p.id); }
   });
 
   socket.on('skill', d => {
