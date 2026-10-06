@@ -2,15 +2,20 @@
 // วิธีเชื่อม: ใน server.js เพิ่ม 2 บรรทัดนี้ก่อน server.listen(...)
 //   const attachPvp = require('./pvpServer');
 //   attachPvp(io, players, { leaveRoom });
-// เซิร์ฟเวอร์คุม: คิว/จับทีม/นับถอยหลัง/ตัดสินผลแพ้ชนะ/เวลา | เครื่องผู้เล่นคุม: ดาเมจที่ตัวเองโดน (เหมือนโหมดมอน)
+// กติกาใหม่: ตายแล้วเกิดใหม่ (สุ่มจุดในวงปลอดภัย) | ทีมที่ฆ่าได้มากกว่าเมื่อหมดเวลาชนะ | วงปลอดภัยบีบเข้าเรื่อยๆ
+// เซิร์ฟเวอร์คุม: คิว/จับทีม/นับถอยหลัง/นับฆ่า/เกิดใหม่/ตัดสินผล/เวลา | เครื่องผู้เล่นคุม: ดาเมจที่ตัวเองโดน
 module.exports = function attachPvp(io, players, helpers) {
   const SIZES = [1, 3, 5];                                  // ผู้เล่นต่อทีม
   const CAPS = [0, 3, 6, 8, 11, 15, 19, 24];                // เพดานจุติของแต่ละห้อง
   const DURATION = { 1: 150000, 3: 210000, 5: 270000 };     // เวลาแมตช์ (ms)
   const COUNTDOWN_MS = 5000;
+  const RESPAWN_MS = 3000;                                  // รอเกิดใหม่หลังตาย
+  const PROTECT_MS = 2500;                                  // อมตะหลังเกิดใหม่
   const HIT_MAX_DIST = 1600;                                // ตีไกลเกินนี้ไม่นับ (กันโกงเบื้องต้น)
   const WORLD_W = 3600, WORLD_H = 2250, LEVEL_CAP = 90, MAX_REBIRTH = 24;
   const SPAWN_X = [1250, 2350], SPAWN_Y = 1125;
+  // วงปลอดภัย: เริ่มบีบเมื่อผ่านไป 25% ของเวลา และเล็กสุดที่ 85% (ปรับเลขได้)
+  const ZONE = { x: 1800, y: 1125, r0: 1100, r1: 160, from: 0.25, to: 0.85 };
   const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9]{2,16}$/;
 
   const socks = {};        // socket.id -> socket
@@ -52,66 +57,110 @@ module.exports = function attachPvp(io, players, helpers) {
     announce(key);
   }
 
+  // รัศมีวงปลอดภัย ณ เวลานั้น (สูตรเดียวกับฝั่งเกม)
+  function zoneRadius(m, now) {
+    const k = (now - m.liveAt) / DURATION[m.size];
+    const t = clamp((k - ZONE.from) / (ZONE.to - ZONE.from), 0, 1);
+    return ZONE.r0 + (ZONE.r1 - ZONE.r0) * t;
+  }
+
+  // สุ่มจุดเกิดใหม่ "ในวงปลอดภัย" และพยายามไม่ใกล้ศัตรู
+  function pickSpawn(m, me) {
+    const R = zoneRadius(m, Date.now()) * 0.8;
+    const foes = m.ids.map(i => m.pl[i]).filter(q => q.alive && !q.left && q.team !== me.team);
+    let best = null, bestD = -1;
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * R;
+      const x = ZONE.x + Math.cos(a) * r, y = ZONE.y + Math.sin(a) * r;
+      const d = foes.reduce((mn, q) => Math.min(mn, Math.hypot(q.x - x, q.y - y)), 1e9);
+      if (d >= 450) return { x, y };
+      if (d > bestD) { bestD = d; best = { x, y }; }
+    }
+    return best;
+  }
+
   function createMatch(ids, size, bi) {
     const power = id => st[id].info.rebirth * 100 + st[id].info.level;
     ids.sort((a, b) => power(b) - power(a));
     const order = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1];           // แจกทีมแบบงู ให้สมดุลตามกำลัง
-    const m = { id: nextId++, size, bi, ids: ids.slice(), teams: [[], []], pl: {}, state: 'countdown', endAt: 0 };
+    const m = { id: nextId++, size, bi, ids: ids.slice(), teams: [[], []], pl: {}, state: 'countdown', endAt: 0, liveAt: 0 };
     ids.forEach((id, i) => {
       const team = order[i], idx = m.teams[team].length, info = st[id].info;
       m.teams[team].push(id);
       m.pl[id] = {
-        id, team, name: info.name, level: info.level, rebirth: info.rebirth,
+        id, team, name: info.name, level: info.level, rebirth: info.rebirth, cls: info.cls,
         hp: info.maxHp, maxHp: info.maxHp, alive: true, left: false,
         x: SPAWN_X[team], y: SPAWN_Y + (idx - (size - 1) / 2) * 110,
-        kills: 0, dmg: 0, lastBy: null, lastAt: 0, hitWin: 0, hitN: 0,
+        kills: 0, deaths: 0, dmg: 0, lastBy: null, lastAt: 0, hitWin: 0, hitN: 0,
+        protUntil: 0, noMoveUntil: 0, rt: null,
       };
       st[id].q = null; st[id].match = m.id;
       try { helpers.leaveRoom(socks[id]); } catch (e) { /* ignore */ }   // ออกจากห้องล่ามอนก่อน
     });
     matches[m.id] = m;
-    const pack = t => m.teams[t].map(id => { const p = m.pl[id]; return { id, name: p.name, level: p.level, rebirth: p.rebirth, maxHp: p.maxHp }; });
+    const pack = t => m.teams[t].map(id => { const p = m.pl[id]; return { id, name: p.name, level: p.level, rebirth: p.rebirth, maxHp: p.maxHp, cls: p.cls }; });
     const teams = [pack(0), pack(1)];
     ids.forEach(id => socks[id].emit('pvpFound', { id: m.id, size, bi, cap: CAPS[bi], team: m.pl[id].team, teams, countdown: COUNTDOWN_MS, duration: DURATION[size] }));
     m.timer = setTimeout(() => {
       if (m.state !== 'countdown') return;
-      m.state = 'live'; m.endAt = Date.now() + DURATION[size];
-      emitMatch(m, 'pvpGo', { ms: DURATION[size] });
+      m.state = 'live'; m.liveAt = Date.now(); m.endAt = m.liveAt + DURATION[size];
+      emitMatch(m, 'pvpGo', { ms: DURATION[size], zone: ZONE, respawn: RESPAWN_MS });
     }, COUNTDOWN_MS);
   }
 
-  function aliveCount(m, t) { return m.teams[t].filter(id => m.pl[id].alive).length; }
+  function scheduleRespawn(m, id) {
+    const p = m.pl[id];
+    clearTimeout(p.rt);
+    p.rt = setTimeout(() => {
+      if (m.state !== 'live' || p.left || p.alive) return;
+      const pt = pickSpawn(m, p), now = Date.now();
+      p.alive = true; p.hp = p.maxHp; p.x = pt.x; p.y = pt.y;
+      p.protUntil = now + PROTECT_MS; p.noMoveUntil = now + 400;
+      p.lastBy = null;
+      emitMatch(m, 'pvpRespawn', { id, x: Math.round(pt.x), y: Math.round(pt.y), prot: PROTECT_MS });
+    }, RESPAWN_MS);
+  }
 
+  // ตายไม่ได้ตกรอบแล้ว: นับฆ่า/ตาย แล้วรอเกิดใหม่
   function kill(m, id) {
     const p = m.pl[id];
-    if (!p || !p.alive) return;
-    p.alive = false; p.hp = 0;
-    const killer = (p.lastBy && Date.now() - p.lastAt < 8000 && m.pl[p.lastBy]) ? p.lastBy : null;
+    if (!p || !p.alive || m.state !== 'live') return;
+    p.alive = false; p.hp = 0; p.deaths++;
+    const killer = (p.lastBy && Date.now() - p.lastAt < 8000 && m.pl[p.lastBy] && m.pl[p.lastBy].team !== p.team) ? p.lastBy : null;
     if (killer) m.pl[killer].kills++;
     emitMatch(m, 'pvpDead', { id, by: killer });
-    if (m.state === 'live' || m.state === 'countdown') {
-      const a0 = aliveCount(m, 0), a1 = aliveCount(m, 1);
-      if (a0 === 0 && a1 === 0) finish(m, -1, 'draw');
-      else if (a0 === 0) finish(m, 1, 'elim');
-      else if (a1 === 0) finish(m, 0, 'elim');
-    }
+    scheduleRespawn(m, id);
   }
 
   function finish(m, winner, reason) {
     if (m.state === 'over') return;
     m.state = 'over';
     clearTimeout(m.timer);
-    const rows = m.ids.map(id => { const p = m.pl[id]; return { id, name: p.name, team: p.team, kills: p.kills, dmg: Math.round(p.dmg), alive: p.alive, left: p.left }; });
+    m.ids.forEach(id => clearTimeout(m.pl[id].rt));
+    const rows = m.ids.map(id => { const p = m.pl[id]; return { id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, dmg: Math.round(p.dmg), alive: p.alive, left: p.left }; });
     emitMatch(m, 'pvpEnd', { winner, reason, rows });
     m.ids.forEach(id => { if (st[id] && st[id].match === m.id) st[id].match = null; });
     setTimeout(() => { delete matches[m.id]; }, 1000);
   }
 
-  // หมดเวลา: ทีมที่ผลรวม % เลือดของคนที่ยังรอดมากกว่าชนะ
+  // หมดเวลา: ทีมที่ฆ่ารวมมากกว่าชนะ | ถ้าเท่ากันดูดาเมจรวม | ถ้ายังเท่ากันเสมอ
   function timeUp(m) {
-    const score = t => m.teams[t].reduce((s, id) => { const p = m.pl[id]; return s + (p.alive ? clamp(p.hp / Math.max(1, p.maxHp), 0, 1) : 0); }, 0);
-    const a = score(0), b = score(1);
-    finish(m, Math.abs(a - b) < 0.001 ? -1 : (a > b ? 0 : 1), 'time');
+    const sum = (t, f) => m.teams[t].reduce((s, id) => s + m.pl[id][f], 0);
+    const k0 = sum(0, 'kills'), k1 = sum(1, 'kills');
+    if (k0 !== k1) return finish(m, k0 > k1 ? 0 : 1, 'time');
+    const d0 = sum(0, 'dmg'), d1 = sum(1, 'dmg');
+    if (Math.abs(d0 - d1) < 1) return finish(m, -1, 'draw');
+    finish(m, d0 > d1 ? 0 : 1, 'timeDmg');
+  }
+
+  // ทีมใดทีมหนึ่งออกหมด -> อีกทีมชนะ
+  function checkForfeit(m) {
+    if (m.state === 'over') return;
+    const gone = t => m.teams[t].every(id => m.pl[id].left);
+    const g0 = gone(0), g1 = gone(1);
+    if (g0 && g1) finish(m, -1, 'forfeit');
+    else if (g0) finish(m, 1, 'forfeit');
+    else if (g1) finish(m, 0, 'forfeit');
   }
 
   setInterval(() => {
@@ -120,7 +169,7 @@ module.exports = function attachPvp(io, players, helpers) {
       const m = matches[id];
       if (m.state === 'live' && now > m.endAt) { timeUp(m); continue; }
       if (m.state === 'live' || m.state === 'countdown') {
-        emitMatch(m, 'pvpState', m.ids.map(pid => { const p = m.pl[pid]; return [pid, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.maxHp, p.alive ? 1 : 0]; }));
+        emitMatch(m, 'pvpState', m.ids.map(pid => { const p = m.pl[pid]; return [pid, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.maxHp, p.alive ? 1 : 0, p.kills]; }));
       }
     }
   }, 50);
@@ -137,7 +186,7 @@ module.exports = function attachPvp(io, players, helpers) {
       cb({ queues: queuesCount, caps: CAPS });
     });
 
-    // เข้าคิว: d = { size, bi, level, rebirth, maxHp }
+    // เข้าคิว: d = { size, bi, level, rebirth, maxHp, cls }
     socket.on('pvpQueue', (d, cb) => {
       cb = typeof cb === 'function' ? cb : () => {};
       const p = players[socket.id], me = st[socket.id];
@@ -153,6 +202,7 @@ module.exports = function attachPvp(io, players, helpers) {
         name: p.name, rebirth,
         level: clamp(Math.floor(num(d.level)) || 1, 1, LEVEL_CAP),
         maxHp: clamp(Math.floor(num(d.maxHp)) || 100, 1, 1e9),
+        cls: (typeof d.cls === 'string' && /^[a-z]{3,10}$/.test(d.cls)) ? d.cls : 'sword',
       };
       me.q = qkey(size, bi);
       queues[me.q].push(socket.id);
@@ -168,9 +218,10 @@ module.exports = function attachPvp(io, players, helpers) {
       const me = st[socket.id], m = me && matches[me.match];
       if (!m || m.state === 'over' || !d) return;
       const p = m.pl[socket.id];
-      if (!p || p.left) return;
+      if (!p || p.left || !p.alive) return;                 // ตายอยู่ไม่ต้องอัปเดต
+      if (Date.now() < p.noMoveUntil) return;               // เพิ่งเกิดใหม่: กันข้อมูลเก่าตีกลับ
       p.x = clamp(num(d.x), 0, WORLD_W); p.y = clamp(num(d.y), 0, WORLD_H);
-      if (p.alive) { p.maxHp = clamp(Math.floor(num(d.maxHp)) || p.maxHp, 1, 1e9); p.hp = clamp(num(d.hp), 0, p.maxHp); }
+      p.maxHp = clamp(Math.floor(num(d.maxHp)) || p.maxHp, 1, 1e9); p.hp = clamp(num(d.hp), 0, p.maxHp);
     });
 
     // ตีคู่ต่อสู้: list = [[id เป้าหมาย, ดาเมจ], ...]
@@ -187,6 +238,7 @@ module.exports = function attachPvp(io, players, helpers) {
         if (!Array.isArray(h)) continue;
         const t = m.pl[h[0]];
         if (!t || !t.alive || t.left || t.team === s.team) continue;
+        if (now < t.protUntil) continue;                    // เป้าหมายยังอมตะหลังเกิดใหม่
         const dmg = clamp(Math.floor(num(h[1])), 0, 1e9);
         if (!dmg) continue;
         if (Math.hypot(s.x - t.x, s.y - t.y) > HIT_MAX_DIST) continue;
@@ -212,13 +264,17 @@ module.exports = function attachPvp(io, players, helpers) {
       if (m) kill(m, socket.id);
     });
 
-    // ออกจากแมตช์/คิวเอง (ยอมแพ้ = นับว่าตาย)
+    // ออกจากแมตช์/คิวเอง (ยอมแพ้ = ออกจากแมตช์ ถ้าทีมออกหมดอีกฝั่งชนะ)
     function leave() {
       removeFromQueue(socket.id);
       const me = st[socket.id], m = me && matches[me.match];
       if (m && m.pl[socket.id]) {
-        kill(m, socket.id);
-        if (m.pl[socket.id]) m.pl[socket.id].left = true;
+        const p = m.pl[socket.id];
+        if (!p.left) {
+          p.left = true; p.alive = false; clearTimeout(p.rt);
+          emitMatch(m, 'pvpDead', { id: socket.id, by: null, left: true });
+          checkForfeit(m);
+        }
         me.match = null;
       }
     }
