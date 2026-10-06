@@ -44,6 +44,10 @@ const MIN_AGE_H = 72;                        // อายุบัญชีข�
 const HIGH_VALUE = 5000000;                  // รายการราคาตั้งแต่นี้ถือเป็นของแพง
 const HIGH_VALUE_AGE_H = 168;                // อายุบัญชีขั้นต่ำสำหรับของแพง (ชม.)
 const STONE_STACK = 9999;                    // ต้องตรงกับ MAX_STONE_STACK ในเกม
+const MAX_ITEM_LEVEL = 90;                   // ต้องตรงกับ LEVEL_CAP ในเกม (config.js) — ถ้าระบบเกิดใหม่ทำให้ไอเทมเลเวลสูงกว่านี้ ให้เพิ่มตรงนี้
+const MAX_STAR = 99;                         // ต้องตรงกับ MAX_STAR ในเกม (config.js)
+const MAX_PLUS = 99;                         // ต้องตรงกับ MAX_PLUS ในเกม (enhance.js)
+const MAX_BOX_COUNT = 999;                   // ต้องตรงกับ MAX_BOX_STACK ในเกม (config.js)
 const IP_SALT = 'x7Kq2mVd9RtLp4Zw8NcB1yHs5Fg3JaUe';   // <-- แก้เป็นค่าสุ่มของคุณเอง (ถ้า repo เป็น public ควรเปลี่ยน/ย้ายไปเป็น secret)
 const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan
 
@@ -153,13 +157,13 @@ function validateItem(raw) {
   if (it.opts !== undefined && (!Array.isArray(it.opts) || it.opts.length > 10)) bad('ไอเทมไม่ถูกต้อง');
   switch (it.kind) {
     case 'equip':
-      if (SLOTS.indexOf(it.baseSlot) < 0 || !int(it.level, 1, 300) || !int(it.star, 0, 50)) bad('อุปกรณ์ไม่ถูกต้อง');
-      if (it.plus !== undefined && !int(it.plus, 0, 100)) bad('อุปกรณ์ไม่ถูกต้อง');
+      if (SLOTS.indexOf(it.baseSlot) < 0 || !int(it.level, 1, MAX_ITEM_LEVEL) || !int(it.star, 0, MAX_STAR)) bad('อุปกรณ์ไม่ถูกต้อง');
+      if (it.plus !== undefined && !int(it.plus, 0, MAX_PLUS)) bad('อุปกรณ์ไม่ถูกต้อง');
       if (it.baseSlot === 'weapon' && WEAPON_CLASSES.indexOf(it.class) < 0) bad('อุปกรณ์ไม่ถูกต้อง');
       if (it.count !== undefined) bad('อุปกรณ์ไม่ถูกต้อง');
       break;
     case 'box':
-      if (!int(it.level, 1, 300) || !int(it.count, 1, 999)) bad('กล่องไม่ถูกต้อง');
+      if (!int(it.level, 1, MAX_ITEM_LEVEL) || !int(it.count, 1, MAX_BOX_COUNT)) bad('กล่องไม่ถูกต้อง');
       break;
     case 'stone':
       if (it.count !== STONE_STACK) bad('หินตีบวกต้องขายยกกองเต็ม ' + STONE_STACK + ' ก้อน');
