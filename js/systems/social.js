@@ -158,7 +158,7 @@
       b.style.width = (50 * k) + 'px'; b.style.height = (46 * k) + 'px'; b.style.borderRadius = (8 * k) + 'px';
       b.querySelector('.hb-i').style.fontSize = (22 * k) + 'px';
       b.querySelector('.hb-t').style.cssText = 'font-size:' + (9 * k) + 'px;text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000';
-      hud.style.left = (r.left + 250 * k) + 'px'; hud.style.top = (r.top + 114 * k) + 'px'; hud.style.width = (170 * k) + 'px';
+      hud.style.left = (r.left + 9 * k) + 'px'; hud.style.top = (r.top + 200 * k) + 'px'; hud.style.width = (150 * k) + 'px';
       hud.dataset.k = k;
     };
     window.addEventListener('resize', layout);
