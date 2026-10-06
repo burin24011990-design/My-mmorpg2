@@ -3,6 +3,10 @@
 // กติกา: ตายแล้วเกิดใหม่ในวงปลอดภัย | ฆ่าได้มากกว่าชนะ | วงปลอดภัยบีบเข้าเมื่อเวลาผ่านไป (ใครอยู่นอกวงเสียเลือด)
 // วิธีทำงาน: ฝั่งตรงข้ามถูกสร้างเป็น "เป้าหมายแบบมอน" ในกลุ่ม enemies เพื่อให้สกิล/กระสุนเดิมตีโดนทุกแบบ
 //            ดาเมจที่ตีส่งให้เซิร์ฟเวอร์ -> เซิร์ฟเวอร์ส่งไปให้คนที่โดน -> คนที่โดนหักเลือดตัวเอง (คิดเกราะ/หลบ/บล็อกของตัวเอง)
+// v2: สถานะสกิลใน PvP: สตั้น/แช่แข็ง/ล็อกขา/เดินช้า/ตีเบาลง
+//     - คนใช้สกิล: ส่ง 'pvpFx' ขึ้นเซิร์ฟเวอร์ (ดักที่ Classes.status) | คนโดน: รับ 'pvpFx' แล้วล็อกตัวเอง (ดู ccOn/ccStunned)
+//     - ไฟช็อต (ดาเมจต่อเนื่อง) ทำงานผ่านตัวอัปเดตสถานะของ classes/* ซึ่งโหมดสนามเรียกต่อให้แล้ว
+//       (ต้องมีบรรทัด "if (this.rmActive || (window._pvp && window._pvp.active)) return;" ที่หัว updateEnemies ใน monsters.js)
 // โหลดหลังไฟล์อื่นทั้งหมด (หลัง town.js, roomMonsters.js, rockGuard.js, heroPatch.js ฯลฯ) และก่อน main.js
 (function () {
   const P = Main.prototype;
@@ -31,6 +35,41 @@
     if (e && e.isPvp) return 0;
     return _edm ? _edm.apply(this, arguments) : 1;
   };
+
+  // ---------- สถานะควบคุม (CC) ที่ตัวเราโดนจากคู่ต่อสู้ ----------
+  // pv.cc = { stun: {until}, freeze: {until}, root: {until}, slow: {until, mul}, weak: {until, pct} }  (until = เวลา Date.now())
+  const CC_COLOR = { stun: 0xfff27a, freeze: 0x9fe8ff, root: 0x7dff9a, slow: 0xc58bff, weak: 0xc58bff };
+  const CC_TEXT = { stun: '💫 สตั้น!', freeze: '❄ แช่แข็ง!', root: '🌿 โดนล็อกขา!', slow: '🐌 เดินช้าลง', weak: '⬇ ตีเบาลง' };
+  const ccOn = (pv, t, now) => {
+    const f = pv && pv.cc && pv.cc[t];
+    return f && (now || Date.now()) < f.until ? f : null;
+  };
+  const ccStunned = (pv, now) => !!(ccOn(pv, 'stun', now) || ccOn(pv, 'freeze', now));   // กดสกิล/โจมตี/เดินไม่ได้
+  const ccRooted = (pv, now) => ccStunned(pv, now) || !!ccOn(pv, 'root', now);           // เดินไม่ได้ (ยังโจมตีได้)
+  function ccColor(pv, now) {
+    const order = ['stun', 'freeze', 'root', 'slow', 'weak'];
+    for (let i = 0; i < order.length; i++) if (ccOn(pv, order[i], now)) return CC_COLOR[order[i]];
+    return 0;
+  }
+
+  // ส่งสถานะที่เราใส่ให้ "คู่ต่อสู้" ขึ้นเซิร์ฟเวอร์ (ดักที่ Classes.status ซึ่งสกิลทุกตัวเรียกใช้)
+  (function hookStatus() {
+    const C = window.Classes;
+    if (!C || typeof C.status !== 'function' || C.status._pvWrapped) return;
+    const orig = C.status;
+    const wrapped = function (scene, e, type, params, ms) {
+      const r = orig.apply(this, arguments);
+      try {
+        const pv = window._pvp;
+        if (pv && pv.active && !pv.over && e && e.isPvp && scene && scene.socket) {
+          scene.socket.emit('pvpFx', [e.pid, type, Math.round(ms || 0), params || {}]);
+        }
+      } catch (err) { /* ไม่ให้พังการใช้สกิล */ }
+      return r;
+    };
+    wrapped._pvWrapped = true;
+    C.status = wrapped;
+  })();
 
   // =====================================================================
   // ล็อบบี้ (เปิดจาก NPC "ผู้ดูแลสนามประลอง" ในเมือง)
@@ -256,7 +295,7 @@
     const pv = window._pvp = {
       active: true, id: d.id, team: d.team, size: d.size, cap: d.cap, teams: d.teams, me: myId,
       frozen: true, dead: false, over: false, allowLoad: true, prevStage: m.stageIdx || 0,
-      units: {}, st: {}, hits: {}, info: {}, teamOf: {},
+      units: {}, st: {}, hits: {}, info: {}, teamOf: {}, cc: {},
       lastSend: 0, lastHit: 0, lastHud: 0, lastZone: 0, endAt: 0, startAt: Date.now() + d.countdown,
       zone: null, liveAt: 0, total: 0, protUntil: 0, respawnMs: 3000,
     };
@@ -393,6 +432,7 @@
   function onMyDeath(m, pv) {
     if (pv.dead || pv.over) return;
     pv.dead = true;
+    pv.cc = {};                                         // ตายแล้วล้างสถานะที่ติดอยู่
     m.stats.hp = 1;
     if (m.player) m.player.setAlpha(0.35);
     m.manualTarget = null; m.target = null;
@@ -425,7 +465,7 @@
       if (sp.body) sp.body.setVelocity(0, 0);
       if (u.foe) {
         sp.hp = u.hp; sp.maxHp = u.maxHp;
-        if (!sp.isTinted) sp.setTint(u.hero ? TINT_HERO[u.team] : TINT[u.team]);   // คืนสีหลังแฟลชโดนตี
+        if (!sp.isTinted) sp.setTint(u.hero ? TINT_HERO[u.team] : TINT[u.team]);   // คืนสีหลังแฟลชโดนตี/หมดสถานะ
       }
       animateUnit(u, dx, dy);
       if (u.protUntil) {                                  // กะพริบตอนอมตะหลังเกิดใหม่
@@ -443,6 +483,13 @@
     if (!pv.dead) {
       if (now < pv.protUntil) { m.player.setAlpha(Math.floor(now / 150) % 2 ? 0.4 : 1); pv._wasProt = true; }
       else if (pv._wasProt) { pv._wasProt = false; m.player.setAlpha(1); }
+    }
+
+    // ตัวเราติดสถานะ (สตั้น/แช่แข็ง/ล็อกขา/ช้า/ตีเบา): ย้อมสีตามสถานะ แล้วคืนสีเมื่อหมด
+    if (!pv.dead) {
+      const col = ccColor(pv, now);
+      if (col) { m.player.setTint(col); pv._ccTint = true; }
+      else if (pv._ccTint) { m.player.clearTint(); pv._ccTint = false; }
     }
 
     // วงปลอดภัย: วาดวงฟ้า + พื้นที่นอกวงสีแดง และหักเลือดคนที่อยู่นอกวง
@@ -475,6 +522,9 @@
   const _updateEnemies = P.updateEnemies;
   P.updateEnemies = function (time) {
     if (!pvOn()) return _updateEnemies.apply(this, arguments);
+    // เรียกตัวอัปเดตสถานะของ classes/* (ไฟช็อต แช่แข็ง ล็อกขา ย้อมสี ฯลฯ บนตัวคู่ต่อสู้)
+    // ตัวในสุดคือ monsters.js ซึ่งต้องข้ามการคิด AI มอนเมื่ออยู่ในสนาม (ดูหมายเหตุบนหัวไฟล์)
+    try { _updateEnemies.call(this, time); } catch (e) { console.warn('[pvp] status chain', e); }
     try { pvpUpdate(this, time); } catch (e) { console.warn('[pvp] update', e); }
   };
 
@@ -485,7 +535,9 @@
     const pv = window._pvp;
     if (!pv || !pv.active || !e.active || pv.dead || pv.frozen || pv.over) return;
     const h = this.calcHit ? this.calcHit(e, dmg) : { final: Math.max(1, Math.round(Number(dmg))), crit: false, vamp: 0 };
-    const final = h.final;
+    let final = h.final;
+    const wk = ccOn(pv, 'weak');                       // เราโดนตีเบาลง = ดาเมจที่เราตีออกไปลดลง
+    if (wk) final = Math.max(1, Math.round(final * (1 - wk.pct)));
     e.hp = Math.max(1, e.hp - final);                  // เดาไว้ก่อน รอเซิร์ฟเวอร์ยืนยันเลือดจริง
     opts = opts || {};
     const ctx = (this._skillCtx && this.time.now < this._skillCtx.until) ? this._skillCtx.def : null;
@@ -519,8 +571,11 @@
     };
   });
 
-  // ---------- ล็อกการกระทำช่วงนับถอยหลัง/ตายแล้ว ----------
-  const locked = () => { const pv = window._pvp; return !!(pv && pv.active && (pv.frozen || pv.dead || pv.over)); };
+  // ---------- ล็อกการกระทำช่วงนับถอยหลัง/ตายแล้ว/ติดสตั้น-แช่แข็ง ----------
+  const locked = () => {
+    const pv = window._pvp;
+    return !!(pv && pv.active && (pv.frozen || pv.dead || pv.over || ccStunned(pv)));
+  };
   ['useBasicAttack', 'useSkill', 'useUlti'].forEach(name => {
     const o = P[name];
     if (typeof o !== 'function') return;
@@ -530,7 +585,15 @@
   P.updateMovement = function () {
     const pv = window._pvp;
     if (pv && pv.active && pv.frozen) { if (this.player) this.player.setVelocity(0, 0); return; }
-    return _um.apply(this, arguments);
+    const r = _um.apply(this, arguments);
+    if (pv && pv.active && this.player && this.player.body) {
+      if (ccRooted(pv)) this.player.setVelocity(0, 0);                       // สตั้น/แช่แข็ง/ล็อกขา = เดินไม่ได้
+      else {
+        const sl = ccOn(pv, 'slow');                                         // เดินช้าลง
+        if (sl && sl.mul < 1) { const v = this.player.body.velocity; this.player.setVelocity(v.x * sl.mul, v.y * sl.mul); }
+      }
+    }
+    return r;
   };
 
   // ---------- ปิดสิ่งที่ไม่ควรใช้ในสนาม ----------
@@ -572,7 +635,7 @@
     removeHud();
     const ov = document.getElementById('pvp-result'); if (ov) ov.remove();
     window._pvp = null;
-    try { m.player.setAlpha(1); } catch (e) { /* ignore */ }
+    try { m.player.setAlpha(1); m.player.clearTint(); } catch (e) { /* ignore */ }
     m.manualTarget = null; m.target = null;
     ['btn-to-town', 'btn-ch'].forEach(id => { const b = document.getElementById(id); if (b) b.style.display = ''; });
     if (!toTown) return;
@@ -649,6 +712,22 @@
       if (!pv || !pv.active || pv.frozen || pv.dead || pv.over) return;
       m.hurtPlayer(d.dmg);
     });
+    // โดนสถานะจากคู่ต่อสู้ (เซิร์ฟเวอร์ตรวจแล้ว): d = { t: ชนิด, ms, mul?, pct?, by }
+    s.on('pvpFx', d => {
+      const pv = window._pvp;
+      if (!pv || !pv.active || pv.frozen || pv.dead || pv.over || !d || !CC_COLOR[d.t]) return;
+      const now = Date.now();
+      if (now < pv.protUntil) return;                       // อมตะหลังเกิดใหม่
+      const ms = Math.max(0, Math.min(3000, Number(d.ms) || 0));
+      if (!ms) return;
+      pv.cc = pv.cc || {};
+      const f = { until: now + ms };
+      if (d.t === 'slow') f.mul = Math.max(0.4, Math.min(1, Number(d.mul) || 1));
+      if (d.t === 'weak') f.pct = Math.max(0, Math.min(0.5, Number(d.pct) || 0));
+      pv.cc[d.t] = f;
+      if (m.player && (d.t === 'stun' || d.t === 'freeze' || d.t === 'root')) m.player.setVelocity(0, 0);
+      if (m.popText && m.player) m.popText(m.player.x, m.player.y - 50, CC_TEXT[d.t], '#ffe066');
+    });
     s.on('pvpDead', d => {
       const pv = window._pvp; if (!pv) return;
       const killer = d.by === pv.me ? 'คุณ' : (pv.units[d.by] ? pv.units[d.by].name : null);
@@ -671,7 +750,7 @@
       const zi = zoneInfo(pv);
       if (d.id === pv.me) {
         const p = freePoint(m, d.x, d.y, zi);
-        pv.dead = false; pv.protUntil = Date.now() + (d.prot || 0); pv._wasProt = true;
+        pv.dead = false; pv.cc = {}; pv.protUntil = Date.now() + (d.prot || 0); pv._wasProt = true;
         m.player.setPosition(p.x, p.y); m.player.setVelocity(0, 0); m.player.setAlpha(1);
         m.cameras.main.centerOn(p.x, p.y);
         fullHeal(m); resetCooldowns(m);
@@ -694,7 +773,7 @@
     });
     s.on('pvpEnd', d => {
       const pv = window._pvp; if (!pv) return;
-      pv.over = true; pv.frozen = false;
+      pv.over = true; pv.frozen = false; pv.cc = {};
       showResult(m, pv, d);
     });
     s.on('disconnect', () => { if (window._pvp) { try { cleanup(m, true); } catch (e) { /* ignore */ } } });
