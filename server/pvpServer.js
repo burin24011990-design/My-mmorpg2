@@ -15,8 +15,8 @@ module.exports = function attachPvp(io, players, helpers) {
   const HIT_MAX_DIST = 1600;                                // ตีไกลเกินนี้ไม่นับ (กันโกงเบื้องต้น)
   const WORLD_W = 3600, WORLD_H = 2250, LEVEL_CAP = 90, MAX_REBIRTH = 24;
   const SPAWN_X = [1250, 2350], SPAWN_Y = 1125;
-  // วงปลอดภัย: เริ่มบีบเมื่อผ่านไป 25% ของเวลา และเล็กสุดที่ 85% (ปรับเลขได้)
-  const ZONE = { x: 1800, y: 1125, r0: 1100, r1: 160, from: 0.25, to: 0.85 };
+  // วงปลอดภัย: r0 = รัศมีเริ่มต้น, r1 = รัศมีเล็กสุด (ยิ่งมากยิ่งมีที่หลบ/ใช้สกิล) | เริ่มบีบที่ 30% ของเวลา ถึงเล็กสุดที่ 90%
+  const ZONE = { x: 1800, y: 1125, r0: 1100, r1: 560, from: 0.30, to: 0.90 };
   const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9]{2,16}$/;
 
   const socks = {};        // socket.id -> socket
