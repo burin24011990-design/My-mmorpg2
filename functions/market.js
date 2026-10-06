@@ -66,7 +66,8 @@ const CAP = {
 };
 const RULES = { dailyLimit: DAILY_LIMIT, listHours: LIST_HOURS, maxPrice: MAX_PRICE, tax: TAX, stoneStack: STONE_STACK, ticketMax: TICKET_MAX, cap: CAP, minPriceRatio: MIN_PRICE_RATIO };
 
-const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };   // <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
+const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 1 };  
+// redeploy // <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
 
 // ---------- ตัวช่วย ----------
 function bad(msg) { throw new HttpsError('invalid-argument', msg); }
