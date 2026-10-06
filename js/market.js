@@ -1,6 +1,7 @@
-// ===== ตลาดกลาง (js/market.js) v5 — ผูกกับ NPC id 'market' ใน town.js =====
+// ===== ตลาดกลาง (js/market.js) v6 — ผูกกับ NPC id 'market' ใน town.js =====
 // ต้องโหลดหลัง town.js และหลัง firebase-functions-compat.js
 // ฟีเจอร์: หมวดหมู่ + ค้นหา + เรียงราคา | ขายได้เฉพาะของแรร์ | ตั๋วลงขาย (เก็บที่เซิร์ฟเวอร์) | ผู้ขายนิรนาม
+// v6: หน้าต่างตั้งจำนวน/ราคาแบบใหม่ (แทน prompt) มีปุ่ม +/- , MAX, ปุ่มลัดราคา, สรุปภาษี/ตั๋วแบบสด
 // กฎ/เพดานราคาทั้งหมดอ่านมาจากเซิร์ฟเวอร์ (getWallet → rules) จึงแก้ที่ functions/market.js ที่เดียว
 (function () {
   const REGION = 'asia-southeast1';   // ต้องตรงกับ functions/market.js
@@ -47,6 +48,9 @@
     else if (it.kind === 'stone') c = C.stone;
     else c = C.book;
     return Math.min(R.maxPrice, Math.floor(c));
+  }
+  function minUnitPrice(it, R) {       // ราคาต่ำสุดต่อชิ้น (ตรงกับฝั่งเซิร์ฟเวอร์)
+    return Math.max(1, Math.floor(maxUnitPrice(it, R) * (R.minPriceRatio || 0)));
   }
   function ticketFor(R, total) { return total <= R.ticketMax[1] ? 1 : (total <= R.ticketMax[2] ? 2 : 3); }
   function ticketName(R, tk) {
@@ -185,6 +189,161 @@
     return b;
   }
 
+  // ================= หน้าต่างตั้งจำนวน + ราคา (แทน window.prompt) =================
+  // คืน Promise<{qty, unit} | null>  (null = ยกเลิก)
+  function sellDialog(m, it, R, w) {
+    return new Promise(function (resolve) {
+      const stack = it.count !== undefined && it.count > 1 && it.kind !== 'stone';   // เลือกจำนวนได้
+      const maxQty = it.count === undefined ? 1 : it.count;
+      const cap = maxUnitPrice(it, R), floor = Math.min(minUnitPrice(it, R), cap);
+      const tkMap = w.tickets || {};
+      const quotaLeft = w.dailyLimit - w.listedToday;
+      let qty = it.kind === 'stone' ? it.count : (stack ? it.count : 1);
+      let unit = cap;
+
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:8px;box-sizing:border-box;touch-action:pan-y';
+      const pn = document.createElement('div');
+      pn.style.cssText = 'width:min(96vw,680px);max-height:96vh;overflow:auto;box-sizing:border-box;background:#26090f;border:2px solid #ffd45c;border-radius:14px;padding:12px 14px;color:#ffe28a;font-family:inherit;text-align:left;box-shadow:0 8px 30px rgba(0,0,0,.6)';
+      ov.appendChild(pn);
+
+      function mk(tag, css, txt) { const e = document.createElement(tag); if (css) e.style.cssText = css; if (txt !== undefined) e.textContent = txt; return e; }
+      const small = 'font-size:11px;color:#bbb;margin-bottom:3px';
+
+      // ส่วนหัว: รูป + ชื่อ
+      const head = mk('div', 'display:flex;gap:10px;align-items:center;margin-bottom:10px');
+      head.appendChild(icon(m, it));
+      const ht = mk('div', 'flex:1;min-width:0');
+      ht.appendChild(mk('div', 'font-size:16px;font-weight:600;color:#fff;line-height:1.3', label(it)));
+      ht.appendChild(mk('div', 'font-size:11px;color:#bbb', 'ตั้งราคา "ต่อชิ้น" • ต่ำสุด ' + floor.toLocaleString() + ' • สูงสุด ' + cap.toLocaleString()));
+      head.appendChild(ht);
+      const x = btn('✕', function () { done(null); });
+      x.style.flex = 'none'; x.style.padding = '4px 9px';
+      head.appendChild(x);
+      pn.appendChild(head);
+
+      const cols = mk('div', 'display:flex;gap:12px;flex-wrap:wrap');
+      const left = mk('div', 'flex:1 1 280px;min-width:0');
+      const right = mk('div', 'flex:1 1 220px;min-width:0');
+      cols.append(left, right);
+      pn.appendChild(cols);
+
+      function numInput(val, onChange) {
+        const i = document.createElement('input');
+        i.type = 'text'; i.inputMode = 'numeric'; i.autocomplete = 'off'; i.value = String(val);
+        i.style.cssText = 'flex:1;min-width:0;box-sizing:border-box;text-align:center;padding:8px 6px;border-radius:8px;border:2px solid #ffd45c;background:#0d0406;color:#fff;font-family:inherit;font-size:18px';
+        i.addEventListener('focus', function () { try { i.select(); } catch (e) {} });
+        i.addEventListener('input', function () {
+          const d = i.value.replace(/[^0-9]/g, '').slice(0, 9);
+          if (i.value !== d) i.value = d;
+          onChange(d === '' ? 0 : parseInt(d, 10), true);
+        });
+        return i;
+      }
+      function sq(text, fn) {       // ปุ่มสี่เหลี่ยมสำหรับ + / -
+        const b = btn(text, fn, false);
+        b.style.cssText += ';width:42px;flex:none;font-size:20px;padding:4px 0;line-height:1';
+        return b;
+      }
+      function chipRow(items) {
+        const r = mk('div', 'display:flex;gap:5px;flex-wrap:wrap;margin-top:6px');
+        items.forEach(function (c) { r.appendChild(chip(c[0], false, c[1])); });
+        return r;
+      }
+
+      // ----- จำนวน -----
+      let qtyIn = null;
+      if (stack) {
+        left.appendChild(mk('div', small, 'จำนวนที่จะขาย (มี ' + maxQty.toLocaleString() + ')'));
+        const qr = mk('div', 'display:flex;gap:6px;align-items:stretch');
+        qtyIn = numInput(qty, function (v, fromTyping) { qty = Math.min(maxQty, Math.max(0, v)); if (!fromTyping || qty !== v) qtyIn.value = String(qty || ''); refresh(); });
+        qr.append(sq('−', function () { setQty(qty - 1); }), qtyIn, sq('+', function () { setQty(qty + 1); }));
+        left.appendChild(qr);
+        const qc = [['1', 1], ['½', Math.max(1, Math.floor(maxQty / 2))], ['MAX', maxQty]].map(function (c) {
+          return [c[0], function () { setQty(c[1]); }];
+        });
+        left.appendChild(chipRow(qc));
+      } else {
+        const fixed = mk('div', 'font-size:13px;color:#ddd;margin-bottom:6px', it.kind === 'stone'
+          ? 'หินตีบวกขายยกกองเต็ม ' + qty.toLocaleString() + ' ก้อน'
+          : 'ขาย 1 ชิ้น');
+        left.appendChild(fixed);
+      }
+      function setQty(v) { qty = Math.min(maxQty, Math.max(1, v)); if (qtyIn) qtyIn.value = String(qty); refresh(); }
+
+      // ----- ราคาต่อชิ้น -----
+      left.appendChild(mk('div', small + ';margin-top:10px', 'ราคาต่อชิ้น (ทอง)'));
+      const pr = mk('div', 'display:flex;gap:6px;align-items:stretch');
+      const unitIn = numInput(unit, function (v) { unit = v; refresh(); });
+      const step = Math.max(1, Math.round(cap / 100));
+      pr.append(sq('−', function () { setUnit(unit - step); }), unitIn, sq('+', function () { setUnit(unit + step); }));
+      left.appendChild(pr);
+      function setUnit(v) { unit = Math.min(cap, Math.max(1, v)); unitIn.value = String(unit); refresh(); }
+      left.appendChild(chipRow([
+        ['ต่ำสุด', function () { setUnit(floor); }],
+        ['25%', function () { setUnit(Math.max(floor, Math.floor(cap * 0.25))); }],
+        ['50%', function () { setUnit(Math.max(floor, Math.floor(cap * 0.5))); }],
+        ['75%', function () { setUnit(Math.max(floor, Math.floor(cap * 0.75))); }],
+        ['สูงสุด', function () { setUnit(cap); }]
+      ]));
+
+      // ----- สรุป (ฝั่งขวา) -----
+      const sum = mk('div', 'background:#3a1620;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.9');
+      function line(k, vEl) {
+        const r = mk('div', 'display:flex;justify-content:space-between;gap:8px');
+        r.appendChild(mk('span', 'color:#bbb', k)); r.appendChild(vEl);
+        sum.appendChild(r);
+        return vEl;
+      }
+      const vTotal = line('ราคารวม', mk('b', 'color:#fff'));
+      const vTax = line('ภาษีขาย ' + Math.round(R.tax * 100) + '%', mk('span', 'color:#e08a8a'));
+      const vNet = line('ได้รับสุทธิ', mk('b', 'color:#7be07b;font-size:16px'));
+      const vTk = line('ตั๋วที่ใช้', mk('span', 'color:#fff;text-align:right'));
+      line('อยู่ในตลาด', mk('span', 'color:#fff', R.listHours + ' ชม.'));
+      line('โควตาวันนี้', mk('span', 'color:#fff', w.listedToday + '/' + w.dailyLimit));
+      right.appendChild(sum);
+
+      const warn = mk('div', 'color:#ff9a9a;font-size:12px;min-height:16px;margin-top:6px');
+      right.appendChild(warn);
+
+      const act = mk('div', 'display:flex;gap:8px;margin-top:8px');
+      const cancelB = btn('ยกเลิก', function () { done(null); });
+      cancelB.style.flex = '1'; cancelB.style.padding = '10px';
+      const okB = btn('ลงขาย', function () { if (!okB.disabled) done({ qty: qty, unit: unit }); }, true);
+      okB.style.flex = '2'; okB.style.padding = '10px'; okB.style.fontSize = '15px';
+      act.append(cancelB, okB);
+      right.appendChild(act);
+
+      function refresh() {
+        const total = unit * qty;
+        const net = Math.floor(total * (1 - R.tax));
+        const tk = ticketFor(R, Math.max(1, total));
+        const have = tkMap[tk] || 0;
+        vTotal.textContent = '💰 ' + total.toLocaleString();
+        vTax.textContent = '−' + (total - net).toLocaleString();
+        vNet.textContent = '💰 ' + net.toLocaleString();
+        vTk.textContent = ticketName(R, tk) + ' (มี ' + have + ')';
+        vTk.style.color = have > 0 ? '#fff' : '#ff9a9a';
+        let why = '';
+        if (qty < 1) why = 'ใส่จำนวนอย่างน้อย 1';
+        else if (unit < floor) why = 'ราคาต่ำสุดต่อชิ้น ' + floor.toLocaleString();
+        else if (unit > cap) why = 'ราคาสูงสุดต่อชิ้น ' + cap.toLocaleString();
+        else if (total > R.maxPrice) why = 'ราคารวมต้องไม่เกิน ' + R.maxPrice.toLocaleString();
+        else if (have < 1) why = 'ไม่มี ' + ticketName(R, tk) + ' (ดูที่แท็บ 🎫 ตั๋ว)';
+        else if (quotaLeft < 1) why = 'ลงขายครบ ' + w.dailyLimit + ' รายการใน 24 ชม. แล้ว';
+        warn.textContent = why;
+        okB.disabled = !!why;
+        okB.style.opacity = why ? '.4' : '1';
+        okB.style.cursor = why ? 'not-allowed' : 'pointer';
+      }
+
+      function done(r) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(r); }
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(null); });
+      document.body.appendChild(ov);
+      refresh();
+    });
+  }
+
   function openMarket(scene) {
     const m = townMain(scene);
     if (!m) return;
@@ -221,6 +380,7 @@
         r.entries.forEach(function (e) {
           if (e.type === 'item' && !canAdd(m, e.item)) return;   // กระเป๋าเต็ม: รอไว้ก่อน
           p = p.then(function () { return call('claimInbox', { id: e.id }); }).then(function (c) {
+            if (!c || !c.entry) return;                          // ยังอยู่ในช่วงพัก (wait) ข้ามไปก่อน
             const en = c.entry;
             if (en.type === 'gold') m.stats.gold += en.amount; else addToBag(m, en.item);
             n++;
@@ -265,7 +425,7 @@
       if (left > 0) {
         const w = document.createElement('div');
         w.style.cssText = 'color:#e08a8a;font-size:12px;margin-bottom:6px';
-        w.textContent = 'มีของรอรับ ' + left + ' ชิ้น แต่กระเป๋าเต็ม';
+        w.textContent = 'มีของรอรับ ' + left + ' ชิ้น (กระเป๋าเต็ม หรือยังอยู่ในช่วงพัก)';
         body.appendChild(w);
       }
       // ช่องค้นหา + ปุ่มเรียงราคา
@@ -345,37 +505,23 @@
       const R = rules;
       const why = sellBlock(it, R);
       if (why) { m.toastMsg(why); return; }
-      let qty = 1;
-      if (it.kind === 'stone') qty = it.count;          // หินตีบวก: ขายยกกองเท่านั้น
-      else if (it.count !== undefined && it.count > 1) {
-        const q2 = window.prompt(label(it) + '\nขายกี่ชิ้น? (มี ' + it.count + ' ชิ้น)', String(it.count));
-        qty = Math.floor(Number(q2));
-        if (!q2 || !isFinite(qty) || qty < 1 || qty > it.count) return;
-      }
-      const cap = maxUnitPrice(it, R);
-      const v = window.prompt('ตั้งราคา "ต่อชิ้น" (ทอง) ของ ' + label(it) + '\nราคาสูงสุดต่อชิ้น ' + cap.toLocaleString() + ' (รวมไม่เกิน ' + R.maxPrice.toLocaleString() + ')\nได้รับสุทธิหลังหักภาษี ' + Math.round(R.tax * 100) + '%', String(Math.min(1000, cap)));
-      const unit = Math.floor(Number(v));
-      if (!v || !isFinite(unit) || unit < 1) return;
-      if (unit > cap) { m.toastMsg('ราคาต่อชิ้นของไอเทมนี้สูงสุด ' + cap.toLocaleString()); return; }
-      const total = unit * qty;
-      if (total > R.maxPrice) { m.toastMsg('ราคารวมต้องไม่เกิน ' + R.maxPrice.toLocaleString()); return; }
 
-      const tk = ticketFor(R, total), tName = ticketName(R, tk);
-      busy = true; msg('กำลังตรวจสอบ...');
+      busy = true;
       call('getWallet').then(function (w) {          // ยอดตั๋วและโควตาวันนี้มาจากเซิร์ฟเวอร์
-        busy = false;
-        if (((w.tickets || {})[tk] || 0) < 1) { m.toastMsg('ต้องมี "' + tName + '" (ดูที่แท็บ 🎫 ตั๋ว)'); show(tab); return; }
-        if (w.listedToday >= w.dailyLimit) { m.toastMsg('ลงขายครบ ' + w.dailyLimit + ' รายการใน 24 ชม. แล้ว'); show(tab); return; }
-        if (m.bag[i] !== it) { show(tab); return; }
-        const net = Math.floor(total * (1 - R.tax));
-        if (!window.confirm('ลงขาย ' + label(it) + (qty > 1 && it.kind !== 'stone' ? ' x' + qty : '') + '\nราคารวม ' + total.toLocaleString() + ' (ได้รับสุทธิ ' + net.toLocaleString() + ')\nใช้ ' + tName + ' 1 ใบ\nอยู่ในตลาด ' + R.listHours + ' ชม.')) { show(tab); return; }
-
-        const sold = it.count !== undefined ? Object.assign({}, it, { count: qty }) : it;
-        if (it.count !== undefined && qty < it.count) it.count -= qty; else m.bag[i] = null;   // หักของออกจากกระเป๋าก่อน
-        save();
-        run(call('listItem', { item: sold, price: total })
-          .then(function () { m.toastMsg('ลงขายแล้ว (' + R.listHours + ' ชม.)'); })
-          .catch(function (e) { addToBag(m, sold); save(); throw e; }), function () {});
+        rules = w.rules;
+        return sellDialog(m, it, w.rules, w).then(function (res) {
+          busy = false;
+          if (!res) return;
+          if (m.bag[i] !== it) { m.toastMsg('ไอเทมในกระเป๋าเปลี่ยนไป ลองใหม่'); show(tab); return; }
+          const qty = it.kind === 'stone' ? it.count : Math.min(res.qty, it.count === undefined ? 1 : it.count);
+          const total = res.unit * qty;
+          const sold = it.count !== undefined ? Object.assign({}, it, { count: qty }) : it;
+          if (it.count !== undefined && qty < it.count) it.count -= qty; else m.bag[i] = null;   // หักของออกจากกระเป๋าก่อน
+          save();
+          run(call('listItem', { item: sold, price: total })
+            .then(function () { m.toastMsg('ลงขายแล้ว (' + w.rules.listHours + ' ชม.)'); })
+            .catch(function (e) { addToBag(m, sold); save(); throw e; }), function () {});
+        });
       }).catch(function (e) { busy = false; m.toastMsg('ตรวจสอบไม่สำเร็จ: ' + errMsg(e)); show(tab); });
     }
 
