@@ -2,8 +2,9 @@
 // วิธีเชื่อม: ใน server.js เพิ่ม 2 บรรทัดนี้ก่อน server.listen(...)
 //   const attachPvp = require('./pvpServer');
 //   attachPvp(io, players, { leaveRoom });
-// กติกาใหม่: ตายแล้วเกิดใหม่ (สุ่มจุดในวงปลอดภัย) | ทีมที่ฆ่าได้มากกว่าเมื่อหมดเวลาชนะ | วงปลอดภัยบีบเข้าเรื่อยๆ
-// เซิร์ฟเวอร์คุม: คิว/จับทีม/นับถอยหลัง/นับฆ่า/เกิดใหม่/ตัดสินผล/เวลา | เครื่องผู้เล่นคุม: ดาเมจที่ตัวเองโดน
+// กติกา: ตายแล้วเกิดใหม่ (สุ่มจุดในวงปลอดภัย) | ทีมที่ฆ่าได้มากกว่าเมื่อหมดเวลาชนะ | วงปลอดภัยบีบเข้าเรื่อยๆ
+// ล็อบบี้แบบห้องรอ: เจ้าห้องสร้างห้อง (เลือก 1v1/3v3/5v5 + เพดานจุติ) | คนอื่นกดเข้าร่วม เลือก/ย้ายฝั่งแดง-น้ำเงินได้ | เจ้าห้องกดเริ่ม
+// เซิร์ฟเวอร์คุม: ห้องรอ/นับถอยหลัง/นับฆ่า/เกิดใหม่/ตัดสินผล/เวลา | เครื่องผู้เล่นคุม: ดาเมจที่ตัวเองโดน
 module.exports = function attachPvp(io, players, helpers) {
   const SIZES = [1, 3, 5];                                  // ผู้เล่นต่อทีม
   const CAPS = [0, 3, 6, 8, 11, 15, 19, 24];                // เพดานจุติของแต่ละห้อง
@@ -19,42 +20,46 @@ module.exports = function attachPvp(io, players, helpers) {
   const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9]{2,16}$/;
 
   const socks = {};        // socket.id -> socket
-  const st = {};           // socket.id -> { q: คีย์คิว | null, match: id | null, info }
-  const queues = {};       // 'ขนาด-ห้อง' -> [socket.id]
+  const st = {};           // socket.id -> { room: id ห้องรอ | null, match: id | null }
+  const rooms = {};        // id -> ห้องรอ { id, size, bi, host, teams: [[id],[id]], info: { id: ข้อมูลผู้เล่น } }
   const matches = {};      // id -> match
-  let nextId = 1;
+  let nextId = 1, nextRoom = 1;
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const qkey = (size, bi) => size + '-' + bi;
-  SIZES.forEach(s => CAPS.forEach((c, bi) => { queues[qkey(s, bi)] = []; }));
 
   const emitMatch = (m, ev, data) => {
     m.ids.forEach(id => { const p = m.pl[id]; if (p && !p.left && socks[id]) socks[id].emit(ev, data); });
   };
 
-  function removeFromQueue(id) {
-    for (const k in queues) {
-      const i = queues[k].indexOf(id);
-      if (i >= 0) { queues[k].splice(i, 1); announce(k); }
-    }
-    if (st[id]) st[id].q = null;
+  // ---------- ห้องรอ ----------
+  const readInfo = (p, d) => ({
+    name: p.name,
+    rebirth: clamp(Math.floor(num(d.rebirth)), 0, MAX_REBIRTH),
+    level: clamp(Math.floor(num(d.level)) || 1, 1, LEVEL_CAP),
+    maxHp: clamp(Math.floor(num(d.maxHp)) || 100, 1, 1e9),
+    cls: (typeof d.cls === 'string' && /^[a-z]{3,10}$/.test(d.cls)) ? d.cls : 'sword',
+  });
+  const roomCount = r => r.teams[0].length + r.teams[1].length;
+  const roomPack = r => ({
+    id: r.id, size: r.size, bi: r.bi, cap: CAPS[r.bi], host: r.host,
+    teams: r.teams.map(list => list.map(id => { const i = r.info[id]; return { id, name: i.name, level: i.level, rebirth: i.rebirth, cls: i.cls }; })),
+  });
+  function pushRoom(r) {                                   // ส่งสถานะห้องให้ทุกคนในห้อง
+    const d = roomPack(r);
+    r.teams.forEach(list => list.forEach(id => { if (socks[id]) socks[id].emit('pvpRoom', d); }));
   }
-
-  function announce(key) {
-    const need = parseInt(key, 10) * 2, n = queues[key].length;
-    queues[key].forEach(id => { if (socks[id]) socks[id].emit('pvpWait', { key, waiting: n, need }); });
-  }
-
-  function tryForm(key) {
-    const size = parseInt(key, 10), bi = parseInt(key.split('-')[1], 10), need = size * 2, q = queues[key];
-    while (q.length >= need) {
-      const ids = q.splice(0, need);
-      const ok = ids.filter(id => socks[id] && players[id] && st[id]);
-      if (ok.length < need) { q.unshift.apply(q, ok); break; }   // มีคนหลุด: คืนคนที่เหลือเข้าคิว
-      createMatch(ids, size, bi);
-    }
-    announce(key);
+  function leavePvpRoom(id) {
+    const me = st[id];
+    if (!me || !me.room) return;
+    const r = rooms[me.room];
+    me.room = null;
+    if (!r) return;
+    r.teams = r.teams.map(l => l.filter(x => x !== id));
+    delete r.info[id];
+    if (roomCount(r) === 0) { delete rooms[r.id]; return; }
+    if (r.host === id) r.host = r.teams[0][0] || r.teams[1][0];   // ย้ายเจ้าห้องให้คนถัดไป
+    pushRoom(r);
   }
 
   // รัศมีวงปลอดภัย ณ เวลานั้น (สูตรเดียวกับฝั่งเกม)
@@ -79,24 +84,23 @@ module.exports = function attachPvp(io, players, helpers) {
     return best;
   }
 
-  function createMatch(ids, size, bi) {
-    const power = id => st[id].info.rebirth * 100 + st[id].info.level;
-    ids.sort((a, b) => power(b) - power(a));
-    const order = [0, 1, 1, 0, 0, 1, 1, 0, 0, 1];           // แจกทีมแบบงู ให้สมดุลตามกำลัง
-    const m = { id: nextId++, size, bi, ids: ids.slice(), teams: [[], []], pl: {}, state: 'countdown', endAt: 0, liveAt: 0 };
-    ids.forEach((id, i) => {
-      const team = order[i], idx = m.teams[team].length, info = st[id].info;
-      m.teams[team].push(id);
+  // เริ่มแมตช์จากห้องรอ (ทีมตามที่ผู้เล่นเลือกฝั่งเอง ไม่จัดทีมใหม่)
+  function createMatch(r) {
+    const size = r.size, bi = r.bi;
+    const ids = r.teams[0].concat(r.teams[1]);
+    const m = { id: nextId++, size, bi, ids: ids.slice(), teams: [r.teams[0].slice(), r.teams[1].slice()], pl: {}, state: 'countdown', endAt: 0, liveAt: 0 };
+    m.teams.forEach((list, team) => list.forEach((id, idx) => {
+      const info = r.info[id];
       m.pl[id] = {
         id, team, name: info.name, level: info.level, rebirth: info.rebirth, cls: info.cls,
         hp: info.maxHp, maxHp: info.maxHp, alive: true, left: false,
-        x: SPAWN_X[team], y: SPAWN_Y + (idx - (size - 1) / 2) * 110,
+        x: SPAWN_X[team], y: SPAWN_Y + (idx - (list.length - 1) / 2) * 110,
         kills: 0, deaths: 0, dmg: 0, lastBy: null, lastAt: 0, hitWin: 0, hitN: 0,
         protUntil: 0, noMoveUntil: 0, rt: null,
       };
-      st[id].q = null; st[id].match = m.id;
+      st[id].room = null; st[id].match = m.id;
       try { helpers.leaveRoom(socks[id]); } catch (e) { /* ignore */ }   // ออกจากห้องล่ามอนก่อน
-    });
+    }));
     matches[m.id] = m;
     const pack = t => m.teams[t].map(id => { const p = m.pl[id]; return { id, name: p.name, level: p.level, rebirth: p.rebirth, maxHp: p.maxHp, cls: p.cls }; });
     const teams = [pack(0), pack(1)];
@@ -176,18 +180,16 @@ module.exports = function attachPvp(io, players, helpers) {
 
   io.on('connection', socket => {
     socks[socket.id] = socket;
-    st[socket.id] = { q: null, match: null, info: null };
+    st[socket.id] = { room: null, match: null };
 
-    // ขอจำนวนคนที่รอในแต่ละห้อง
-    socket.on('pvpInfo', cb => {
+    // รายชื่อห้องรอที่เปิดอยู่
+    socket.on('pvpRooms', cb => {
       if (typeof cb !== 'function') return;
-      const queuesCount = {};
-      for (const k in queues) queuesCount[k] = queues[k].length;
-      cb({ queues: queuesCount, caps: CAPS });
+      cb({ rooms: Object.values(rooms).map(r => ({ id: r.id, size: r.size, bi: r.bi, cap: CAPS[r.bi], n: roomCount(r), host: r.info[r.host] ? r.info[r.host].name : '?' })) });
     });
 
-    // เข้าคิว: d = { size, bi, level, rebirth, maxHp, cls }
-    socket.on('pvpQueue', (d, cb) => {
+    // สร้างห้อง: d = { size, bi, level, rebirth, maxHp, cls }
+    socket.on('pvpCreate', (d, cb) => {
       cb = typeof cb === 'function' ? cb : () => {};
       const p = players[socket.id], me = st[socket.id];
       if (!p || !me) return cb({ ok: false, reason: 'notjoined' });
@@ -195,23 +197,64 @@ module.exports = function attachPvp(io, players, helpers) {
       d = d || {};
       const size = d.size, bi = d.bi;
       if (SIZES.indexOf(size) < 0 || !Number.isInteger(bi) || bi < 0 || bi >= CAPS.length) return cb({ ok: false, reason: 'bad' });
-      const rebirth = clamp(Math.floor(num(d.rebirth)), 0, MAX_REBIRTH);
-      if (rebirth > CAPS[bi]) return cb({ ok: false, reason: 'rebirth' });   // จุติเกินเพดานห้อง
-      removeFromQueue(socket.id);
-      me.info = {
-        name: p.name, rebirth,
-        level: clamp(Math.floor(num(d.level)) || 1, 1, LEVEL_CAP),
-        maxHp: clamp(Math.floor(num(d.maxHp)) || 100, 1, 1e9),
-        cls: (typeof d.cls === 'string' && /^[a-z]{3,10}$/.test(d.cls)) ? d.cls : 'sword',
-      };
-      me.q = qkey(size, bi);
-      queues[me.q].push(socket.id);
-      cb({ ok: true, waiting: queues[me.q].length, need: size * 2 });
-      announce(me.q);
-      tryForm(me.q);
+      const info = readInfo(p, d);
+      if (info.rebirth > CAPS[bi]) return cb({ ok: false, reason: 'rebirth' });   // จุติเกินเพดานห้อง
+      leavePvpRoom(socket.id);
+      const r = { id: nextRoom++, size, bi, host: socket.id, teams: [[socket.id], []], info: {} };
+      r.info[socket.id] = info;
+      rooms[r.id] = r; me.room = r.id;
+      cb({ ok: true, room: roomPack(r) });
     });
 
-    socket.on('pvpCancel', () => removeFromQueue(socket.id));
+    // เข้าร่วมห้อง: d = { roomId, team (ฝั่งที่อยากอยู่ 0=แดง 1=น้ำเงิน), level, rebirth, maxHp, cls }
+    socket.on('pvpJoin', (d, cb) => {
+      cb = typeof cb === 'function' ? cb : () => {};
+      const p = players[socket.id], me = st[socket.id];
+      if (!p || !me) return cb({ ok: false, reason: 'notjoined' });
+      if (me.match) return cb({ ok: false, reason: 'inmatch' });
+      d = d || {};
+      const r = rooms[d.roomId];
+      if (!r) return cb({ ok: false, reason: 'gone' });
+      if (me.room === r.id) return cb({ ok: true, room: roomPack(r) });
+      const info = readInfo(p, d);
+      if (info.rebirth > CAPS[r.bi]) return cb({ ok: false, reason: 'rebirth' });
+      const pref = d.team === 1 ? 1 : 0;
+      const t = r.teams[pref].length < r.size ? pref : (r.teams[1 - pref].length < r.size ? 1 - pref : -1);
+      if (t < 0) return cb({ ok: false, reason: 'full' });
+      leavePvpRoom(socket.id);
+      r.teams[t].push(socket.id); r.info[socket.id] = info; me.room = r.id;
+      cb({ ok: true, room: roomPack(r) });
+      pushRoom(r);
+    });
+
+    // ย้ายฝั่งในห้อง: d = { team }
+    socket.on('pvpSwitch', (d, cb) => {
+      cb = typeof cb === 'function' ? cb : () => {};
+      const me = st[socket.id], r = me && rooms[me.room];
+      if (!r) return cb({ ok: false, reason: 'noroom' });
+      const t = d && d.team === 1 ? 1 : 0, cur = r.teams[0].indexOf(socket.id) >= 0 ? 0 : 1;
+      if (t === cur) return cb({ ok: true });
+      if (r.teams[t].length >= r.size) return cb({ ok: false, reason: 'full' });
+      r.teams[cur] = r.teams[cur].filter(x => x !== socket.id);
+      r.teams[t].push(socket.id);
+      cb({ ok: true });
+      pushRoom(r);
+    });
+
+    socket.on('pvpLeaveRoom', () => leavePvpRoom(socket.id));
+
+    // เจ้าห้องกดเริ่ม (ต้องมีคนอย่างน้อยฝั่งละ 1)
+    socket.on('pvpStart', cb => {
+      cb = typeof cb === 'function' ? cb : () => {};
+      const me = st[socket.id], r = me && rooms[me.room];
+      if (!r) return cb({ ok: false, reason: 'noroom' });
+      if (r.host !== socket.id) return cb({ ok: false, reason: 'nothost' });
+      if (!r.teams[0].length || !r.teams[1].length) return cb({ ok: false, reason: 'needboth' });
+      if (r.teams.some(l => l.some(id => !socks[id] || !players[id] || !st[id]))) return cb({ ok: false, reason: 'gone' });
+      delete rooms[r.id];
+      cb({ ok: true });
+      createMatch(r);
+    });
 
     // ตำแหน่ง + เลือดของตัวเอง
     socket.on('pvpMove', d => {
@@ -266,7 +309,7 @@ module.exports = function attachPvp(io, players, helpers) {
 
     // ออกจากแมตช์/คิวเอง (ยอมแพ้ = ออกจากแมตช์ ถ้าทีมออกหมดอีกฝั่งชนะ)
     function leave() {
-      removeFromQueue(socket.id);
+      leavePvpRoom(socket.id);
       const me = st[socket.id], m = me && matches[me.match];
       if (m && m.pl[socket.id]) {
         const p = m.pl[socket.id];
