@@ -47,8 +47,8 @@ const MIN_AGE_H = 72;                        // อายุบัญชีข�
 const HIGH_VALUE = 5000000;                  // รายการราคาตั้งแต่นี้ถือเป็นของแพง
 const HIGH_VALUE_AGE_H = 168;                // อายุบัญชีขั้นต่ำสำหรับของแพง (ชม.)
 const STONE_STACK = 9999;                    // ต้องตรงกับ MAX_STONE_STACK ในเกม
-const IP_SALT = 'เปลี่ยนเป็นข้อความสุ่มยาวๆ ของคุณเอง';   // ใช้แฮช IP (ไม่เก็บ IP ดิบ)
-const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan
+const IP_SALT = 'x7Kq2mVd9RtLp4Zw8NcB1yHs5Fg3JaUe';   // <-- แก้ (ใช้แฮช IP ไม่เก็บ IP ดิบ) ห้ามเปลี่ยนบ่อย เพราะข้อมูล IP เก่าจะใช้เทียบไม่ได้
+const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan  เช่น ['abc123...']
 
 const TICKET_MAX = { 1: 2000000, 2: 5000000, 3: MAX_PRICE };
 const TIERS = ['white', 'blue', 'red', 'gold'];
@@ -66,7 +66,7 @@ const CAP = {
 };
 const RULES = { dailyLimit: DAILY_LIMIT, listHours: LIST_HOURS, maxPrice: MAX_PRICE, tax: TAX, stoneStack: STONE_STACK, ticketMax: TICKET_MAX, cap: CAP, minPriceRatio: MIN_PRICE_RATIO };
 
-const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK };
+const OPT = { region: REGION, enforceAppCheck: ENFORCE_APP_CHECK, maxInstances: 3 };   // <-- แก้ (จำกัดจำนวนเครื่อง กันชนโควตา CPU)
 
 // ---------- ตัวช่วย ----------
 function bad(msg) { throw new HttpsError('invalid-argument', msg); }
@@ -402,54 +402,4 @@ exports.cancelListing = onCall(OPT, async (req) => {
     const priv = await tx.get(privRef);
     if (!pub.exists || !priv.exists || pub.data().status !== 'active') throw new HttpsError('not-found', 'รายการนี้ไม่อยู่แล้ว');
     if (priv.data().sellerId !== uid) throw new HttpsError('permission-denied', 'ไม่ใช่ของคุณ');
-    tx.update(pubRef, { status: 'cancelled' });
-    tx.update(privRef, { status: 'cancelled' });
-    tx.set(db.collection('market_inbox').doc(uid).collection('entries').doc(),
-      { type: 'item', item: pub.data().item, note: 'ยกเลิกการขาย', at: Date.now() });
-    audit(tx, { type: 'cancel', uid: uid, listingId: id });
-  });
-  return { ok: true };
-});
-
-// ---------- คืนของอัตโนมัติเมื่อหมดอายุ (ทุกชั่วโมง) ----------
-exports.expireListings = onSchedule({ region: REGION, schedule: 'every 60 minutes', timeZone: 'Asia/Bangkok' }, async () => {
-  const q = await db.collection('market_listings')
-    .where('status', '==', 'active').where('expiresAt', '<=', Date.now()).limit(200).get();
-  for (const doc of q.docs) {
-    const privRef = db.collection('market_private').doc(doc.id);
-    await db.runTransaction(async (tx) => {
-      const pub = await tx.get(doc.ref);
-      const priv = await tx.get(privRef);
-      if (!pub.exists || !priv.exists || pub.data().status !== 'active') return;
-      tx.update(doc.ref, { status: 'expired' });
-      tx.update(privRef, { status: 'expired' });
-      tx.set(db.collection('market_inbox').doc(priv.data().sellerId).collection('entries').doc(),
-        { type: 'item', item: pub.data().item, note: 'หมดอายุ คืนของ', at: Date.now() });
-      audit(tx, { type: 'expire', uid: priv.data().sellerId, listingId: doc.id });
-    });
-  }
-});
-
-// ---------- กล่องรับของ ----------
-exports.listInbox = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const q = await db.collection('market_inbox').doc(uid).collection('entries').limit(100).get();
-  return { entries: q.docs.map(d => ({ id: d.id, ...d.data() })), now: Date.now() };
-});
-
-// รับของทีละรายการ — ถ้ายังไม่ถึงเวลาพัก คืน { wait: ms } และไม่ลบอะไร
-exports.claimInbox = onCall(OPT, async (req) => {
-  const uid = authOnly(req);
-  const id = String((req.data || {}).id || '');
-  const ban = await db.collection('market_bans').doc(uid).get();
-  if (ban.exists && ban.data().freeze) throw new HttpsError('permission-denied', 'กล่องรับของถูกระงับชั่วคราว');
-  const ref = db.collection('market_inbox').doc(uid).collection('entries').doc(id);
-  return db.runTransaction(async (tx) => {
-    const s = await tx.get(ref);
-    if (!s.exists) throw new HttpsError('not-found', 'รับไปแล้ว');
-    const e = s.data();
-    if (e.availableAt && e.availableAt > Date.now()) return { wait: e.availableAt - Date.now() };
-    tx.delete(ref);
-    return { entry: e };
-  });
-});
+    tx.update(pu
