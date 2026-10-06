@@ -1,4 +1,4 @@
-// ===== ฉากเมืองเริ่มต้น (Town) v7.4 — เมืองจีนย้อนยุคพลังภายใน =====
+// ===== ฉากเมืองเริ่มต้น (Town) v7.5 — เมืองจีนย้อนยุคพลังภายใน =====
 // ไฟล์: js/systems/town.js  (โหลดก่อน js/main.js)
 // - เกมเริ่มที่เมืองเสมอ (Main ถูกสร้างก่อนแล้ว "พัก" ไว้ แล้วเปิดเมืองทับ)
 // - ใช้ปุ่มเลือกด่านเดิมของเกม: กดเลือกด่านแล้วออกจากเมืองไปด่านนั้นทันที ไม่ต้องเดินไปประตู
@@ -13,6 +13,9 @@
 // - v7.2: ตายจริง (fixes.js เรียก townGoToTown) + หัก EXP 1% (ไม่หักใน PvP) + เซฟตอนตาย + อมตะ 3 วิตอนออกจากเมือง
 // - v7.4: แก้อนิเมชันตัวละครในเมือง (เลือกสกินดาบ/มีดตามคลาส + ส่ง skin ให้ HeroAnims.play)
 //         เพิ่มปุ่ม "จัดสกิล" มุมขวาล่างในเมือง (เปิดหน้าสกิลเดิมของ Main)
+// - v7.5: แทนปุ่ม "จัดสกิล" ด้วยช่องสกิลชุดเดียวกับข้างนอก (โจมตี + สกิล 4 ช่อง + อัลติ + แดช เรียงโค้ดตำแหน่งเดิม)
+//         แตะช่องสกิล = เปิดหน้าสกิลเพื่อเลือก/เปลี่ยนสกิลช่องนั้น | กดค้าง 0.5 วิ = ถอดสกิลออก
+//         ปุ่มโจมตี/แดช/อัลติในเมืองเป็นแค่แสดงผล (ใช้ไม่ได้ในเมือง) | จอยสติ๊กไม่ทำงานขณะเปิดหน้าสกิล
 
 const TOWN = {
   w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190,
@@ -303,6 +306,7 @@ class Town extends Phaser.Scene {
     this.heroDir = 'down';
     this.heroSkin = 'hero';
     this.blockers = [];
+    this.slotUI = null;
     this.hasAtlas = this.textures.exists('town');
 
     const cam = this.cameras.main;
@@ -356,7 +360,7 @@ class Town extends Phaser.Scene {
     this.player.add(parts);
     cam.startFollow(this.player, true, 0.12, 0.12);
 
-    this.add.text(W / 2, H - 8, 'ลากนิ้วฝั่งซ้ายเพื่อเดิน • เดินเข้าใกล้ NPC แล้วแตะเพื่อคุย', {
+    this.add.text(W / 2, H - 8, 'ลากนิ้วฝั่งซ้ายเพื่อเดิน • แตะ NPC เพื่อคุย • แตะช่องสกิลมุมขวาล่างเพื่อจัดสกิล (กดค้างเพื่อถอด)', {
       fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', backgroundColor: '#00000088',
       padding: { x: 8, y: 4 },
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(100000);
@@ -370,7 +374,7 @@ class Town extends Phaser.Scene {
 
     this.events.once('shutdown', this.cleanup, this);
 
-    // แถบปุ่มด้านบน + จอยสติ๊ก (ปุ่มของ Main ถูกฉากเมืองบัง จึงสร้างชุดใหม่ในเมือง)
+    // แถบปุ่มด้านบน + ช่องสกิล + จอยสติ๊ก (ปุ่มของ Main ถูกฉากเมืองบัง จึงสร้างชุดใหม่ในเมือง)
     try { this.buildTownHud(); } catch (e) { console.warn('town hud failed', e); }
 
     if (window.TOWN_NOTICE) {
@@ -476,7 +480,7 @@ class Town extends Phaser.Scene {
     return false;
   }
 
-  // ----- แถบปุ่มด้านบน + ปุ่มจัดสกิล + จอยสติ๊ก (เรียกฟังก์ชันเดิมของ Main) -----
+  // ----- แถบปุ่มด้านบน + ช่องสกิลมุมขวาล่าง + จอยสติ๊ก (เรียกฟังก์ชันเดิมของ Main) -----
   buildTownHud() {
     const self0 = this;
     const M = function () { return townMain(self0); };
@@ -494,21 +498,195 @@ class Town extends Phaser.Scene {
       x += TB.w + TB.gap;
     }, this);
 
-    // ปุ่มจัดสกิล มุมขวาล่าง (เปิดหน้าสกิลเดิมของ Main)
-    const bx = W - 70, by = H - 70, selfT = this;
-    const sBg = this.add.circle(bx, by, 36, 0x2a2a4a, 0.95).setStrokeStyle(3, 0xffd45c)
-      .setScrollFactor(0).setDepth(100010).setInteractive({ useHandCursor: true });
-    this.add.text(bx, by - 5, '📜', { fontSize: '30px' }).setOrigin(0.5).setScrollFactor(0).setDepth(100011);
-    this.add.text(bx, by + 22, 'จัดสกิล', {
-      fontFamily: 'Mitr, sans-serif', fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3,
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(100011);
-    sBg.on('pointerdown', function () {
-      if (selfT.modal) return;
-      const m = townMain(selfT);
-      if (m && m.openSkillBook) m.openSkillBook();
-    });
+    // ช่องสกิลมุมขวาล่าง (หน้าตา/ตำแหน่งเดียวกับข้างนอก) ใช้จัดสกิลในเมือง
+    try { this.buildSkillSlots(); } catch (e) { console.warn('town skill slots failed', e); }
 
     this.setupJoystick();
+  }
+
+  // ----- ช่องสกิลในเมือง: โจมตี + สกิล 4 ช่อง + อัลติ + แดช เรียงโค้ดเหมือน ROV ใน hudLayout.js -----
+  // แตะช่องสกิล = เปิดหน้าสกิลของ Main เพื่อเลือกสกิลช่องนั้น | กดค้าง 0.5 วิ = ถอดสกิล
+  // ปุ่มโจมตี/แดช/อัลติ = แสดงผลอย่างเดียว (ใช้ในเมืองไม่ได้)
+  buildSkillSlots() {
+    const self = this;
+    // ใช้ค่าจาก ROV (hudLayout.js) ถ้ามี ไม่มีใช้ค่าเริ่มต้นเดียวกัน
+    const R = (typeof ROV !== 'undefined') ? ROV
+      : { ax: W - 150, ay: H - 120, attackR: 62, skillR: 38, ultiR: 38, ring: 185, startDeg: 170, stepDeg: 30 };
+    const pos = function (i) {
+      const a = Phaser.Math.DegToRad(R.startDeg + i * R.stepDeg);
+      return { x: R.ax + R.ring * Math.cos(a), y: R.ay + R.ring * Math.sin(a) };
+    };
+    const D = 100010;
+    const nameStyle = { fontFamily: 'Mitr, sans-serif', fontSize: '10px', color: '#fff', align: 'center', stroke: '#000', strokeThickness: 3 };
+
+    // แถบโค้งจาง ๆ รองใต้ปุ่ม
+    const deco = this.add.graphics().setScrollFactor(0).setDepth(D - 1);
+    deco.lineStyle(92, 0xffffff, 0.07);
+    deco.beginPath();
+    deco.arc(R.ax, R.ay, R.ring, Phaser.Math.DegToRad(155), Phaser.Math.DegToRad(305), false);
+    deco.strokePath();
+
+    // ปุ่มโจมตี (แสดงผล)
+    const atk = this.add.circle(R.ax, R.ay, R.attackR, 0xcf3d3d, 0.55).setScrollFactor(0).setDepth(D).setInteractive();
+    atk.setStrokeStyle(5, 0xffffff, 0.6);
+    this.add.circle(R.ax, R.ay, R.attackR - 9).setStrokeStyle(2, 0xffffff, 0.3).setScrollFactor(0).setDepth(D);
+    const atkIcon = this.add.image(R.ax, R.ay - 8, 'atk_sword').setScrollFactor(0).setDepth(D + 1).setAlpha(0.6).setVisible(false);
+    const atkText = this.add.text(R.ax, R.ay + R.attackR * 0.58, 'โจมตี', {
+      fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 2);
+    atk.on('pointerdown', function () {
+      if (self.modal) return;
+      self.flash('ในเมืองโจมตีไม่ได้ • แตะช่องสกิลเพื่อจัดสกิล');
+    });
+    this.atkUI = { icon: atkIcon };
+
+    // สกิล 4 ช่อง
+    this.slotUI = [];
+    for (let i = 0; i < 4; i++) {
+      const p = pos(i);
+      const c = this.add.circle(p.x, p.y, R.skillR, 0x3a3a3a, 0.8).setScrollFactor(0).setDepth(D).setInteractive();
+      c.setStrokeStyle(4, 0xffffff, 0.75);
+      const icon = this.add.image(p.x, p.y - 6, 'ic_melee').setDisplaySize(46, 46).setScrollFactor(0).setDepth(D + 1).setVisible(false);
+      const plus = this.add.text(p.x, p.y, '+', {
+        fontFamily: 'Mitr, sans-serif', fontSize: '34px', color: '#ffe28a', fontStyle: 'bold', stroke: '#000', strokeThickness: 4,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 2);
+      const name = this.add.text(p.x, p.y + 27, '', nameStyle).setOrigin(0.5).setScrollFactor(0).setDepth(D + 2).setVisible(false);
+      this.slotUI.push({ c: c, icon: icon, plus: plus, name: name });
+
+      let heldTimer = null, longPressed = false;
+      const idx = i;
+      const cancelHold = function () { if (heldTimer) { heldTimer.remove(false); heldTimer = null; } };
+      c.on('pointerdown', function () {
+        if (self.modal) return;
+        const m = townMain(self);
+        if (!m || m.panel) return;
+        longPressed = false;
+        cancelHold();
+        // ช่องที่มีสกิลอยู่: กดค้างเพื่อถอด | ช่องว่าง: ไม่มีอะไรให้ถอด
+        if (m.slots && m.slots[idx]) {
+          heldTimer = self.time.delayedCall(500, function () {
+            heldTimer = null;
+            longPressed = true;
+            const mm = townMain(self);
+            if (!mm || !mm.slots) return;
+            mm.slots[idx] = null;
+            try { if (mm.computeCombo) mm.computeCombo(); } catch (e) {}
+            try {
+              if (typeof mm.saveSoon === 'function') mm.saveSoon();
+              else if (typeof mm.saveGame === 'function') mm.saveGame();
+            } catch (e) {}
+            self.flash('ถอดสกิลช่อง ' + (idx + 1));
+            self.refreshSkillSlots();
+          });
+        }
+      });
+      c.on('pointerup', function () {
+        cancelHold();
+        if (longPressed) { longPressed = false; return; }
+        if (self.modal) return;
+        const m = townMain(self);
+        if (!m || m.panel) return;
+        if (m.openSkillBook) m.openSkillBook(idx);
+      });
+      c.on('pointerout', cancelHold);
+      c.on('pointerupoutside', cancelHold);
+    }
+
+    // อัลติ (ปลายโค้ด)
+    const up = pos(4);
+    const uRing = this.add.circle(up.x, up.y, R.ultiR).setStrokeStyle(3, 0xffffff, 0.22).setScrollFactor(0).setDepth(D - 1);
+    const uC = this.add.circle(up.x, up.y, R.ultiR, 0xd4af37, 0.6).setScrollFactor(0).setDepth(D).setInteractive().setVisible(false);
+    uC.setStrokeStyle(5, 0xfff3c4, 0.95);
+    const uIcon = this.add.image(up.x, up.y - 4, 'ic_aoe').setScrollFactor(0).setDepth(D + 1).setVisible(false);
+    const uText = this.add.text(up.x, up.y, 'ULTI', {
+      fontFamily: 'Mitr, sans-serif', fontSize: '12px', color: '#3a2a00', fontStyle: 'bold', align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 2).setVisible(false);
+    uC.on('pointerdown', function () {
+      if (self.modal) return;
+      self.flash('อัลติใช้ในเมืองไม่ได้ • ใส่สกิลคลาสเดียวกัน 3 ช่องเพื่อปลดล็อก');
+    });
+    this.ultiUI = { ring: uRing, c: uC, icon: uIcon, text: uText, x: up.x, y: up.y };
+
+    // แดช (ใช้ตำแหน่ง/ขนาดจากปุ่มแดชของ Main ถ้ามี)
+    const m0 = townMain(this);
+    const db = m0 && m0.dashBtn && m0.dashBtn.c;
+    if (db) {
+      const dr = db.radius || 28;
+      const dC = this.add.circle(db.x, db.y, dr, 0x2f6fcf, 0.55).setScrollFactor(0).setDepth(D).setInteractive();
+      dC.setStrokeStyle(3, 0xffffff, 0.6);
+      const dk = this.textures.exists('sk_dash') ? 'sk_dash' : 'gen_dash';
+      if (this.textures.exists(dk)) this.add.image(db.x, db.y - 6, dk).setDisplaySize(38, 38).setScrollFactor(0).setDepth(D + 1).setAlpha(0.6);
+      this.add.text(db.x, db.y + dr * 0.55, 'แดช', {
+        fontFamily: 'Mitr, sans-serif', fontSize: '11px', color: '#fff', stroke: '#000', strokeThickness: 3,
+      }).setOrigin(0.5).setScrollFactor(0).setDepth(D + 2);
+      dC.on('pointerdown', function () {
+        if (self.modal) return;
+        self.flash('ในเมืองแดชไม่ได้');
+      });
+    }
+
+    this.refreshSkillSlots();
+  }
+
+  // อัปเดตรูป/ชื่อสกิลในช่อง ให้ตรงกับสกิลที่ติดตั้งอยู่ใน Main (เรียกทุกเฟรม)
+  refreshSkillSlots() {
+    const m = townMain(this);
+    if (!m || !this.slotUI) return;
+    const slots = m.slots || [];
+    const hasDefs = (typeof SKILL_DEFS !== 'undefined');
+
+    this.slotUI.forEach(function (u, i) {
+      const sid = slots[i];
+      const def = (sid && hasDefs) ? SKILL_DEFS[sid] : null;
+      if (def) {
+        const key = 'sk_' + sid;
+        if (this.textures.exists(key)) {
+          u.icon.setTexture(key).setDisplaySize(46, 46).setPosition(u.c.x, u.c.y - 6).setVisible(true);
+        } else {
+          u.icon.setVisible(false);
+        }
+        u.name.setText(def.name || '').setVisible(true);
+        u.plus.setVisible(false);
+      } else {
+        u.icon.setVisible(false);
+        u.name.setVisible(false);
+        u.plus.setVisible(true);
+      }
+    }, this);
+
+    // ปุ่มโจมตี: รูปตามอาชีพที่ถืออยู่
+    if (this.atkUI && this.atkUI.icon) {
+      let cls = null;
+      try { cls = m.currentClass(); } catch (e) {}
+      const k = (cls && this.textures.exists('sk_basic_' + cls)) ? 'sk_basic_' + cls
+        : ((cls && this.textures.exists('atk_' + cls)) ? 'atk_' + cls
+          : (this.textures.exists('atk_sword') ? 'atk_sword' : null));
+      if (k) {
+        const R = (typeof ROV !== 'undefined') ? ROV : { ax: W - 150, ay: H - 120 };
+        this.atkUI.icon.setTexture(k).setDisplaySize(58, 58).setPosition(R.ax, R.ay - 8).setVisible(true);
+      }
+    }
+
+    // อัลติ: โชว์เมื่อใส่สกิลคลาสเดียวกันครบ 3 ช่อง (m.ultiClass)
+    const u = this.ultiUI;
+    if (u) {
+      const cls = m.ultiClass;
+      u.c.setVisible(!!cls);
+      u.ring.setVisible(!cls);
+      if (cls) {
+        const key = 'sk_ulti_' + cls;
+        if (this.textures.exists(key)) {
+          u.icon.setTexture(key).setDisplaySize(54, 54).setPosition(u.x, u.y - 4).setVisible(true);
+          u.text.setVisible(false);
+        } else {
+          u.icon.setVisible(false);
+          u.text.setVisible(true);
+        }
+      } else {
+        u.icon.setVisible(false);
+        u.text.setVisible(false);
+      }
+    }
   }
 
   // ----- จอยสติ๊กลอยแบบเดียวกับข้างนอก: แตะฝั่งซ้าย 40% ของจอแล้วลาก -----
@@ -519,6 +697,8 @@ class Town extends Phaser.Scene {
     this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.4).setScrollFactor(0).setDepth(100021).setVisible(false);
     this.input.on('pointerdown', function (p, over) {
       if (self.modal) return;
+      const m = townMain(self);
+      if (m && m.panel) return;            // เปิดหน้าสกิล/กระเป๋าอยู่: ไม่สร้างจอยสติ๊ก
       if (over && over.length) return;
       if (p.x < W * 0.4 && J.id === null) {
         J.id = p.id; J.ox = p.x; J.oy = p.y; J.dx = 0; J.dy = 0;
@@ -702,6 +882,8 @@ class Town extends Phaser.Scene {
   // กด NPC/ปุ่มคุย: ใกล้พอ = คุยเลย | ไกล = เดินไปหาแล้วคุยให้อัตโนมัติ (update() เช็กระยะ 110)
   approachNpc(n) {
     if (this.modal) return;
+    const m = townMain(this);
+    if (m && m.panel) return;
     const p = this.player;
     if (Math.hypot(n.x - p.x, n.y - (p.y + 20)) < 150) {
       this.target = null; this.pending = null;
@@ -714,7 +896,13 @@ class Town extends Phaser.Scene {
   }
 
   update(time, delta) {
+    // อัปเดตช่องสกิลทุกเฟรม (เปลี่ยนสกิลในหน้าสกิลแล้วเห็นผลทันที)
+    this.refreshSkillSlots();
+
     if (this.modal) return;
+    const mn = townMain(this);
+    if (mn && mn.panel) return;   // เปิดหน้าสกิล/กระเป๋าอยู่: หยุดเดิน
+
     const T = TOWN, dt = delta / 1000, p = this.player;
     let vx = this.joy.dx, vy = this.joy.dy;
 
@@ -827,5 +1015,8 @@ class Town extends Phaser.Scene {
     this.input.off('pointerup');
     this.input.off('pointerupoutside');
     this.joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+    this.slotUI = null;
+    this.atkUI = null;
+    this.ultiUI = null;
   }
 }
