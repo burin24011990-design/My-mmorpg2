@@ -16,6 +16,11 @@
   const MP_COST_MUL = 0.3;
   const mpc = n => Math.max(1, Math.round(n * MP_COST_MUL));
 
+
+  const pct = v => Math.round((v || 0) * 100);
+  const safePw = (def, lv, S) => { let v = NaN; try { v = Classes.power(def.id, def, lv, S); } catch (e) { v = NaN; } return isFinite(v) ? v : def.dmg; };
+  const secs = ms => (Math.round((ms || 0) / 100) / 10) + ' วิ';
+
   Classes.defineClass('rogue', { color: 0x9b6bff, name: 'โจร', label: 'โจร' });
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
@@ -32,11 +37,16 @@
     critBonus: 60, critMs: 4000,   // บัฟคริติคอล +60% นาน 4 วิ ทุกครั้งที่พุ่ง (รวมพุ่งต่อ)
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'พุ่งฟัน ' + def.hits + ' ครั้ง ครั้งละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
-      ' • หลบการโจมตี 1 ครั้ง (นาน ' + (def.dodgeMs / 1000) + ' วิ) ทุกครั้งที่พุ่ง' +
-      ' • เพิ่มคริติคอล ' + def.critBonus + '% นาน ' + (def.critMs / 1000) + ' วิ' +
-      ' • ฟันโดนแล้วพุ่งต่อได้ ' + def.recasts + ' ครั้ง แรง x' + def.recastMul + ' (≈' +
-      Math.round(Classes.power(def.id, def, lv, S) * def.hitMul * def.recastMul) + ' ต่อครั้ง) • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => {
+      const per = Math.round(Classes.power(def.id, def, lv, S) * def.hitMul);
+      return ['พุ่งฟัน ' + def.hits + ' ครั้ง ครั้งละ ≈' + per + ' (รัศมี ' + def.hitR + ')',
+        'ระยะพุ่ง ' + def.range,
+        'หลบการโจมตี 1 ครั้ง นาน ' + secs(def.dodgeMs) + ' ทุกครั้งที่พุ่ง',
+        'คริติคอล +' + def.critBonus + '% นาน ' + secs(def.critMs) + ' ทุกครั้งที่พุ่ง',
+        'ฟันโดนแล้วพุ่งต่อได้ ' + def.recasts + ' ครั้ง ภายใน ' + secs(def.recastMs) + ' (ระยะ ' + def.recastRange + ')',
+        'พุ่งต่อแรง x' + def.recastMul + ' ≈' + (per * def.recastMul) + ' ต่อครั้ง',
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • ');
+    },
   });
 
   // 2) เงาหายตัว: หายตัว dur มิลลิวินาที | ฟันครั้งแรกจะออกจากการหายตัว
@@ -49,8 +59,12 @@
     critBonus: 100, critMs: 5000, mspd: 25,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'หายตัว ' + (def.dur / 1000) + ' วิ โจมตีติดคริแน่นอนนาน ' + (def.critMs / 1000) +
-      ' วิ • ฟันครั้งแรกจะออกจากการหายตัวและลดเกราะศัตรู ' + Math.round(def.armorBreak * 100) + '% • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['หายตัว ' + secs(def.dur) + ' (มอนไกลกว่า 110 มองไม่เห็น)',
+        'ความเร็วเดิน +' + def.mspd + '% นาน ' + secs(def.dur),
+        'คริติคอล +' + def.critBonus + '% (ติดคริแน่นอน) นาน ' + secs(def.critMs),
+        'ฟันครั้งแรกออกจากการหายตัว ดาเมจ x' + def.bonus + ' (+' + pct(def.bonus - 1) + '%)',
+        'ศัตรูที่โดนฟันครั้งแรก เกราะ -' + pct(def.armorBreak) + '% นาน ' + secs(def.armorMs),
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // 3) ฟันตัดเอ็น: ฟันด้านหน้า แล้วลดความเร็วเคลื่อนที่ (slow 0.5 = เหลือครึ่งหนึ่ง) นาน slowMs
@@ -61,9 +75,11 @@
     slow: 0.5, slowMs: 3000, healPct: 0.15, mpPct: 0.2,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' ลดความเร็วเคลื่อนที่ ' + Math.round((1 - def.slow) * 100) +
-      '% นาน ' + (def.slowMs / 1000) + ' วิ • ฟื้น HP ' + Math.round(def.healPct * 100) + '% และ MP ' +
-      Math.round(def.mpPct * 100) + '% • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ฟันด้านหน้า ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' (รัศมี ' + def.range + ')',
+        'ศัตรูที่โดน ความเร็วเดิน -' + pct(1 - def.slow) + '% นาน ' + secs(def.slowMs),
+        'ฟื้น HP ' + pct(def.healPct) + '% ของสูงสุดทันที',
+        'ฟื้น MP ' + pct(def.mpPct) + '% ของสูงสุดทันที',
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // 4) ฟันดูดเลือด: ฟันตรงเป็นแนวยาว range กว้าง halfW*2 ไปทางที่เลือก | ดูดเลือด vamp ของดาเมจต่อเป้า (นับสูงสุด 5 เป้า)
@@ -76,9 +92,11 @@
     aspd: 25, aspdMs: 3000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ฟันตรงเป็นแนว ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + ' ดูดเลือด ' + Math.round(def.vamp * 100) +
-      '% ของดาเมจต่อเป้า • เพิ่มความเร็วโจมตี ' + def.aspd + '% นาน ' + (def.aspdMs / 1000) +
-      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ฟันตรงเป็นแนว ยาว ' + def.range + ' กว้าง ' + (def.halfW * 2) + ' ดาเมจ ≈' + Classes.power(def.id, def, lv, S),
+        'ลากเลือกทิศได้',
+        'ดูดเลือด ' + pct(def.vamp) + '% ของดาเมจต่อเป้า (สูงสุด 5 เป้า)',
+        'ความเร็วโจมตี +' + def.aspd + '% นาน ' + secs(def.aspdMs) + ' ทุกครั้งที่ใช้',
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // อัลติ พายุใบมีด: ฟันรัว hits ครั้งรอบตัว ห่างกัน gap มิลลิวินาที | ดูดเลือด vamp ของดาเมจที่ทำได้ | คูลดาวน์ 20 วิ
@@ -86,8 +104,17 @@
   // (พลังโจมตี +50% จากเดิม dmg 60 -> 90)
   Classes.ulti('rogue', {
     name: 'พายุใบมีด', dmg: 90, range: 140, cd: ULTI_COOLDOWN, mp: mpc(50), type: 'rult',
-    hits: 4, hitMul: 0.4, gap: 160, vamp: 0.4,
-  }, { scale: { patk: 1 } });
+    hits: 4, hitMul: 0.4, gap: 160, vamp: 0.4, noInfo: true,
+  }, {
+    scale: { patk: 1 },
+    info: (def, lv, S) => {
+      const per = Math.round(safePw(def, lv, S) * def.hitMul);
+      return ['ฟันรัวรอบตัว รัศมี ' + def.range + ' ' + def.hits + ' ครั้ง ห่างกัน ' + secs(def.gap),
+        'ครั้งละ ≈' + per + ' (รวม ≈' + (per * def.hits) + ')',
+        'ดูดเลือด ' + pct(def.vamp) + '% ของดาเมจ (สูงสุด 5 เป้าต่อครั้ง)',
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • ');
+    },
+  });
 
   if (TEST_UNLOCK) Classes.testUnlock(RG_IDS);
 
