@@ -9,7 +9,7 @@
   var FX = {
     melee:  { dist: 22, out: 90, back: 130, squash: 0.18 },   // มอนธรรมดา/Epic: พุ่งตี
     boss:   { dist: 44, out: 110, back: 180, squash: 0.22 },  // บอส: พุ่งแรง/ตัวยุบเยอะ
-    ranged: { dist: 12, out: 70, back: 140, squash: 0.14 },   // ยิงไกล: ถอยหลังตอนยิง
+    ranged: { dist: 18, out: 110, back: 200, squash: 0.35 },   // ยิงไกล: ถอยหลังตอนยิง
     slash: true,          // เส้นฟันเมื่อชน
     bossShake: true,      // กล้องสั่นเบาๆ ตอนบอสโจมตี
     cullOffscreen: true,  // ไม่เล่นเอฟเฟกต์ตัวที่อยู่นอกจอ (ประหยัดเครื่อง)
@@ -19,13 +19,13 @@
   function restTint(e) { if (e._tint) e.setTint(e._tint); else e.clearTint(); }
 
   function slashFx(scene, e, ang, boss) {
-    var g = scene.add.graphics().setDepth(46);
     var r = (boss ? 46 : 26) * baseScale(e) * (boss ? 0.7 : 1);
     var cx = e.x + Math.cos(ang) * r * 0.8, cy = e.y + Math.sin(ang) * r * 0.8;
+    var g = scene.add.graphics({ x: cx, y: cy }).setDepth(46);   // วาดรอบจุดศูนย์กลางของตัวมันเอง (กันภาพกระเด็น)
     g.lineStyle(boss ? 6 : 4, 0xffffff, 0.95);
-    g.beginPath(); g.arc(cx, cy, r, ang - 1.0, ang + 1.0, false); g.strokePath();
+    g.beginPath(); g.arc(0, 0, r, ang - 1.0, ang + 1.0, false); g.strokePath();
     g.lineStyle(boss ? 3 : 2, e.isEpic ? 0xff66ff : (boss ? 0xff5050 : 0xffd45c), 0.9);
-    g.beginPath(); g.arc(cx, cy, r * 0.8, ang - 0.8, ang + 0.8, false); g.strokePath();
+    g.beginPath(); g.arc(0, 0, r * 0.8, ang - 0.8, ang + 0.8, false); g.strokePath();
     scene.tweens.add({ targets: g, alpha: 0, scale: 1.25, duration: 220, onComplete: function () { g.destroy(); } });
   }
 
@@ -35,8 +35,17 @@
   }
 
   function muzzle(scene, e, ang) {
-    var s = scene.add.circle(e.x + Math.cos(ang) * 16 * baseScale(e), e.y + Math.sin(ang) * 16 * baseScale(e), 8, 0xffe9a0, 0.9).setDepth(46);
-    scene.tweens.add({ targets: s, scale: 2, alpha: 0, duration: 160, onComplete: function () { s.destroy(); } });
+    var b = baseScale(e), col = (e.def && e.def.color) || 0xffe9a0;
+    var mx = e.x + Math.cos(ang) * 18 * b, my = e.y + Math.sin(ang) * 18 * b;
+    var flare = scene.add.circle(mx, my, 12, 0xffffff, 0.95).setDepth(46);          // แสงวาบปากยิง
+    scene.tweens.add({ targets: flare, scale: 2.6, alpha: 0, duration: 220, onComplete: function () { flare.destroy(); } });
+    var ring = scene.add.circle(e.x, e.y, 14 * b, col, 0.25).setStrokeStyle(3, col, 1).setDepth(44);   // วงพลังรอบตัว
+    scene.tweens.add({ targets: ring, scale: 3.2, alpha: 0, duration: 380, onComplete: function () { ring.destroy(); } });
+    for (var i = -1; i <= 1; i++) {                                                  // ประกายพุ่งไปทางเป้าหมาย
+      var sp = scene.add.circle(mx, my, 4, col, 1).setDepth(46), a = ang + i * 0.35;
+      scene.tweens.add({ targets: sp, x: mx + Math.cos(a) * 38, y: my + Math.sin(a) * 38, alpha: 0, scale: 0.3, duration: 260,
+        onComplete: function () { sp.destroy(); } });
+    }
   }
 
   function play(scene, e, dist) {
@@ -50,7 +59,7 @@
     var b = baseScale(e);
     e._atkAnim = true;
 
-    e.setTint(boss ? 0xff7070 : 0xffb0b0);
+    e.setTint(e.ranged ? 0xffffaa : (boss ? 0xff7070 : 0xffb0b0));
     if (boss && far) shockwave(scene, e);                  // สกิลบอส: คลื่นกระแทก
     if (e.ranged) muzzle(scene, e, ang);
     else if (FX.slash && !far) slashFx(scene, e, ang, boss);
@@ -62,7 +71,8 @@
       if (!e.active) return;
       var off = o.v - last; last = o.v;
       e.x += dx * off; e.y += dy * off;
-      e.setScale(b * (1 + sq * o.v * (dir > 0 ? 1 : 0.6)), b * (1 - sq * o.v));   // ยืดตามทิศ ยุบแนวตั้ง
+      if (e.ranged) e.setScale(b * (1 + sq * o.v));                                   // ยิงไกล: ตัวพองขึ้นตอนยิง
+      else e.setScale(b * (1 + sq * o.v * (dir > 0 ? 1 : 0.6)), b * (1 - sq * o.v));   // ชนใกล้: ยืดตามทิศ ยุบแนวตั้ง
     }
     scene.tweens.add({
       targets: o, v: 1, duration: cfg.out, ease: 'Quad.easeOut', onUpdate: step,
