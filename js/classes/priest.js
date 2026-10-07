@@ -21,17 +21,18 @@
   // พลังแห่งแสง (pr_heal): ยิงลำแสงตรงไปด้านหน้า ยาว range กว้าง halfW*2 ดาเมจรุนแรง ลากเลือกทิศได้
   //   ศัตรูที่โดนถูกลดสถานะทุกอย่าง debuffPct (0.5 = 50%) นาน debuffMs: ความเร็วเดิน / พลังโจมตี / เกราะ
   // แสงพิพากษา (pr_smite): วางวงแสงลงพื้น ฟันต่อเนื่อง ticks ครั้ง ห่างกัน tickMs (6 x 1 วิ = 6 วิ) ดาเมจครั้งละ dmg
-  //   ศัตรูที่โดนเดินช้าลง slow (0.7 = ช้าลง 30%) นาน slowMs
+  //   ศัตรูที่อยู่ในวงถูกลด 3 อย่างนาน slowMs (ต่ออายุทุกครั้งที่ฟัน):
+  //     slow = ความเร็วเดิน (0.3 = เหลือ 30% = ลดลง 70%) | weakPct = พลังโจมตีศัตรู (0.7 = ลด 70%) | aspdPct = ความเร็วโจมตีศัตรู (0.7 = ลด 70%)
   // พรแห่งลม: mul = ความเร็วเดิน (1.35 = +35%) | aspd = ความเร็วโจมตี (1.3 = ตีไวขึ้น 30%) | dur = เวลาบัพ (ms)
   // ฮีลหมู่: atkMul = พลังโจมตีรวม (1.2 = +20%) | atkMs = เวลาบัพพลังโจมตี (ms) | regen = รีเจนเลือดต่อวินาที (0.015 = 1.5% ของเลือดสูงสุด)
   //   mpRegen = รีเจนมานาต่อวินาที (0.02 = 2% ของมานาสูงสุด) | buffDur = เวลารีเจน (ms)
-  // อัลติแสงสวรรค์: ดาเมจวงรอบตัว + ลบล้างสถานะผิดปกติ + ฟื้นเลือด healPct (0.5 = 50% ของเลือดสูงสุด) ทันที
+  // อัลติแสงสวรรค์: ดาเมจวงรอบตัว hits ครั้ง ห่างกัน gap มิลลิวินาที (ครั้งละ dmg เต็ม) + ลบล้างสถานะผิดปกติ + ฟื้นเลือด healPct (0.5 = 50% ของเลือดสูงสุด) ทันที (ครั้งเดียว)
   //   + พลังโจมตี atkMul (1.5 = +50%) นาน atkMs + ไม่โดนความเสียหายใดๆ invulnMs (2000 = 2 วิ)
   SKILL_DEFS.pr_heal      = { name: 'พลังแห่งแสง', class: 'priest', dmg: 60, range: 520, halfW: 85, cd: 4000, mp: 20, type: 'lightbeam', debuffPct: 0.5, debuffMs: 2000 };
-  SKILL_DEFS.pr_smite     = { name: 'แสงพิพากษา', class: 'priest', dmg: 20, range: 130, cd: 8000,  mp: 18, type: 'holy', ticks: 6, tickMs: 1000, slow: 0.7, slowMs: 3000 };
+  SKILL_DEFS.pr_smite     = { name: 'แสงพิพากษา', class: 'priest', dmg: 20, range: 130, cd: 8000,  mp: 18, type: 'holy', ticks: 6, tickMs: 1000, slow: 0.3, slowMs: 3000, weakPct: 0.7, aspdPct: 0.7 };
   SKILL_DEFS.pr_haste     = { name: 'พรแห่งลม',   class: 'priest', dmg: 0,  range: 320, cd: 25000, mp: 20, type: 'haste',  dur: 12000, mul: 1.35, aspd: 1.3 };
   SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5, atkMul: 1.2, atkMs: 5000, regen: 0.015, mpRegen: 0.02, buffDur: 10000 };
-  ULTI_DEFS.priest        = { name: 'แสงสวรรค์',  dmg: 140, range: 190, cd: ULTI_CD, mp: 50, type: 'pulti', healPct: 0.5, atkMul: 1.5, atkMs: 6000, invulnMs: 2000 };
+  ULTI_DEFS.priest        = { name: 'แสงสวรรค์',  dmg: 140, range: 190, cd: ULTI_CD, mp: 50, type: 'pulti', hits: 3, gap: 400, healPct: 0.5, atkMul: 1.5, atkMs: 6000, invulnMs: 2000 };
   const PRIEST_IDS = ['pr_heal', 'pr_smite', 'pr_haste', 'pr_mass_heal'];
 
   // ลงทะเบียนสกิลลากเล็งกับ aimDash.js (self = แตะเฉย ๆ ลงที่ตัวเอง ไม่ล็อกมอน)
@@ -122,6 +123,19 @@
     C.status(scene, e, 'armor', { pct: pct }, ms);
   }
 
+  // แสงพิพากษา: ลดความเร็วเดิน + พลังโจมตี + ความเร็วโจมตี ของศัตรูในวง
+  // (สถานะ 'aspd' ต้องมีรองรับใน _shared.js / monsters.js ถ้ายังไม่มีจะไม่เกิดผลแต่เกมไม่พัง)
+  function smiteDebuff(scene, e, def) {
+    const C = window.Classes;
+    if (!C || !C.status) return;
+    if (def.slow) C.status(scene, e, 'slow', { mul: def.slow }, def.slowMs);
+    if (def.weakPct) C.status(scene, e, 'weak', { pct: def.weakPct }, def.slowMs);
+    if (def.aspdPct) {
+      try { C.status(scene, e, 'aspd', { mul: 1 - def.aspdPct, pct: def.aspdPct }, def.slowMs); }
+      catch (err) { console.error('priest.js: สถานะ aspd ใช้ไม่ได้', err); }
+    }
+  }
+
   // ลบล้างสถานะผิดปกติของผู้เล่น (ดีบัพที่ติดลบในระบบสเตตัส + สถานะทั่วไป)
   function cleanse(scene) {
     scene._statMods = (scene._statMods || []).filter(m => !Object.keys(m.mods).some(k => m.mods[k] < 0));
@@ -173,7 +187,7 @@
         buff: { atkMul: def.atkMul, regen: def.regen, mpRegen: def.mpRegen, dur: def.buffDur },
       });
     },
-    // แสงพิพากษา: วงแสงต่อเนื่อง ticks ครั้ง | ทุกครั้งทำดาเมจ + ศัตรูในวงเดินช้าลง
+    // แสงพิพากษา: วงแสงต่อเนื่อง ticks ครั้ง | ทุกครั้งทำดาเมจ + ศัตรูในวงถูกลดความเร็วเดิน/พลังโจมตี/ความเร็วโจมตี
     holy(def, x, y, dmg) {
       const scene = this, ticks = def.ticks || 1, gap = def.tickMs || 1000;
       const zone = scene.add.circle(x, y, def.range, GOLD, 0.12).setStrokeStyle(2, GOLD, 0.8).setDepth(40);
@@ -183,7 +197,7 @@
           scene.tweens.add({ targets: zone, scale: 1.06, yoyo: true, duration: 120 });
           scene.enemies.getChildren().slice().forEach(e => {
             if (!e.active || Phaser.Math.Distance.Between(x, y, e.x, e.y) >= def.range) return;
-            if (window.Classes && window.Classes.status && def.slow) window.Classes.status(scene, e, 'slow', { mul: def.slow }, def.slowMs);
+            smiteDebuff(scene, e, def);
             scene.damage(e, dmg);
           });
         });
@@ -202,14 +216,20 @@
         + ' นาน ' + (def.dur / 1000) + ' วิ');
       this.events.emit('priest-team', { type: 'haste', x: p.x, y: p.y, r: def.range, dur: def.dur, mul: def.mul, aspd: def.aspd });
     },
-    // อัลติ: ดาเมจวงรอบ + ลบล้างสถานะ + ฟื้นเลือด % ทันที + โจมตีแรงขึ้น + อมตะชั่วคราว
+    // อัลติ: ดาเมจวงรอบ (หลายครั้ง) + ลบล้างสถานะ + ฟื้นเลือด % ทันที + โจมตีแรงขึ้น + อมตะชั่วคราว
     pulti(def, x, y, dmg) {
-      const p = this.player, now = this.time.now;
-      this.flash(x, y, def.range, GOLD);
-      this.time.delayedCall(120, () => this.flash(x, y, def.range * 0.6, 0xffffff));
-      this.enemies.getChildren().slice().forEach(e => {
-        if (Phaser.Math.Distance.Between(x, y, e.x, e.y) < def.range) this.damage(e, dmg);
-      });
+      const scene = this, p = this.player, now = this.time.now;
+      const hits = def.hits || 1, gap = def.gap || 400;
+      // ดาเมจ hits ครั้ง ห่างกัน gap มิลลิวินาที (ครั้งละ dmg เต็ม)
+      for (let i = 0; i < hits; i++) {
+        scene.time.delayedCall(i * gap, () => {
+          scene.flash(x, y, def.range, GOLD);
+          scene.time.delayedCall(120, () => scene.flash(x, y, def.range * 0.6, 0xffffff));
+          scene.enemies.getChildren().slice().forEach(e => {
+            if (e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) < def.range) scene.damage(e, dmg);
+          });
+        });
+      }
       if (Phaser.Math.Distance.Between(x, y, p.x, p.y) <= def.range) {
         cleanse(this);
         this.healPlayer(Math.round(this.maxHp() * def.healPct));
@@ -458,7 +478,8 @@
     }
     if (d.type === 'holy') {
       return 'วงแสงต่อเนื่อง ' + d.ticks + ' ครั้ง ครั้งละ ≈' + pw + ' นาน ' + (d.ticks * d.tickMs / 1000) + ' วิ • ศัตรูในวงเดินช้าลง ' +
-        Math.round((1 - d.slow) * 100) + '% นาน ' + (d.slowMs / 1000) + ' วิ' + cd;
+        Math.round((1 - d.slow) * 100) + '% • พลังโจมตีลด ' + Math.round((d.weakPct || 0) * 100) +
+        '% • ความเร็วโจมตีลด ' + Math.round((d.aspdPct || 0) * 100) + '% (นาน ' + (d.slowMs / 1000) + ' วิหลังออกจากวง)' + cd;
     }
     return null;
   }
