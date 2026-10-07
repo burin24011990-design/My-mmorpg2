@@ -6,6 +6,7 @@
 
 const MAP_PROP_FILES = {
   ground_new:     'assets/map/ground.png',
+  ground_rebirth: 'assets/map/ground_rebirth.png',   // พื้นเขียวเข้มของด่านจุติ
   prop_gate:      'assets/map/gate.png',
   prop_pavilion:  'assets/map/pavilion.png',
   prop_tree:      'assets/map/tree.png',
@@ -62,12 +63,12 @@ const GROUND_DECO_DEFS = [
   };
 
   // ----- พื้นที่ต่อกันไร้รอยต่อ: ตัดขอบ แล้วต่อภาพ 2x2 แบบสะท้อน -----
-  function makeSeamlessGround(scene) {
-    if (scene.textures.exists('ground_seam')) return true;
-    if (!scene.textures.exists('ground_new')) return false;
-    const src = scene.textures.get('ground_new').getSourceImage();
+  function makeSeamlessGround(scene, srcKey, outKey) {
+    if (scene.textures.exists(outKey)) return true;
+    if (!scene.textures.exists(srcKey)) return false;
+    const src = scene.textures.get(srcKey).getSourceImage();
     const I = GROUND_CROP, S = Math.min(src.width, src.height) - I * 2;
-    const cv = scene.textures.createCanvas('ground_seam', S * 2, S * 2);
+    const cv = scene.textures.createCanvas(outKey, S * 2, S * 2);
     const ctx = cv.getContext();
     const draw = (tx, ty, sx, sy) => {
       ctx.save(); ctx.translate(tx, ty); ctx.scale(sx, sy);
@@ -137,9 +138,14 @@ const GROUND_DECO_DEFS = [
     replaceOld(this);
 
     // พื้น
-    if (USE_NEW_GROUND && makeSeamlessGround(this)) {
-      const f = this.stageObjs && this.stageObjs[0];
-      if (f && f.setTexture) { f.setTexture('ground_seam'); f.setTileScale(GROUND_TILE_SCALE); }
+    if (USE_NEW_GROUND) {
+      const rebirth = !!z.reqRebirth;                       // ด่านจุติทั้งหมด (id 10-22) ใช้พื้นเขียวเข้ม
+      const src = rebirth ? 'ground_rebirth' : 'ground_new';
+      const out = rebirth ? 'ground_seam_rb' : 'ground_seam';
+      if (makeSeamlessGround(this, src, out)) {
+        const f = this.stageObjs && this.stageObjs[0];
+        if (f && f.setTexture) { f.setTexture(out); f.setTileScale(GROUND_TILE_SCALE); }
+      }
     }
 
     const rnd = mulberry32(20000 + z.id * 3571);
