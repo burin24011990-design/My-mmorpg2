@@ -63,7 +63,7 @@ window.addEventListener('error', function (e) {
 </script>
 <div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
 
-<!-- ===== หน้าเริ่มเกม / ล็อกอิน ===== -->
+<!-- ===== หน้าเริ่มเกม / ล็อกอิน (ต้องล็อกอิน Google เท่านั้น) ===== -->
 <div id="login-screen">
   <div id="embers"></div>
   <div class="ls-card">
@@ -87,9 +87,7 @@ window.addEventListener('error', function (e) {
           </svg>
           เข้าสู่ระบบด้วย Google
         </button>
-        <div class="ls-or"><span>หรือ</span></div>
-        <button id="btn-guest" class="btn btn-ghost">เล่นแบบผู้เยี่ยม</button>
-        <p id="login-note" class="ls-note">ล็อกอินเพื่อเก็บความคืบหน้าไว้บนคลาวด์ เปลี่ยนเครื่องหรือล้างเบราว์เซอร์ก็ไม่หาย</p>
+        <p id="login-note" class="ls-note">ต้องเข้าสู่ระบบด้วย Google เพื่อเล่น ความคืบหน้าและชื่อตัวละครจะถูกเก็บไว้บนคลาวด์ เปลี่ยนเครื่องหรือล้างเบราว์เซอร์ก็ไม่หาย</p>
       </div>
 
       <div id="v-ready" class="ls-view" hidden>
@@ -97,7 +95,7 @@ window.addEventListener('error', function (e) {
           <img id="u-photo" alt="" referrerpolicy="no-referrer">
           <div><b id="u-name"></b><small id="u-mail"></small></div>
         </div>
-        <label class="ls-label" for="in-name">ชื่อตัวละคร (ใช้ตอนสร้างตัวละครใหม่)</label>
+        <label class="ls-label" for="in-name">ชื่อตัวละคร (ตั้งได้ครั้งเดียว เปลี่ยนไม่ได้)</label>
         <input id="in-name" type="text" maxlength="15" placeholder="ไม่เกิน 15 ตัวอักษร" autocomplete="off">
         <button id="btn-start" class="btn btn-gold">▶ เริ่มเล่น</button>
         <p id="cloud-state" class="ls-cloud"></p>
