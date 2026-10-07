@@ -95,8 +95,13 @@
     hero_priest: 'assets/hero_priest.png'
   };
 
+  // คลาสอาวุธ -> ท่าโจมตี (ใช้ร่วมกันทั้งตัวเองและผู้เล่นอื่น)
+  var ATTACK_BY_CLASS = { sword: 'sword', rogue: 'sword', mage: 'staff', priest: 'staff', archer: 'bow' };
+  var HAS_SKILL_ANIM = { sword: true, rogue: true };
+
   window.HeroAnims = {
     KEY: 'hero',
+    SCALE: 0.75,
 
     // แปลงชื่อคลาส -> สกิน  (ปรับ regex ให้ตรงกับชื่อคลาสในเกมคุณได้)
     skinOf: function (cls) {
@@ -107,6 +112,13 @@
       if (/mage|wizard|sorcer|magic|คทา|เมจ/.test(cls)) return 'hero_mage';
       if (/priest|monk|cleric|healer|พระ|นักบวช/.test(cls)) return 'hero_priest';
       return 'hero';
+    },
+
+    // ท่าโจมตีตามคลาส (isSkill=true และคลาสมีท่า skill -> 'skill')
+    attackOf: function (cls, isSkill) {
+      cls = String(cls || 'sword');
+      if (isSkill && HAS_SKILL_ANIM[cls]) return 'skill';
+      return ATTACK_BY_CLASS[cls] || 'sword';
     },
 
     preload: function (scene) {
@@ -140,10 +152,10 @@
 
     // HeroAnims.play(sprite, 'walk', 'left', skin?)
     // skin: 'hero_sword' | 'hero_rogue' | 'hero_archer' | 'hero_mage' | 'hero_priest' | 'hero'
-    // ถ้าไม่ส่ง skin จะใช้ sprite.heroSkin
+    // ถ้าไม่ส่ง skin จะใช้ sprite.heroSkin  (ผู้เล่นอื่นต้องตั้ง sprite.heroSkin ไว้ ไม่งั้นจะได้ชุดเก่า 'hero')
     // 'sword' = ตีปกติ, 'skill' = ท่าสกิลหมุน/แทง (ชุดที่ 2 ของแต่ละคลาส), 'skill2' = เฉพาะพระ
     play: function (sprite, action, dir, skin) {
-      if (!sprite || !sprite.scene || !sprite.scene.textures.exists('hero')) return;
+      if (!sprite || !sprite.scene || !sprite.anims || !sprite.scene.textures.exists('hero')) return;
       if (!skin) skin = sprite.heroSkin;
       if (!skin) {
         // ตัวของผู้เล่นเอง -> เลือกสกินตามอาวุธที่สวม (Main.currentClass())
