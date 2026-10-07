@@ -631,9 +631,9 @@
 
     // ================= ตั๋ว (ซื้อด้วยเงินจริง เก็บฝั่งเซิร์ฟเวอร์) =================
     function buyTicketReal() {
-      if (!BUY_TICKET_URL) { m.toastMsg('ยังไม่เปิดขายตั๋ว'); return; }
-      window.open(BUY_TICKET_URL, '_blank');
-    }
+  if (!window.CashShop) { m.toastMsg('ยังไม่เปิดขายตั๋ว'); return; }
+  window.CashShop.open(function () { if (tab === 'ticket') show('ticket'); });
+}
     function showTicket() {
       msg('กำลังโหลด...');
       call('getWallet').then(function (w) {
