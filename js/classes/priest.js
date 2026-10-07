@@ -28,10 +28,10 @@
   //   mpRegen = รีเจนมานาต่อวินาที (0.02 = 2% ของมานาสูงสุด) | buffDur = เวลารีเจน (ms)
   // อัลติแสงสวรรค์: ดาเมจวงรอบตัว hits ครั้ง ห่างกัน gap มิลลิวินาที (ครั้งละ dmg เต็ม) + ลบล้างสถานะผิดปกติ + ฟื้นเลือด healPct (0.5 = 50% ของเลือดสูงสุด) ทันที (ครั้งเดียว)
   //   + พลังโจมตี atkMul (1.5 = +50%) นาน atkMs + ไม่โดนความเสียหายใดๆ invulnMs (2000 = 2 วิ)
-  SKILL_DEFS.pr_heal      = { name: 'พลังแห่งแสง', class: 'priest', dmg: 60, range: 520, halfW: 85, cd: 4000, mp: 20, type: 'lightbeam', debuffPct: 0.5, debuffMs: 2000 };
-  SKILL_DEFS.pr_smite     = { name: 'แสงพิพากษา', class: 'priest', dmg: 20, range: 130, cd: 8000,  mp: 18, type: 'holy', ticks: 6, tickMs: 1000, slow: 0.3, slowMs: 3000, weakPct: 0.7, aspdPct: 0.7 };
-  SKILL_DEFS.pr_haste     = { name: 'พรแห่งลม',   class: 'priest', dmg: 0,  range: 320, cd: 25000, mp: 20, type: 'haste',  dur: 12000, mul: 1.35, aspd: 1.3 };
-  SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5, atkMul: 1.2, atkMs: 5000, regen: 0.015, mpRegen: 0.02, buffDur: 10000 };
+  SKILL_DEFS.pr_heal      = { name: 'พลังแห่งแสง', class: 'priest', noInfo: true, dmg: 60, range: 520, halfW: 85, cd: 4000, mp: 20, type: 'lightbeam', debuffPct: 0.5, debuffMs: 2000 };
+  SKILL_DEFS.pr_smite     = { name: 'แสงพิพากษา', class: 'priest', noInfo: true, dmg: 20, range: 130, cd: 8000,  mp: 18, type: 'holy', ticks: 6, tickMs: 1000, slow: 0.3, slowMs: 3000, weakPct: 0.7, aspdPct: 0.7 };
+  SKILL_DEFS.pr_haste     = { name: 'พรแห่งลม',   class: 'priest', noInfo: true, dmg: 0,  range: 320, cd: 25000, mp: 20, type: 'haste',  dur: 12000, mul: 1.35, aspd: 1.3 };
+  SKILL_DEFS.pr_mass_heal = { name: 'ฮีลหมู่',      class: 'priest', noInfo: true, dmg: 16, range: 150, cd: 8000,  mp: 28, type: 'healaoe', heal: 2.5, atkMul: 1.2, atkMs: 5000, regen: 0.015, mpRegen: 0.02, buffDur: 10000 };
   ULTI_DEFS.priest        = { name: 'แสงสวรรค์',  dmg: 140, range: 190, cd: ULTI_CD, mp: 50, type: 'pulti', hits: 3, gap: 400, healPct: 0.5, atkMul: 1.5, atkMs: 6000, invulnMs: 2000 };
   const PRIEST_IDS = ['pr_heal', 'pr_smite', 'pr_haste', 'pr_mass_heal'];
 
@@ -457,37 +457,65 @@
     return r;
   };
 
-  // ---------- ข้อความอธิบายสกิลในหน้าต่างสกิล ----------
+  // ---------- ข้อความอธิบายสกิลในหน้าต่างสกิล (ละเอียดทุกค่า) ----------
+  // แต่ละท่อนที่คั่นด้วย ' • ' จะแสดงเป็น 1 บรรทัดในหน้าต่างสกิล
+  const pct = v => Math.round((v || 0) * 100);
+  const sec = ms => (Math.round((ms || 0) / 100) / 10) + ' วิ';
+  function baseAtk() {
+    const sc = window.__mainScene;
+    if (!sc) return 0;
+    return sc.matk != null ? sc.matk : (sc.atk || 0);
+  }
   function infoFor(sid, lv) {
-    const d = SKILL_DEFS[sid], sc = window.__mainScene;
-    const pw = Math.round(d.dmg * skillLvMul(lv) + (sc && sc.atk ? sc.atk : 0));
-    const cd = ' • คูลดาวน์ ' + (d.cd / 1000).toFixed(1) + 's';
+    const d = SKILL_DEFS[sid];
+    const pw = Math.round(d.dmg * skillLvMul(lv) + baseAtk());
     if (d.type === 'lightbeam') {
-      return 'ยิงลำแสงตรงยาวและกว้าง ดาเมจ ≈' + pw + ' ศัตรูที่โดนลดความเร็ว/พลังโจมตี/เกราะ ' + Math.round(d.debuffPct * 100) +
-        '% นาน ' + (d.debuffMs / 1000) + ' วิ • ลากเลือกทิศได้' + cd;
-    }
-    if (d.type === 'healaoe') {
-      return 'ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP • พลังโจมตี +' + Math.round(((d.atkMul || 1) - 1) * 100)
-        + '% นาน ' + ((d.atkMs || d.buffDur || 0) / 1000) + ' วิ • รีเจนเลือด ' + ((d.regen || 0) * 100).toFixed(1) + '%/วิ และมานา ' +
-        ((d.mpRegen || 0) * 100).toFixed(1) + '%/วิ นาน ' + ((d.buffDur || 0) / 1000) + ' วิ' + cd;
-    }
-    if (d.type === 'haste') {
-      return 'ความเร็ว +' + Math.round((d.mul - 1) * 100) + '%'
-        + (d.aspd > 1 ? ' • โจมตีไว +' + Math.round((d.aspd - 1) * 100) + '%' : '')
-        + ' นาน ' + (d.dur / 1000) + ' วิ' + cd;
+      return ['ดาเมจ ≈' + pw,
+        'ลำแสงตรง ยาว ' + d.range + ' กว้าง ' + (d.halfW * 2) + ' • ลากเลือกทิศได้',
+        'ศัตรูที่โดน นาน ' + sec(d.debuffMs) + ':',
+        'ความเร็วเดิน -' + pct(d.debuffPct) + '%',
+        'พลังโจมตี -' + pct(d.debuffPct) + '%',
+        'เกราะ -' + pct(d.debuffPct) + '%'].join(' • ');
     }
     if (d.type === 'holy') {
-      return 'วงแสงต่อเนื่อง ' + d.ticks + ' ครั้ง ครั้งละ ≈' + pw + ' นาน ' + (d.ticks * d.tickMs / 1000) + ' วิ • ศัตรูในวงเดินช้าลง ' +
-        Math.round((1 - d.slow) * 100) + '% • พลังโจมตีลด ' + Math.round((d.weakPct || 0) * 100) +
-        '% • ความเร็วโจมตีลด ' + Math.round((d.aspdPct || 0) * 100) + '% (นาน ' + (d.slowMs / 1000) + ' วิหลังออกจากวง)' + cd;
+      return ['ดาเมจ ≈' + pw + ' ต่อครั้ง • ฟัน ' + d.ticks + ' ครั้ง ห่างกัน ' + sec(d.tickMs) +
+        ' (รวม ≈' + (pw * d.ticks) + ' ใน ' + sec(d.ticks * d.tickMs) + ')',
+        'วงแสงรัศมี ' + d.range,
+        'ศัตรูในวง: ความเร็วเดิน -' + pct(1 - d.slow) + '%',
+        'พลังโจมตี -' + pct(d.weakPct) + '%',
+        'ความเร็วโจมตี -' + pct(d.aspdPct) + '%',
+        'ผลลดสถานะอยู่ต่อ ' + sec(d.slowMs) + ' หลังออกจากวง'].join(' • ');
+    }
+    if (d.type === 'haste') {
+      return ['ความเร็วเดิน +' + pct(d.mul - 1) + '% นาน ' + sec(d.dur),
+        'ความเร็วโจมตี +' + pct((d.aspd || 1) - 1) + '% นาน ' + sec(d.dur)].join(' • ');
+    }
+    if (d.type === 'healaoe') {
+      return ['ฟื้นฟู ' + Math.round(pw * d.heal) + ' HP ทันที • วงฮีลรัศมี ' + d.range,
+        'พลังโจมตี +' + pct((d.atkMul || 1) - 1) + '% นาน ' + sec(d.atkMs || d.buffDur),
+        'รีเจนเลือด ' + ((d.regen || 0) * 100).toFixed(1) + '%/วิ นาน ' + sec(d.buffDur),
+        'รีเจนมานา ' + ((d.mpRegen || 0) * 100).toFixed(1) + '%/วิ นาน ' + sec(d.buffDur)].join(' • ');
     }
     return null;
+  }
+  function infoUlti() {
+    const d = ULTI_DEFS.priest;
+    const per = Math.round(d.dmg + baseAtk());
+    return ['ดาเมจวงรอบตัวรัศมี ' + d.range + ' ครั้งละ ≈' + per,
+      d.hits + ' ครั้ง ห่างกัน ' + sec(d.gap) + ' (รวม ≈' + (per * d.hits) + ')',
+      'ลบล้างสถานะผิดปกติ',
+      'ฟื้นเลือด ' + pct(d.healPct) + '% ของเลือดสูงสุด',
+      'พลังโจมตี +' + pct(d.atkMul - 1) + '% นาน ' + sec(d.atkMs),
+      'อมตะ ไม่โดนดาเมจ ' + sec(d.invulnMs)].join(' • ');
   }
   function installHook() {
     if (!window.PixelPanels || !PixelPanels.addDataHook) return false;
     PixelPanels.addDataHook(function (d) {
       const fix = list => (list || []).map(s => {
         const def = s.sid && SKILL_DEFS[s.sid];
+        if ((!def || def.class !== 'priest') && s.name === ULTI_DEFS.priest.name) {
+          return Object.assign({}, s, { info: infoUlti() });
+        }
         if (!def || def.class !== 'priest') return s;
         const t = infoFor(s.sid, typeof s.lv === 'number' ? s.lv : 1);
         return t ? Object.assign({}, s, { info: t }) : s;
