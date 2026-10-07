@@ -28,6 +28,15 @@
   const ULTI_COOLDOWN = (typeof window.ULTI_CD === 'number') ? window.ULTI_CD
     : (typeof ULTI_CD === 'number' ? ULTI_CD : 60000);
 
+  // ตัวช่วยเขียนข้อความอธิบายสกิล (แต่ละท่อนที่คั่นด้วย ' • ' = 1 บรรทัดในหน้าต่างสกิล)
+  const pct = v => Math.round((v || 0) * 100);
+  const secs = ms => (Math.round((ms || 0) / 100) / 10) + ' วิ';
+  const pw = (def, lv, S) => {
+    let v = NaN;
+    try { v = Classes.power(def.id, def, lv, S); } catch (e) { v = NaN; }
+    return isFinite(v) ? v : def.dmg;
+  };
+
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('archer', { name: 'โจมตี', dmg: 9, range: 360, cd: 650, type: 'proj', class: 'archer' });
 
@@ -40,10 +49,17 @@
     selfBuffPct: 0.12, selfBuffPerLv: 0.01, selfBuffMs: 3000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ยิง ' + def.shots + ' ดอก ดอกละ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.hitMul) +
-      ' ศัตรูที่โดนตีเบาลง ' + Math.round(def.weakPct * 100) + '% นาน ' + (def.weakMs / 1000) + ' วิ' +
-      ' • ใช้แล้วเพิ่มดาเมจและความเร็วโจมตี ' + Math.round((def.selfBuffPct + (lv - 1) * def.selfBuffPerLv) * 100) + '% นาน ' + (def.selfBuffMs / 1000) +
-      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => {
+      const per = Math.round(pw(def, lv, S) * def.hitMul);
+      const self = pct(def.selfBuffPct + (lv - 1) * def.selfBuffPerLv);
+      return ['ยิง ' + def.shots + ' ดอก ห่างกัน ' + secs(def.gap) + ' ดอกละ ≈' + per + ' (รวม ≈' + (per * def.shots) + ')',
+        'ระยะ ' + def.range + ' กว้าง ' + (def.hw * 2),
+        'ศัตรูที่โดน ตีเบาลง ' + pct(def.weakPct) + '% นาน ' + secs(def.weakMs),
+        'ตัวเอง: ดาเมจ +' + self + '% และความเร็วโจมตี +' + self + '% นาน ' + secs(def.selfBuffMs),
+        '(บัพตัวเอง ' + pct(def.selfBuffPct) + '% + ' + pct(def.selfBuffPerLv) + '% ต่อเลเวลสกิล)',
+        'ลากเลือกทิศได้',
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • ');
+    },
   });
 
   // สกิล 2: ธนูตรึงขา — ยิง 1 ดอก ล็อกขาศัตรู rootMs มิลลิวินาที (ศัตรูเดินไม่ได้ แต่ยังตีได้ถ้าอยู่ในระยะ)
@@ -54,9 +70,12 @@
     critBonus: 50, buffMs: 3000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ยิง 1 ดอก ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' ล็อกขาศัตรู ' + (def.rootMs / 1000) + ' วิ • ใช้แล้วเจาะเกราะ 100% และเพิ่มคริ ' + def.critBonus + '% นาน ' + (def.buffMs / 1000) +
-      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ยิง 1 ดอก ดาเมจ ≈' + pw(def, lv, S) + ' เจาะเกราะ 100% ระยะ ' + def.range,
+      'ล็อกขาศัตรู ' + secs(def.rootMs) + ' (บอส ' + secs(def.rootMs * BOSS_ROOT_MUL) + ')',
+      'ตัวเอง นาน ' + secs(def.buffMs) + ': เจาะเกราะ 100% ทุกการโจมตี',
+      'คริติคอล +' + def.critBonus + '% นาน ' + secs(def.buffMs),
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 3: ธนูเจาะเกราะ — ดาเมจรุนแรงมาก เจาะเกราะ 100% | ลำกว้าง hw*2 ยาว range ทะลุโดนทุกตัวในแนว (เดิม ดาเมจ 40 / hw 16)
@@ -65,8 +84,11 @@
     dmg: 60 * DMG_MUL, range: 650, hw: 70, cd: 6000, mp: mpc(22),
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ยิงลำใหญ่ทะลุเป็นแนวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' ต่อตัว เจาะเกราะ 100% ระยะ ' + def.range + ' • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ยิงลำใหญ่ทะลุเป็นแนว ยาว ' + def.range + ' กว้าง ' + (def.hw * 2),
+      'ดาเมจ ≈' + pw(def, lv, S) + ' ต่อตัว (โดนทุกตัวในแนว)',
+      'เจาะเกราะ 100%',
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 4: ฝนลูกศร — วางโซนรัศมี range ที่จุดลากเล็ง ลงดาเมจ ticks ครั้ง ห่างกัน tickMs | ดาเมจต่อครั้ง = tickMul ของดาเมจ
@@ -77,16 +99,28 @@
     ticks: 3, tickMs: 700, tickMul: 0.6, hpPctTick: 0.08, mpPctTick: 0.1,
   }, {
     scale: { patk: 1 }, ground: { cast: 340 },
-    info: (def, lv, S) => 'วางฝนลูกศรลงพื้นที่ ดาเมจ ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.tickMul) +
-      ' x ' + def.ticks + ' ครั้ง ห่างกัน ' + (def.tickMs / 1000) + ' วิ • ฟื้น HP ' + Math.round(def.hpPctTick * 100) + '% และ MP ' +
-      Math.round(def.mpPctTick * 100) + '% ทุกครั้ง • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => {
+      const per = Math.round(pw(def, lv, S) * def.tickMul);
+      return ['วางฝนลูกศรลงพื้น รัศมี ' + def.range,
+        'ดาเมจครั้งละ ≈' + per + ' x ' + def.ticks + ' ครั้ง ห่างกัน ' + secs(def.tickMs) + ' (รวม ≈' + (per * def.ticks) + ')',
+        'ฟื้น HP ' + pct(def.hpPctTick) + '% ของสูงสุด ทุกครั้ง (รวม ' + pct(def.hpPctTick * def.ticks) + '%)',
+        'ฟื้น MP ' + pct(def.mpPctTick) + '% ของสูงสุด ทุกครั้ง (รวม ' + pct(def.mpPctTick * def.ticks) + '%)',
+        'ลากเล็งวางได้',
+        'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • ');
+    },
   });
 
   // อัลติ ธนูทลวงฟ้า — ชาร์จ chargeMs มิลลิวินาที แล้วยิงแนวยาว range กว้าง halfW*2 ทะลุทุกตัว ยิง shots ทีห่างกัน shotGap (เดิม ดาเมจ 120 ยิง 1 ที)
   Classes.ulti('archer', {
     name: 'ธนูทลวงฟ้า', dmg: 150 * DMG_MUL, range: 650, halfW: 95, cd: ULTI_COOLDOWN, mp: mpc(50), type: 'ault', chargeMs: 800,
-    shots: 2, shotGap: 350,
-  }, { scale: { patk: 1 } });
+    shots: 2, shotGap: 350, noInfo: true,
+  }, {
+    scale: { patk: 1 },
+    info: (def, lv, S) => ['ชาร์จ ' + secs(def.chargeMs) + (CHARGE_ROOTS_PLAYER ? ' (ขณะชาร์จเดินไม่ได้)' : '') + ' แล้วยิงลำแสง ยาว ' + def.range + ' กว้าง ' + (def.halfW * 2) + ' ทะลุทุกตัว',
+      def.shots + ' ที ห่างกัน ' + secs(def.shotGap) + ' ทีละ ≈' + pw(def, lv, S) + ' (รวม ≈' + (pw(def, lv, S) * def.shots) + ')',
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
+  });
 
   if (TEST_UNLOCK) Classes.testUnlock(AR_IDS);
 
