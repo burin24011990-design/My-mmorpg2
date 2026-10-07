@@ -4,11 +4,20 @@
 // รองรับไอเทม "หนังสือสกิล" (kind: 'skillbook') ซ้อนได้ กดใช้เพื่อเรียนรู้/อัปสกิล
 // รองรับ "หินตีบวก" (kind: 'stone'), ตีบวก และย่อยอุปกรณ์ (ดู enhance.js)
 // ใหม่: ปุ่ม "ย่อยทั้งหมดตามสี" (ย่อยสีขาวทั้งหมด / สีฟ้าทั้งหมด ...) กด 2 ครั้งเพื่อยืนยัน
+// ใหม่ (v29): ย่อหน้าต่างกระเป๋าลงครึ่งนึง (BAG_SCALE) และ "ไม่หยุดเกม" ตอนเปิดกระเป๋า -> บอทสู้ต่อได้
+//             กระเป๋าที่เปิดค้างไว้จะรีเฟรชเองเมื่อของ/ทองเปลี่ยน (เช่น บอทเก็บของ)
 // ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
   // ตัวอย่าง: icon_sword: 'assets/icons/sword.png'
   const ICON_FILES = {};
+
+  // ---------- ตั้งค่าขนาด/ตำแหน่งหน้าต่างกระเป๋า (ปรับตรงนี้) ----------
+  const BAG_SCALE = 0.5;     // ขนาดหน้าต่าง: 1 = เต็มเหมือนเดิม | 0.5 = ครึ่งนึง | ถ้าตัวหนังสือเล็กไปลอง 0.6 - 0.7
+  const BAG_ANCHOR_X = 0.74; // ตำแหน่งกึ่งกลางหน้าต่างแนวนอน (0 = ซ้ายสุด, 0.5 = กลางจอ, 1 = ขวาสุด) | 0.74 = ชิดขวา เห็นตัวละครตรงกลางจอ
+  const BAG_ANCHOR_Y = 0.5;  // ตำแหน่งกึ่งกลางหน้าต่างแนวตั้ง
+  const BAG_BASE_W = 0.96;   // ขนาด "ก่อนย่อ" ของหน้าต่าง เทียบกับจอ (ขนาดเดิมของกระเป๋าเกือบเต็มจอ)
+  const BAG_BASE_H = 0.94;
 
   // ---------- ตั้งค่า "ย่อยทั้งหมดตามสี" (ปรับตรงนี้) ----------
   // สีที่ "ไม่ให้มีปุ่มย่อยทั้งหมด" (ใช้ id ของสีใน TIER_DEFS ถ้า id ไม่ตรงกับที่ใส่ไว้ ปุ่มของสีนั้นจะยังโชว์ แต่ยังต้องกดยืนยัน 2 ครั้ง)
@@ -21,6 +30,7 @@
   const state = { tab: 'bag', page: 0, sel: null, msg: '', qty: 1, multi: false, ticks: new Set(), confirmTier: null };
   let root = null;
   let scene = null;
+  let lastSig = '';
 
   const hex = (c) => '#' + c.toString(16).padStart(6, '0');
 
@@ -48,6 +58,29 @@
     } catch (e) { return ''; }
   }
 
+  // ย่อ/จัดตำแหน่งหน้าต่างกระเป๋า: วางหน้าต่างขนาดเดิม (เกือบเต็มจอ) แล้วย่อด้วย scale
+  // ใช้ !important เพื่อทับ CSS เดิมของ .win โดยไม่ต้องแก้ไฟล์ css
+  function applyScale() {
+    if (!root) return;
+    const layer = document.getElementById('ui-layer');
+    const vv = window.visualViewport;
+    const lw = (layer && (parseFloat(layer.style.width) || layer.clientWidth)) || (vv ? vv.width : window.innerWidth);
+    const lh = (layer && (parseFloat(layer.style.height) || layer.clientHeight)) || (vv ? vv.height : window.innerHeight);
+    const set = (k, v) => root.style.setProperty(k, v, 'important');
+    set('position', 'absolute');
+    set('left', (BAG_ANCHOR_X * 100) + '%');
+    set('top', (BAG_ANCHOR_Y * 100) + '%');
+    set('right', 'auto');
+    set('bottom', 'auto');
+    set('margin', '0');
+    set('width', Math.round(lw * BAG_BASE_W) + 'px');
+    set('height', Math.round(lh * BAG_BASE_H) + 'px');
+    set('max-width', 'none');
+    set('max-height', 'none');
+    set('transform', 'translate(-50%,-50%) scale(' + BAG_SCALE + ')');
+    set('transform-origin', 'center center');
+  }
+
   // ปรับเลเยอร์ UI ให้เท่าพื้นที่ที่มองเห็นจริง (ไม่รวมแถบที่อยู่/แถบสถานะของเบราว์เซอร์)
   function fit() {
     const layer = document.getElementById('ui-layer');
@@ -59,6 +92,7 @@
     layer.style.top = (vv ? vv.offsetTop : 0) + 'px';
     layer.style.width = (vv ? vv.width : window.innerWidth) + 'px';
     layer.style.height = (vv ? vv.height : window.innerHeight) + 'px';
+    applyScale();
   }
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', () => setTimeout(fit, 200));
@@ -77,6 +111,10 @@
     root.id = 'bag-win';
     layer.appendChild(root);
     root.addEventListener('click', onClick);
+    // กันการแตะในหน้าต่างกระเป๋าทะลุไปโดนตัวเกม (ตอนนี้หน้าต่างเล็กลง ส่วนที่เหลือของจอแตะเล่นเกมได้)
+    ['pointerdown', 'touchstart', 'touchmove', 'mousedown'].forEach((evn) => {
+      root.addEventListener(evn, (e) => { e.stopPropagation(); }, { passive: true });
+    });
     // ช่องพิมพ์จำนวน: อัปเดตค่าโดยไม่วาดใหม่ (กันคีย์บอร์ดหลุด) และกันปุ่มลัดของเกมทำงานตอนพิมพ์
     const onType = (e) => {
       if (!e.target.classList || !e.target.classList.contains('qty-in')) return;
@@ -112,9 +150,16 @@
         + '#bag-win .cell .st{position:absolute;top:0;right:1px;font-size:6px;line-height:1;color:#8fd0ff;text-shadow:0 0 2px #000,0 0 2px #000}';
       document.head.appendChild(st);
     }
+    applyScale();
   }
 
-  function hide() { if (root) root.style.display = 'none'; state.sel = null; state.confirmTier = null; }
+  function hide() {
+    if (root) root.style.display = 'none';
+    state.sel = null;
+    state.confirmTier = null;
+    window.BAG_OPEN = false;
+    if (scene) scene.bagOpen = false;
+  }
 
   // ---------- จำนวนที่เลือก (ใช้กับ เปิดกล่อง / ย่อยกล่อง / รวมดาว) ----------
   function selBagItem() {
@@ -393,10 +438,19 @@
     return h + '</div>';
   }
 
+  // ลายเซ็นของกระเป๋า (จำนวนช่องที่มีของ + จำนวนรวม + ทอง) ไว้เช็กว่าต้องรีเฟรชหน้าต่างหรือไม่
+  function bagSig() {
+    const s = scene;
+    let n = 0, c = 0;
+    s.bag.forEach((it) => { if (it) { n++; c += (it.count || 1); } });
+    return n + '|' + c + '|' + Math.floor(s.stats.gold);
+  }
+
   function render() {
     const s = scene;
     const used = s.bag.filter(Boolean).length;
     clampQty();
+    lastSig = bagSig();
     root.innerHTML =
       '<div class="win-head"><span class="win-title">กระเป๋า</span><button class="win-x" data-act="close">✕</button></div>'
       + '<div class="win-tabs">'
@@ -412,6 +466,16 @@
       + '<span class="gold">🪙 ' + Number(s.stats.gold).toLocaleString() + '</span>'
       + '<span class="msg" id="bw-msg">' + (state.msg || '') + '</span></div>';
   }
+
+  // เปิดกระเป๋าค้างไว้ตอนบอทเก็บของ/ดื่มยา: รีเฟรชเองเมื่อของหรือทองเปลี่ยน (ไม่รีเฟรชตอนกำลังพิมพ์จำนวน)
+  setInterval(function () {
+    if (!root || !scene || root.style.display === 'none') return;
+    const a = document.activeElement;
+    if (a && a.classList && a.classList.contains('qty-in')) return;
+    try {
+      if (bagSig() !== lastSig) render();
+    } catch (e) { /* ignore */ }
+  }, 800);
 
   // ---------- การกดปุ่ม ----------
   function onClick(e) {
@@ -509,8 +573,12 @@
   }
 
   // ---------- เชื่อมกับเกมเดิม ----------
+  const origClosePanel = Main.prototype.closePanel;
+
   Main.prototype.openInventory = function (tab, page) {
     scene = this;
+    // ปิดหน้าต่างแบบ Phaser อื่นที่เปิดค้างอยู่ก่อน (ถ้ามี)
+    if (this.panel && origClosePanel) origClosePanel.call(this);
     ensureRoot();
     fit();
     state.tab = tab || state.tab || 'bag';
@@ -521,10 +589,12 @@
     this.invPage = state.page;
     render();
     root.style.display = 'flex';
-    this.panel = []; // ให้โค้ดเดิมรู้ว่ามีหน้าต่างเปิดอยู่
+    // เดิมตรงนี้ตั้ง this.panel = [] เพื่อบอกโค้ดเกมว่า "มีหน้าต่างเปิดอยู่" ซึ่งทำให้เกม/บอทหยุดทำงาน
+    // ตอนนี้ไม่ตั้งแล้ว เกมและบอทจึงทำงานต่อได้ตอนเปิดกระเป๋า (ใช้แฟลก bagOpen / window.BAG_OPEN แทน)
+    this.bagOpen = true;
+    window.BAG_OPEN = true;
   };
 
-  const origClosePanel = Main.prototype.closePanel;
   Main.prototype.closePanel = function () {
     hide();
     if (origClosePanel) return origClosePanel.apply(this, arguments);
