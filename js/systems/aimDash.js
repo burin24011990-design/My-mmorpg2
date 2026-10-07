@@ -1,5 +1,6 @@
 // ===== ลากเล็งสกิลหมู่ระยะไกล + ลากเลือกทิศสกิลพุ่ง/ฟันตรง/แดช (สไตล์ RoV) + ปุ่มยกเลิก ✕ + บอทล็อกเป้ายิงสกิลหมู่ =====
 // โหลดหลัง skillLevelPatch.js และก่อน main.js
+// v+: ส่งจุดตกของสกิลหมู่ (gx, gy) ไปกับอีเวนต์ 'skill' เพื่อให้ผู้เล่นอื่นเห็นเอฟเฟกต์ตกที่จุดเดียวกับเรา
 (function () {
   const P = Main.prototype;
 
@@ -53,14 +54,30 @@
     return t ? clampTo(p, t, cfg.cast) : { x: p.x, y: p.y };
   };
 
-  P.queueGround = function (def, cfg, gp) {
+  // คำนวณจุดตกสุดท้าย (ใช้ทั้งตอนส่งให้ผู้เล่นอื่น และตอนเก็บเข้าคิวเอฟเฟกต์ของเรา ให้ตรงกันเสมอ)
+  P.groundPoint = function (cfg, gp) {
     const p = this.player;
     const pt = gp ? clampTo(p, gp, cfg.cast) : this.groundDefault(cfg);
     pt.x = Phaser.Math.Clamp(pt.x, 0, WORLD_W);
     pt.y = Phaser.Math.Clamp(pt.y, 0, WORLD_H);
+    return pt;
+  };
+
+  P.queueGround = function (def, cfg, gp, pt) {
+    pt = pt || this.groundPoint(cfg, gp);
     const now = this.time.now;
     this._groundQ = (this._groundQ || []).filter(e => now - e.t < 1500);
     this._groundQ.push({ def: def, x: pt.x, y: pt.y, t: now });
+  };
+
+  // ตอนส่งอีเวนต์ 'skill' ให้ผู้เล่นอื่น: ถ้ากำลังใช้สกิลหมู่ แนบจุดตก gx, gy ไปด้วย
+  const _sendNet = P.sendNet;
+  P.sendNet = function (ev, data) {
+    const g = this._netGround;
+    if (ev === 'skill' && g && data) {
+      data = Object.assign({}, data, { gx: Math.round(g.x), gy: Math.round(g.y) });
+    }
+    return _sendNet ? _sendNet.call(this, ev, data) : undefined;
   };
 
   // useSkill(idx, gp) / useUlti(gp): gp = {x,y} จุดที่ลากเล็ง (ไม่ใส่ = ตกที่มอนที่ล็อก)
@@ -71,8 +88,10 @@
     const cfg = sid && GROUND_CFG[sid];
     if (!cfg) return _useSkill.call(this, idx);
     const key = 'slot' + idx, before = this.cdEnd[key];
-    _useSkill.call(this, idx);
-    if (this.cdEnd[key] !== before) this.queueGround(SKILL_DEFS[sid], cfg, gp);
+    const pt = this.groundPoint(cfg, gp);
+    this._netGround = pt;                       // ให้ sendNet แนบ gx, gy
+    try { _useSkill.call(this, idx); } finally { this._netGround = null; }
+    if (this.cdEnd[key] !== before) this.queueGround(SKILL_DEFS[sid], cfg, gp, pt);
   };
 
   const _useUlti = P.useUlti;
@@ -81,8 +100,10 @@
     const cfg = cls && GROUND_ULTI[cls];
     if (!cfg) return _useUlti.call(this);
     const before = this.cdEnd.ulti;
-    _useUlti.call(this);
-    if (this.cdEnd.ulti !== before) this.queueGround(ULTI_DEFS[cls], cfg, gp);
+    const pt = this.groundPoint(cfg, gp);
+    this._netGround = pt;                       // ให้ sendNet แนบ gx, gy
+    try { _useUlti.call(this); } finally { this._netGround = null; }
+    if (this.cdEnd.ulti !== before) this.queueGround(ULTI_DEFS[cls], cfg, gp, pt);
   };
 
   // ตอนเอฟเฟกต์ออกจริง ให้ใช้จุดที่เก็บไว้แทนตำแหน่งผู้เล่น
