@@ -9,6 +9,9 @@
 // - v5: สถานะสกิลบนมอน (อีเวนต์ 'mfx' จากผู้เล่น): สตั้น/แช่แข็ง = ขยับ+โจมตีไม่ได้ | ล็อกขา = เดินไม่ได้
 //       เดินช้าลง (slow) | ตีเบาลง (weak) -> ดาเมจที่มอนทำกับผู้เล่นลดลง
 // - v6: เพิ่มระบบแชต โลก/ปาร์ตี้/ส่วนตัว + ตัวกรองคำหยาบ (chat.js)
+// - v7: เก็บ "คลาส" (cls) ของผู้เล่นจาก join/move แล้วส่งต่อให้คนอื่น (pub / state / skill)
+//       -> ผู้เล่นอื่นเห็นสกิน+อนิเมชันถูกอาชีพ | state ส่ง [id, x, y, stage, lv, cls] (ช่อง 5 = lv เหมือนเดิม, ช่อง 6 = cls)
+//       skill ส่งต่อพร้อมจุดตกของสกิลลากเล็ง (gx, gy) และคลาสของคนใช้ -> เล่นเอฟเฟกต์สกิลให้ครบที่ฝั่งผู้ชม
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -35,8 +38,11 @@ const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 // รหัสสกิลที่ยอมให้ส่งต่อ: รูปแบบ basic_xxx / ulti_xxx / รหัสสกิล 2-3 ตัวอักษร_ชื่อ (เช่น sw_slash, rg_dash)
 // ใช้รูปแบบแทนรายการตายตัว -> เพิ่มสกิล/อาชีพใหม่ (นักบวช โจร ฯลฯ) ได้โดยไม่ต้องแก้เซิร์ฟเวอร์
 // เป็นแค่เอฟเฟกต์ที่ฝั่งผู้เล่นอื่นดูเฉยๆ ฝั่งเกมจะค้นหาในตารางสกิลเอง ชื่อที่ไม่รู้จักจะถูกข้าม
-const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9]{2,16}$/;
-const validSkillName = n => typeof n === 'string' && n.length <= 24 && SKILL_NAME_RE.test(n);
+const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9_]{2,20}$/;
+const validSkillName = n => typeof n === 'string' && n.length <= 28 && SKILL_NAME_RE.test(n);
+// ชื่อคลาส (sword / mage / archer / priest / rogue ...) ยอมรับเฉพาะตัวพิมพ์เล็ก 3-10 ตัว
+const CLS_RE = /^[a-z]{3,10}$/;
+const validCls = v => (typeof v === 'string' && CLS_RE.test(v) ? v : null);
 
 // =====================================================================
 // มอนสเตอร์ (ค่าต้องตรงกับ js/data/zones.js + js/systems/monsters.js ฝั่งเกม)
@@ -295,7 +301,8 @@ function pickFree(stage, ch, rm) {
   return null;
 }
 
-const pub = p => ({ id: p.id, name: p.name, x: p.x, y: p.y, stage: p.stage, lv: p.lv });
+// ข้อมูลผู้เล่นที่ส่งให้คนอื่น (v7: เพิ่ม cls)
+const pub = p => ({ id: p.id, name: p.name, x: p.x, y: p.y, stage: p.stage, lv: p.lv, cls: p.cls });
 
 function playersInRoom(key) {
   const out = {};
@@ -341,7 +348,7 @@ require('./chat')(io);
 
 // ---------- การเชื่อมต่อ ----------
 io.on('connection', socket => {
-  // เข้าเกม: d = { name, stage, ch, rm, cid, lv }
+  // เข้าเกม: d = { name, stage, ch, rm, cid, lv, cls }
   socket.on('join', d => {
     if (players[socket.id]) return;
     if (typeof d === 'string') d = { name: d };
@@ -352,7 +359,8 @@ io.on('connection', socket => {
       id: socket.id, name, x: 1800, y: 1125, stage, ch: 0, rm: 0, room: null,
       cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0,
       lv: clamp(parseInt(d.lv, 10) || 1, 1, 999),
-      hitCd: 0, hitWin: 0, hitN: 0, fxWin: 0, fxN: 0,
+      cls: validCls(d.cls) || 'sword',
+      hitCd: 0, hitWin: 0, hitN: 0, fxWin: 0, fxN: 0, skWin: 0, skN: 0,
     };
     const f = pickFree(stage, d.ch, d.rm);
     if (!f) { socket.emit('roomFull', { stage }); return; }
@@ -410,6 +418,8 @@ io.on('connection', socket => {
     if (!p || !p.room || !d || typeof d.x !== 'number' || typeof d.y !== 'number') return;
     p.x = clamp(d.x, 0, WORLD_W);
     p.y = clamp(d.y, 0, WORLD_H);
+    const c = validCls(d.cls);          // คลาสเปลี่ยนได้ตามอาวุธที่สวม
+    if (c) p.cls = c;
   });
 
   // ผู้เล่นตีมอน: list = [[id มอน, ดาเมจ], ...] (ฝั่งเกมรวมแล้วส่งทุก ~50ms)
@@ -459,15 +469,25 @@ io.on('connection', socket => {
     if (type === 'stun' || type === 'freeze') { m.provoked = true; m.tgt = p.id; m.contrib.add(p.id); }
   });
 
+  // ส่งต่อสกิล/ท่าโจมตีให้คนอื่นในห้อง: d = { name, x, y, fx, fy, gx?, gy? }
+  // x,y = ตำแหน่งคนใช้ | fx,fy = ทิศ | gx,gy = จุดตกของสกิลลากเล็ง (ถ้ามี)
   socket.on('skill', d => {
     const p = players[socket.id];
     if (!p || !p.room || !d || !validSkillName(d.name)) return;
-    socket.to(p.room).emit('skill', {
+    const now = Date.now();
+    if (now - p.skWin > 1000) { p.skWin = now; p.skN = 0; }
+    if (++p.skN > 30) return;                          // กันส่งถี่ผิดปกติ
+    const out = {
       id: socket.id, name: d.name,
       x: Number(d.x) || 0, y: Number(d.y) || 0,
       fx: Number(d.fx) || 0, fy: Number(d.fy) || 0,
-      stage: p.stage,
-    });
+      stage: p.stage, cls: p.cls,
+    };
+    if (d.gx != null && d.gy != null) {
+      const gx = Number(d.gx), gy = Number(d.gy);
+      if (Number.isFinite(gx) && Number.isFinite(gy)) { out.gx = clamp(gx, 0, WORLD_W); out.gy = clamp(gy, 0, WORLD_H); }
+    }
+    socket.to(p.room).emit('skill', out);
   });
 
   socket.on('disconnect', () => {
@@ -477,10 +497,11 @@ io.on('connection', socket => {
 });
 
 // ส่งตำแหน่งให้คนในแต่ละห้อง 20 ครั้ง/วินาที (เฉพาะห้องที่มีคน)
+// รูปแบบ: [id, x, y, ด่าน, เลเวล, คลาส]
 setInterval(() => {
   for (const key in rooms) {
     const list = [];
-    rooms[key].forEach(id => { const p = players[id]; if (p) list.push([p.id, p.x, p.y, p.stage, p.lv]); });
+    rooms[key].forEach(id => { const p = players[id]; if (p) list.push([p.id, p.x, p.y, p.stage, p.lv, p.cls]); });
     if (list.length) io.to(key).emit('state', list);
   }
 }, 50);
