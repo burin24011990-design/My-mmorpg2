@@ -192,20 +192,22 @@ exports.cancelPayOrder = onCall({ region: REGION, maxInstances: 5 }, async (req)
 
 // ---------- แปลรหัสผิดพลาดของ SlipOK ----------
 // คืน [รหัส HttpsError, ข้อความถึงผู้เล่น, คืนสิทธิ์ส่งสลิปไหม, แจ้งแอดมินไหม]
+// (แก้ใหม่: ข้อความโชว์รหัสจริง + บันทึกลง cash_alerts ทุกกรณีที่ผิดปกติ เพื่อให้ไล่หาสาเหตุได้)
 function slipErr(code, body) {
   const m = body && body.message ? String(body.message) : '';
+  const tag = ' (รหัส ' + (code || '?') + (m ? ': ' + m : '') + ')';
   switch (Number(code)) {
     case 1000: case 1005: case 1006: case 1007: case 1008:
-      return ['invalid-argument', 'อ่าน QR ในรูปสลิปไม่ได้ ใช้ภาพสลิปเต็มใบจากแอปธนาคาร (ไม่ครอป)', false, false];
-    case 1009: return ['unavailable', 'ระบบธนาคารขัดข้องชั่วคราว ลองใหม่ในอีก 15 นาที', true, false];
-    case 1010: return ['unavailable', m || 'สลิปยังไม่พร้อมตรวจ รอสักครู่แล้วลองใหม่', true, false];
-    case 1011: return ['failed-precondition', 'QR ในสลิปหมดอายุ หรือไม่มีรายการโอนจริง', false, false];
-    case 1012: return ['already-exists', 'สลิปนี้เคยถูกส่งเข้าระบบแล้ว (ถ้าเพิ่งส่งครั้งแรกแล้วตั๋วไม่เข้า แจ้งผู้ดูแล)', false, true];
-    case 1013: return ['failed-precondition', 'ยอดในสลิปไม่ตรงกับออเดอร์ ต้องโอนตามยอดที่แสดงเป๊ะ', false, false];
-    case 1014: return ['failed-precondition', 'โอนเข้าบัญชีไม่ถูกต้อง ต้องโอนตาม QR ของร้านเท่านั้น', false, false];
+      return ['invalid-argument', 'อ่านสลิปไม่ได้' + tag + ' ใช้ภาพสลิปเต็มใบจากแอปธนาคาร (ไม่ครอป)', false, true];
+    case 1009: return ['unavailable', 'ระบบธนาคารขัดข้องชั่วคราว ลองใหม่ในอีก 15 นาที' + tag, true, false];
+    case 1010: return ['unavailable', (m || 'สลิปยังไม่พร้อมตรวจ รอสักครู่แล้วลองใหม่') + tag, true, false];
+    case 1011: return ['failed-precondition', 'QR ในสลิปหมดอายุ หรือไม่มีรายการโอนจริง' + tag, false, true];
+    case 1012: return ['already-exists', 'สลิปนี้เคยถูกส่งเข้าระบบแล้ว (ถ้าเพิ่งส่งครั้งแรกแล้วตั๋วไม่เข้า แจ้งผู้ดูแล)' + tag, false, true];
+    case 1013: return ['failed-precondition', 'ยอดในสลิปไม่ตรงกับออเดอร์ ต้องโอนตามยอดที่แสดงเป๊ะ' + tag, false, true];
+    case 1014: return ['failed-precondition', 'โอนเข้าบัญชีไม่ถูกต้อง ต้องโอนตาม QR ของร้านเท่านั้น' + tag, false, true];
     case 1001: case 1002: case 1003: case 1004:
-      return ['internal', 'ระบบตรวจสลิปขัดข้อง แจ้งผู้ดูแล', true, true];
-    default: return ['internal', 'ตรวจสลิปไม่สำเร็จ ลองใหม่ หรือแจ้งผู้ดูแล', false, true];
+      return ['internal', 'ระบบตรวจสลิปขัดข้อง แจ้งผู้ดูแล' + tag, true, true];
+    default: return ['internal', 'ตรวจสลิปไม่สำเร็จ ลองใหม่ หรือแจ้งผู้ดูแล' + tag, false, true];
   }
 }
 
@@ -248,12 +250,14 @@ exports.submitSlip = onCall({
   fd.append('log', 'true');
   fd.append('amount', (o.cents / 100).toFixed(2));
   let body = null;
+  let httpStatus = null;
   try {
     const r = await fetch('https://api.slipok.com/api/line/apikey/' + encodeURIComponent(SLIP_BRANCH.value().trim()), {
       method: 'POST',
       headers: { 'x-authorization': SLIP_KEY.value().trim() },
       body: fd
     });
+    httpStatus = r.status;
     body = await r.json().catch(function () { return null; });
   } catch (e) {
     await refund();
@@ -262,9 +266,13 @@ exports.submitSlip = onCall({
   const ok = body && body.success === true && body.data && body.data.success === true;
   if (!ok) {
     const code = body && (body.code || (body.data && body.data.code));
+    console.warn('slipok_fail', httpStatus, code, JSON.stringify(body), 'imgBytes=' + buf.length, isPng ? 'png' : 'jpg');
     const er = slipErr(code, body);
     if (er[2]) await refund();
-    if (er[3]) await alertAdmin('slipok_error', { orderId: orderId, uid: uid, code: code || null, message: (body && body.message) || null });
+    if (er[3]) await alertAdmin('slipok_error', {
+      orderId: orderId, uid: uid, code: code || null, http: httpStatus,
+      message: (body && body.message) || null, imgBytes: buf.length, imgType: isPng ? 'png' : 'jpg'
+    });
     throw new HttpsError(er[0], er[1]);
   }
 
