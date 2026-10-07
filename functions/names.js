@@ -1,12 +1,12 @@
-// functions/names.js — ตั้งชื่อตัวละคร: ไม่ซ้ำ / 2-15 ตัวอักษร / ไม่มีคำหยาบ
-const functions = require('firebase-functions');
+// functions/names.js — ตั้งชื่อตัวละคร: ไม่ซ้ำ / 2-15 ตัวอักษร / ไม่มีคำหยาบ (v2, asia-southeast1)
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 if (!admin.apps.length) admin.initializeApp();
 
 const MIN_LEN = 2;
 const MAX_LEN = 15;
 
-// อนุญาต: ไทย, อังกฤษ, ตัวเลข, ช่องว่าง, _ 
+// อนุญาต: ไทย, อังกฤษ, ตัวเลข, ช่องว่าง, _
 const ALLOWED = /^[\u0E00-\u0E7Fa-zA-Z0-9 _]+$/;
 
 // ชื่อที่สงวนไว้
@@ -20,13 +20,12 @@ const BAD_SUBSTR = [
   // อังกฤษ
   'fuck', 'fuk', 'shit', 'bitch', 'cunt', 'pussy', 'asshole', 'whore', 'slut', 'nigg', 'faggot', 'bastard', 'porn',
 ];
-// คำสั้น/คำที่ติดกับชื่อปกติได้ ตรวจเฉพาะกรณีชื่อ "ตรงทั้งคำ" (กันตัดคำผิด เช่น หีบ, Peacock, Dickson)
+// คำสั้น ตรวจเฉพาะกรณีชื่อ "ตรงทั้งคำ"
 const BAD_EXACT = ['หี', 'ห่า', 'ควาย', 'ชั่ว', 'ass', 'tit', 'tits', 'fag', 'dick', 'cock', 'sex', 'rape'];
 
 const LEET = { '0': 'o', '1': 'i', '3': 'e', '4': 'a', '5': 's', '7': 't', '@': 'a', '$': 's' };
 
 function squash(s) {
-  // ตัดช่องว่าง/ขีด แล้วแปลงเลขแทนตัวอักษร (เช่น sh1t -> shit) และยุบตัวอักษรซ้ำ (fuuuck -> fuck)
   let t = s.normalize('NFC').toLowerCase().replace(/[\s_.\-]+/g, '');
   t = t.replace(/[0134579@$]/g, (c) => LEET[c] || c);
   t = t.replace(/(.)\1{2,}/g, '$1');
@@ -48,31 +47,33 @@ function validate(rawName) {
   if (!ALLOWED.test(name)) return { err: 'ใช้ได้เฉพาะตัวอักษรไทย อังกฤษ ตัวเลข และช่องว่าง' };
   if (RESERVED.includes(name.toLowerCase())) return { err: 'ชื่อนี้ถูกสงวนไว้' };
   if (isProfane(name)) return { err: 'ชื่อนี้ไม่เหมาะสม กรุณาเลือกชื่ออื่น' };
-  // คีย์สำหรับเช็คซ้ำ: ตัวพิมพ์เล็ก/ใหญ่ และช่องว่าง ไม่มีผล
   const key = name.toLowerCase().replace(/\s+/g, '');
   return { name, key };
 }
 
 // ผู้ล็อกอิน: ตรวจ + จองชื่อ | ผู้เยี่ยม (ไม่ล็อกอิน): ตรวจอย่างเดียว ไม่จอง
-exports.claimName = functions.https.onCall(async (data, context) => {
+exports.claimName = onCall({ region: 'asia-southeast1' }, async (request) => {
+  const data = request.data;
+  const auth = request.auth;
+
   const v = validate(data && data.name);
-  if (v.err) throw new functions.https.HttpsError('invalid-argument', v.err);
+  if (v.err) throw new HttpsError('invalid-argument', v.err);
 
   const db = admin.firestore();
   const ref = db.collection('names').doc(v.key);
 
-  if (!context.auth) {
+  if (!auth) {
     const snap = await ref.get();
-    if (snap.exists) throw new functions.https.HttpsError('already-exists', 'ชื่อนี้มีคนใช้แล้ว');
+    if (snap.exists) throw new HttpsError('already-exists', 'ชื่อนี้มีคนใช้แล้ว');
     return { ok: true, name: v.name, reserved: false };
   }
 
-  const uid = context.auth.uid;
+  const uid = auth.uid;
   const userRef = db.collection('users').doc(uid);
   await db.runTransaction(async (t) => {
     const snap = await t.get(ref);
     if (snap.exists && snap.data().uid !== uid) {
-      throw new functions.https.HttpsError('already-exists', 'ชื่อนี้มีคนใช้แล้ว');
+      throw new HttpsError('already-exists', 'ชื่อนี้มีคนใช้แล้ว');
     }
     const u = await t.get(userRef);
     const oldKey = u.exists ? u.data().nameKey : null;
