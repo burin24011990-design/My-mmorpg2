@@ -87,7 +87,7 @@
     try {
       firebase.initializeApp(cfg); auth = firebase.auth(); db = firebase.firestore();
       // ถ้า functions deploy ไว้นอก us-central1 ให้เปลี่ยนเป็น firebase.app().functions('ชื่อ-region')
-      fns = (firebase.functions ? firebase.functions() : null);
+      fns = (firebase.functions ? firebase.app().functions('asia-southeast1') : null);
     }
     catch (e) { fbOK = false; }
   }
