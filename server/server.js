@@ -8,6 +8,7 @@
 // - v4: เพิ่มระบบ PvP 1v1 / 3v3 / 5v5 + เพดานจุติต่อห้อง (pvpServer.js)
 // - v5: สถานะสกิลบนมอน (อีเวนต์ 'mfx' จากผู้เล่น): สตั้น/แช่แข็ง = ขยับ+โจมตีไม่ได้ | ล็อกขา = เดินไม่ได้
 //       เดินช้าลง (slow) | ตีเบาลง (weak) -> ดาเมจที่มอนทำกับผู้เล่นลดลง
+// - v6: เพิ่มระบบแชต โลก/ปาร์ตี้/ส่วนตัว + ตัวกรองคำหยาบ (chat.js)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -334,6 +335,9 @@ require('./social')(io, players);
 
 // ระบบ PvP 1v1 / 3v3 / 5v5 (ไฟล์ pvpServer.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
 require('./pvpServer')(io, players, { leaveRoom });
+
+// ระบบแชต โลก/ปาร์ตี้/ส่วนตัว + กรองคำหยาบ (ไฟล์ chat.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
+require('./chat')(io);
 
 // ---------- การเชื่อมต่อ ----------
 io.on('connection', socket => {
