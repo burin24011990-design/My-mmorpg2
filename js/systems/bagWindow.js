@@ -3,9 +3,10 @@
 // (this.bag, this.equipment, equipItem, unequipSlot, mergeSingleItem, mergeAllInBag ...)
 // รองรับไอเทม "หนังสือสกิล" (kind: 'skillbook') ซ้อนได้ กดใช้เพื่อเรียนรู้/อัปสกิล
 // รองรับ "หินตีบวก" (kind: 'stone'), ตีบวก และย่อยอุปกรณ์ (ดู enhance.js)
-// ใหม่: ปุ่ม "ย่อยทั้งหมดตามสี" (ย่อยสีขาวทั้งหมด / สีฟ้าทั้งหมด ...) กด 2 ครั้งเพื่อยืนยัน
-// ใหม่ (v29): ย่อหน้าต่างกระเป๋าลงครึ่งนึง (BAG_SCALE) และ "ไม่หยุดเกม" ตอนเปิดกระเป๋า -> บอทสู้ต่อได้
-//             กระเป๋าที่เปิดค้างไว้จะรีเฟรชเองเมื่อของ/ทองเปลี่ยน (เช่น บอทเก็บของ)
+// ปุ่ม "ย่อยทั้งหมดตามสี" (ย่อยสีขาวทั้งหมด / สีฟ้าทั้งหมด ...) กด 2 ครั้งเพื่อยืนยัน
+// v29: ย่อหน้าต่างกระเป๋า (BAG_SCALE) และ "ไม่หยุดเกม" ตอนเปิดกระเป๋า -> บอทสู้ต่อได้ | กระเป๋าที่เปิดค้างรีเฟรชเองเมื่อของ/ทองเปลี่ยน
+// v30: จัดเลย์เอาต์ใหม่ให้ช่องไอเทมใหญ่ขึ้น: ช่องไอเทมกินพื้นที่ซ้ายเต็ม (ไม่มีที่ว่างสองข้าง)
+//      รายละเอียดไอเทมเล็กลงและแคบลง | หัวเรื่อง+แท็บอยู่แถวเดียว | ปุ่มเปลี่ยนหน้ารวมอยู่ในแถบปุ่ม
 // ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
@@ -13,11 +14,13 @@
   const ICON_FILES = {};
 
   // ---------- ตั้งค่าขนาด/ตำแหน่งหน้าต่างกระเป๋า (ปรับตรงนี้) ----------
-  const BAG_SCALE = 0.5;     // ขนาดหน้าต่าง: 1 = เต็มเหมือนเดิม | 0.5 = ครึ่งนึง | ถ้าตัวหนังสือเล็กไปลอง 0.6 - 0.7
-  const BAG_ANCHOR_X = 0.74; // ตำแหน่งกึ่งกลางหน้าต่างแนวนอน (0 = ซ้ายสุด, 0.5 = กลางจอ, 1 = ขวาสุด) | 0.74 = ชิดขวา เห็นตัวละครตรงกลางจอ
+  const BAG_SCALE = 0.62;    // ขนาดหน้าต่าง: 1 = เต็มจอ | 0.5 = ครึ่งนึง | ใหญ่ขึ้นปรับเป็น 0.7 - 0.8 ได้
+  const BAG_ANCHOR_X = 0.72; // ตำแหน่งกึ่งกลางหน้าต่างแนวนอน (0.5 = กลางจอ, 1 = ขวาสุด) | ระบบจะดันให้ไม่ล้นขอบจออัตโนมัติ
   const BAG_ANCHOR_Y = 0.5;  // ตำแหน่งกึ่งกลางหน้าต่างแนวตั้ง
-  const BAG_BASE_W = 0.96;   // ขนาด "ก่อนย่อ" ของหน้าต่าง เทียบกับจอ (ขนาดเดิมของกระเป๋าเกือบเต็มจอ)
-  const BAG_BASE_H = 0.94;
+  const BAG_BASE_W = 0.86;   // ขนาด "ก่อนย่อ" ของหน้าต่าง เทียบกับจอ (ลดตัวเลขนี้ = หน้าต่างแคบลง ช่องแคบลง)
+  const BAG_BASE_H = 0.96;
+  const BAG_COLS = 10;       // จำนวนคอลัมน์ช่องไอเทมในกระเป๋า
+  const DETAIL_W = 25;       // ความกว้างช่องรายละเอียดไอเทม (% ของหน้าต่าง) ยิ่งน้อยยิ่งเหลือที่ให้ช่องไอเทม
 
   // ---------- ตั้งค่า "ย่อยทั้งหมดตามสี" (ปรับตรงนี้) ----------
   // สีที่ "ไม่ให้มีปุ่มย่อยทั้งหมด" (ใช้ id ของสีใน TIER_DEFS ถ้า id ไม่ตรงกับที่ใส่ไว้ ปุ่มของสีนั้นจะยังโชว์ แต่ยังต้องกดยืนยัน 2 ครั้ง)
@@ -58,7 +61,7 @@
     } catch (e) { return ''; }
   }
 
-  // ย่อ/จัดตำแหน่งหน้าต่างกระเป๋า: วางหน้าต่างขนาดเดิม (เกือบเต็มจอ) แล้วย่อด้วย scale
+  // ย่อ/จัดตำแหน่งหน้าต่างกระเป๋า: วางหน้าต่างขนาดเดิมแล้วย่อด้วย scale
   // ใช้ !important เพื่อทับ CSS เดิมของ .win โดยไม่ต้องแก้ไฟล์ css
   function applyScale() {
     if (!root) return;
@@ -66,10 +69,14 @@
     const vv = window.visualViewport;
     const lw = (layer && (parseFloat(layer.style.width) || layer.clientWidth)) || (vv ? vv.width : window.innerWidth);
     const lh = (layer && (parseFloat(layer.style.height) || layer.clientHeight)) || (vv ? vv.height : window.innerHeight);
+    // ดันตำแหน่งไม่ให้หน้าต่างล้นขอบจอ
+    const halfW = BAG_BASE_W * BAG_SCALE / 2, halfH = BAG_BASE_H * BAG_SCALE / 2;
+    const ax = Math.min(Math.max(BAG_ANCHOR_X, halfW), 1 - halfW);
+    const ay = Math.min(Math.max(BAG_ANCHOR_Y, halfH), 1 - halfH);
     const set = (k, v) => root.style.setProperty(k, v, 'important');
     set('position', 'absolute');
-    set('left', (BAG_ANCHOR_X * 100) + '%');
-    set('top', (BAG_ANCHOR_Y * 100) + '%');
+    set('left', (ax * 100) + '%');
+    set('top', (ay * 100) + '%');
     set('right', 'auto');
     set('bottom', 'auto');
     set('margin', '0');
@@ -98,6 +105,65 @@
   window.addEventListener('orientationchange', () => setTimeout(fit, 200));
   if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
 
+  // CSS เลย์เอาต์ของหน้าต่างกระเป๋า (ใช้ !important ทับ css/ui.css เดิม)
+  function bagCSS() {
+    const B = '#bag-win ';
+    return [
+      // ---- กรอบหน้าต่าง: หัวเรื่อง+แท็บแถวเดียว / เนื้อหา / ท้าย ----
+      B + '{flex-direction:column!important;overflow:hidden!important;box-sizing:border-box!important}',
+      B + '.win-head{display:flex!important;align-items:center!important;gap:8px!important;padding:4px 8px!important;min-height:0!important;flex:0 0 auto!important}',
+      B + '.win-head .win-title{font-size:16px!important;margin:0 4px 0 0!important}',
+      B + '.win-head .win-tabs{display:flex!important;gap:4px!important;padding:0!important;margin:0!important;border:0!important;background:none!important;flex:1 1 auto!important;min-height:0!important}',
+      B + '.win-head .win-tab{padding:4px 14px!important;font-size:12px!important;min-height:0!important;margin:0!important}',
+      B + '.win-head .win-x{width:28px!important;height:28px!important;min-width:0!important;padding:0!important;font-size:14px!important;margin-left:auto!important;flex:0 0 auto!important}',
+      B + '.win-body{display:flex!important;flex-direction:row!important;flex:1 1 auto!important;min-height:0!important;gap:6px!important;padding:4px 6px!important;overflow:hidden!important}',
+      B + '.win-left{display:flex!important;flex-direction:column!important;flex:1 1 0!important;min-width:0!important;min-height:0!important;gap:4px!important;padding:0!important;margin:0!important;overflow:hidden!important;align-items:stretch!important;justify-content:flex-start!important}',
+      B + '.win-right{flex:0 0 ' + DETAIL_W + '%!important;width:' + DETAIL_W + '%!important;max-width:' + DETAIL_W + '%!important;min-width:0!important;min-height:0!important;padding:6px!important;margin:0!important;overflow-y:auto!important;overflow-x:hidden!important;box-sizing:border-box!important}',
+      B + '.win-foot{padding:3px 10px!important;min-height:0!important;font-size:11px!important;flex:0 0 auto!important}',
+
+      // ---- ตารางช่องไอเทม: ยืดเต็มพื้นที่ที่เหลือ (ไม่มีที่ว่าง) ----
+      B + '.grid{display:grid!important;grid-template-columns:repeat(var(--cols,10),minmax(0,1fr))!important;grid-template-rows:repeat(var(--rows,5),minmax(0,1fr))!important;gap:3px!important;width:100%!important;max-width:none!important;flex:1 1 auto!important;min-height:0!important;margin:0!important;padding:0!important;align-content:stretch!important;justify-content:stretch!important}',
+      B + '.grid .cell{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;aspect-ratio:auto!important;padding:0!important;margin:0!important;position:relative!important;container-type:size}',
+      B + '.grid .cell img{position:absolute!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;width:min(86cqw,86cqh)!important;height:min(86cqw,86cqh)!important;max-width:none!important;object-fit:contain!important;pointer-events:none!important}',
+      B + '.grid.equip{gap:6px!important}',
+      B + '.grid.equip .cell img{top:56%!important;width:min(62cqw,62cqh)!important;height:min(62cqw,62cqh)!important}',
+      B + '.cell .slot-name{position:absolute!important;top:2px!important;left:0!important;right:0!important;text-align:center!important;font-size:clamp(9px,15cqh,13px)!important;line-height:1.1!important;color:#aab4c4!important}',
+      B + '.cell .cnt{position:absolute!important;right:2px!important;bottom:1px!important;left:auto!important;top:auto!important;font-size:clamp(10px,32cqh,17px)!important;font-weight:700!important;line-height:1!important;color:#fff!important;text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000!important}',
+      B + '.cell .lv{position:absolute!important;left:2px!important;bottom:1px!important;right:auto!important;top:auto!important;font-size:clamp(9px,26cqh,15px)!important;font-weight:700!important;line-height:1!important;color:#ffd45c!important;text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000!important}',
+      B + '.cell .pl{position:absolute;top:1px;left:2px;font-size:clamp(9px,26cqh,15px);line-height:1;color:#ff9a3c;font-weight:700;text-shadow:0 0 2px #000,0 0 2px #000}',
+      B + '.cell .st{position:absolute;top:1px;right:2px;font-size:clamp(8px,22cqh,13px);line-height:1;color:#8fd0ff;text-shadow:0 0 2px #000,0 0 2px #000}',
+      B + '.cell .ck{position:absolute;right:2px;bottom:1px;font-size:clamp(10px,28cqh,16px);line-height:1;color:#5ee08a;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px}',
+      B + '.cell.tick{box-shadow:0 0 0 2px #5ee08a}',
+
+      // ---- แถบปุ่มใต้ช่องไอเทม (รวมปุ่มเปลี่ยนหน้า) ----
+      B + '.bag-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:4px;flex:0 0 auto}',
+      B + '.bag-tools button{min-height:28px;padding:3px 8px;font-size:12px;white-space:nowrap;border:1px solid #3a4150;background:#1c2230;color:var(--text);border-radius:6px}',
+      B + '.bag-tools button:active{background:#2a3550}',
+      B + '.bag-tools .qty{display:flex;align-items:center;gap:2px;padding:0 3px;border:1px solid #2a3142;border-radius:6px;background:#10151e}',
+      B + '.bag-tools .qty button{border:0;background:transparent;padding:3px 7px}',
+      B + '.bag-tools button.on{background:#2c6a3a;border-color:#3f8d51}',
+      B + '.bag-tools button.dz{border-color:#7a3a3a;color:#ffb8b8}',
+      B + '.bag-tools button.dz.cf{background:#8a2a2a;border-color:#ff6a6a;color:#fff;font-weight:700}',
+      B + '.bag-tools .dz-label{font-size:12px;color:#aaa;padding:0 2px}',
+      B + '.bag-tools .qty-in{width:46px;height:26px;text-align:center;color:var(--gold);background:#0a0d13;border:1px solid #34507f;border-radius:4px;font-size:14px;font-family:inherit;-webkit-user-select:text;user-select:text}',
+      B + '.bag-tools .bw-pg{display:inline-flex;align-items:center;gap:4px;margin-left:auto}',
+      B + '.bag-tools .bw-pg .page-no{font-size:12px;color:#9aa4b5;white-space:nowrap}',
+
+      // ---- ช่องรายละเอียดไอเทม: เล็กลง ----
+      B + '.win-right .d-top{gap:6px!important;margin-bottom:4px!important}',
+      B + '.win-right .d-icon{width:34px!important;height:34px!important;min-width:34px!important;flex:0 0 34px!important}',
+      B + '.win-right .d-icon img{width:100%!important;height:100%!important;object-fit:contain!important}',
+      B + '.win-right .d-name{font-size:13px!important;line-height:1.2!important}',
+      B + '.win-right .d-type{font-size:10px!important}',
+      B + '.win-right .d-note{font-size:10px!important;line-height:1.3!important;margin:3px 0!important}',
+      B + '.win-right .d-row{font-size:11px!important;padding:2px 0!important;min-height:0!important}',
+      B + '.win-right .d-stats{font-size:11px!important;gap:1px 8px!important}',
+      B + '.win-right .d-empty{font-size:11px!important;line-height:1.4!important;padding:6px!important}',
+      B + '.win-right .d-actions{gap:4px!important;margin-top:6px!important}',
+      B + '.win-right .d-actions .btn{font-size:11px!important;padding:6px 6px!important;min-height:0!important;line-height:1.1!important}',
+    ].join('');
+  }
+
   function ensureRoot() {
     if (root) return;
     let layer = document.getElementById('ui-layer');
@@ -111,7 +177,7 @@
     root.id = 'bag-win';
     layer.appendChild(root);
     root.addEventListener('click', onClick);
-    // กันการแตะในหน้าต่างกระเป๋าทะลุไปโดนตัวเกม (ตอนนี้หน้าต่างเล็กลง ส่วนที่เหลือของจอแตะเล่นเกมได้)
+    // กันการแตะในหน้าต่างกระเป๋าทะลุไปโดนตัวเกม (ส่วนที่เหลือของจอแตะเล่นเกมได้)
     ['pointerdown', 'touchstart', 'touchmove', 'mousedown'].forEach((evn) => {
       root.addEventListener(evn, (e) => { e.stopPropagation(); }, { passive: true });
     });
@@ -132,22 +198,7 @@
     if (!document.getElementById('bag-qty-style')) {
       const st = document.createElement('style');
       st.id = 'bag-qty-style';
-      st.textContent =
-        '#bag-win .bag-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px}'
-        + '#bag-win .bag-tools button{min-height:28px;padding:3px 7px;font-size:11px;white-space:nowrap;border:1px solid #3a4150;background:#1c2230;color:var(--text);border-radius:6px}'
-        + '#bag-win .bag-tools button:active{background:#2a3550}'
-        + '#bag-win .bag-tools .qty{display:flex;align-items:center;gap:2px;padding:0 3px;border:1px solid #2a3142;border-radius:6px;background:#10151e}'
-        + '#bag-win .bag-tools .qty button{border:0;background:transparent;padding:3px 6px}'
-        + ''
-        + '#bag-win .bag-tools button.on{background:#2c6a3a;border-color:#3f8d51}'
-        + '#bag-win .bag-tools button.dz{border-color:#7a3a3a;color:#ffb8b8}'
-        + '#bag-win .bag-tools button.dz.cf{background:#8a2a2a;border-color:#ff6a6a;color:#fff;font-weight:700}'
-        + '#bag-win .bag-tools .dz-label{font-size:11px;color:#aaa;padding:0 2px}'
-        + '#bag-win .bag-tools .qty-in{width:44px;height:24px;text-align:center;color:var(--gold);background:#0a0d13;border:1px solid #34507f;border-radius:4px;font-size:13px;font-family:inherit;-webkit-user-select:text;user-select:text}'
-        + '#bag-win .cell.tick{box-shadow:0 0 0 2px #5ee08a}'
-        + '#bag-win .cell .ck{position:absolute;right:1px;bottom:0;font-size:9px;line-height:1;color:#5ee08a;background:rgba(0,0,0,.65);border-radius:3px;padding:0 1px}'
-        + '#bag-win .cell .pl{position:absolute;top:0;left:1px;font-size:7px;line-height:1;color:#ff9a3c;font-weight:700;text-shadow:0 0 2px #000,0 0 2px #000}'
-        + '#bag-win .cell .st{position:absolute;top:0;right:1px;font-size:6px;line-height:1;color:#8fd0ff;text-shadow:0 0 2px #000,0 0 2px #000}';
+      st.textContent = bagCSS();
       document.head.appendChild(st);
     }
     applyScale();
@@ -218,6 +269,7 @@
     if (done > 0 && s.saveSoon) s.saveSoon();
   }
 
+  // แถบปุ่มใต้ช่องไอเทม (รวมปุ่มเปลี่ยนหน้าไว้ในแถบเดียวกัน ประหยัดที่แนวตั้ง)
   function toolbarHTML() {
     const mergeLabel = state.multi
       ? '🔗 รวมที่ติ๊ก (' + state.ticks.size + ')'
@@ -229,7 +281,12 @@
       + '<button data-act="multi" class="' + (state.multi ? 'on' : '') + '">' + (state.multi ? '☑' : '☐') + ' เลือกหลายชิ้น</button>'
       + '<button data-act="merge-all">🔗 รวมทั้งหมด</button>'
       + '<button data-act="merge-sel">' + mergeLabel + '</button>'
-      + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>';
+      + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>'
+      + '<span class="bw-pg">'
+      + '<button data-act="page" data-id="-1">◀</button>'
+      + '<span class="page-no">หน้า ' + (state.page + 1) + ' / ' + PAGES + '</span>'
+      + '<button data-act="page" data-id="1">▶</button>'
+      + '</span>';
     // ปุ่มย่อยทั้งหมดตามสี (โชว์เฉพาะสีที่มีของในกระเป๋า)
     const tiers = tierList();
     if (tiers.length) {
@@ -265,7 +322,8 @@
 
   function bagGridHTML() {
     const s = scene;
-    let h = '<div class="grid bag">';
+    const rows = Math.max(1, Math.ceil(PAGE_SIZE / BAG_COLS));
+    let h = '<div class="grid bag" style="--cols:' + BAG_COLS + ';--rows:' + rows + '">';
     for (let i = 0; i < PAGE_SIZE; i++) {
       const idx = state.page * PAGE_SIZE + i;
       const sel = state.sel && state.sel.src === 'bag' && state.sel.id === idx;
@@ -273,18 +331,14 @@
     }
     h += '</div>';
     h += toolbarHTML();
-    h += '<div class="pager">'
-      + '<button data-act="page" data-id="-1">◀ ก่อนหน้า</button>'
-      + '<span class="page-no">หน้า ' + (state.page + 1) + ' / ' + PAGES + '</span>'
-      + '<button data-act="page" data-id="1">ถัดไป ▶</button>'
-      + '</div>';
     return h;
   }
 
   function equipGridHTML() {
     const s = scene;
     const emptyIcons = { weapon: 'icon_sword', helmet: 'icon_helmet', armor: 'icon_armor', gloves: 'icon_gloves', shoes: 'icon_shoes', ring1: 'icon_ring', ring2: 'icon_ring', necklace: 'icon_necklace' };
-    let h = '<div class="grid equip">';
+    const cols = 4, rows = Math.max(1, Math.ceil(EQUIP_SLOT_KEYS.length / cols));
+    let h = '<div class="grid equip" style="--cols:' + cols + ';--rows:' + rows + '">';
     EQUIP_SLOT_KEYS.forEach((key) => {
       const it = s.equipment[key];
       const name = SLOT_LABELS[baseSlotOf(key)] + (key === 'ring1' ? ' (ซ้าย)' : key === 'ring2' ? ' (ขวา)' : '');
@@ -452,12 +506,12 @@
     clampQty();
     lastSig = bagSig();
     root.innerHTML =
-      '<div class="win-head"><span class="win-title">กระเป๋า</span><button class="win-x" data-act="close">✕</button></div>'
+      '<div class="win-head"><span class="win-title">กระเป๋า</span>'
       + '<div class="win-tabs">'
       + '<button class="win-tab' + (state.tab === 'bag' ? ' on' : '') + '" data-act="tab" data-id="bag">กระเป๋า</button>'
       + '<button class="win-tab' + (state.tab === 'equip' ? ' on' : '') + '" data-act="tab" data-id="equip">อุปกรณ์</button>'
-      + '<span class="spacer"></span>'
       + '</div>'
+      + '<button class="win-x" data-act="close">✕</button></div>'
       + '<div class="win-body">'
       + '<div class="win-left">' + (state.tab === 'bag' ? bagGridHTML() : equipGridHTML()) + '</div>'
       + '<div class="win-right">' + detailHTML() + '</div>'
@@ -589,8 +643,7 @@
     this.invPage = state.page;
     render();
     root.style.display = 'flex';
-    // เดิมตรงนี้ตั้ง this.panel = [] เพื่อบอกโค้ดเกมว่า "มีหน้าต่างเปิดอยู่" ซึ่งทำให้เกม/บอทหยุดทำงาน
-    // ตอนนี้ไม่ตั้งแล้ว เกมและบอทจึงทำงานต่อได้ตอนเปิดกระเป๋า (ใช้แฟลก bagOpen / window.BAG_OPEN แทน)
+    // ไม่ตั้ง this.panel = [] แล้ว (เดิมทำให้เกม/บอทหยุดตอนเปิดกระเป๋า) ใช้แฟลก bagOpen / window.BAG_OPEN แทน
     this.bagOpen = true;
     window.BAG_OPEN = true;
   };
