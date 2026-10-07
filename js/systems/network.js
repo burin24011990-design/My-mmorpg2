@@ -3,6 +3,7 @@
 // v++: ส่งคลาส (cls) ไปกับ join/move และให้ผู้เล่นอื่นใช้สกิน+อนิเมชันใหม่ (HeroAnims) เหมือนตัวเรา
 // v+++: แก้บั๊ก state (ช่องที่ 5 คือเลเวล ไม่ใช่คลาส -> เดิมทำให้สกินผู้เล่นอื่นถูกรีเซ็ตเป็นชุดเก่าตลอด)
 //       คลาสอยู่ช่องที่ 6 | เอฟเฟกต์สกิลผู้เล่นอื่นเรียก RemoteFx (js/systems/remoteFx.js)
+// v++++: วงกลมสำรองของสกิลวางพื้น แสดงที่จุดตกจริง (gx, gy) แทนที่ตัวคนใช้
 
 // ชื่อตัวละครเหนือหัว (ปรับตรงนี้)
 const NET_NAME_SIZE = '20px';    // ขนาดชื่อ (เดิม 12px)
@@ -335,6 +336,7 @@ Object.assign(Main.prototype, {
       const c = o.cls || cls || 'sword';
       let dir = o._dir || 'right';
       if (typeof d.fx === 'number' && typeof d.fy === 'number' && (d.fx || d.fy)) dir = netDirFromVec(d.fx, d.fy);
+      else if (typeof d.gx === 'number' && typeof d.gy === 'number' && (d.gx !== d.x || d.gy !== d.y)) dir = netDirFromVec(d.gx - d.x, d.gy - d.y);
       o._dir = dir;
       const act = HeroAnims.attackOf(c, isSkill);
       o._atkUntil = this.time.now + (act === 'skill' ? NET_SKILL_MS : NET_ATK_MS);
@@ -348,17 +350,20 @@ Object.assign(Main.prototype, {
     if (d.stage !== undefined && d.stage !== this.stageIdx) return; // อยู่คนละด่าน ไม่ต้องแสดง
     this.netRemoteAttack(d);
 
-    // เอฟเฟกต์สกิลจริง (สไปรต์) ที่ตัวผู้เล่นอื่น -- ถ้าเล่นได้จะไม่ใช้วงกลมสำรองด้านล่าง
+    // เอฟเฟกต์สกิลจริง (สไปรต์) ที่ตัวผู้เล่นอื่น/จุดตก -- ถ้าเล่นได้จะไม่ใช้วงกลมสำรองด้านล่าง
     try {
       if (window.RemoteFx && RemoteFx.play(this, d, this.netFindCaster(d))) return;
     } catch (e) { console.error('RemoteFx', e); }
 
     // ----- สำรอง: วงกลม/กระสุนสีเรียบๆ (กรณีไม่มี remoteFx.js หรือสกิลนั้นไม่มีภาพ) -----
     try {
+      // จุดตกของสกิลลากเล็ง (ถ้าไม่มี ใช้ตำแหน่งคนใช้)
+      const gx = (typeof d.gx === 'number') ? d.gx : d.x;
+      const gy = (typeof d.gy === 'number') ? d.gy : d.y;
       const nm = String(d.name || '');
       if (nm.startsWith('ulti_')) {
         const cls = nm.replace('ulti_', ''); const def = ULTI_DEFS[cls];
-        if (def) this.flash(d.x, d.y, def.range, CLASSES[cls] ? CLASSES[cls].color : 0xffffff);
+        if (def) this.flash(gx, gy, def.range, CLASSES[cls] ? CLASSES[cls].color : 0xffffff);
         return;
       }
       if (nm.startsWith('basic_')) {
@@ -372,7 +377,7 @@ Object.assign(Main.prototype, {
       const def = SKILL_DEFS[nm]; if (!def) return;
       const col = CLASSES[def.class] ? CLASSES[def.class].color : 0xffffff;
       if (def.type === 'proj') this.remoteProjectile(d, col);
-      else this.flash(d.x, d.y, def.range || 60, col);
+      else this.flash(gx, gy, def.range || 60, col);
     } catch (e) { console.error('showRemoteSkill', e); }
   },
 
