@@ -22,7 +22,7 @@ const STRIPE_WH = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 // ---------- ค่าที่ปรับได้ ----------
 const REGION = 'asia-southeast1';                         // ให้ตรงกับ functions/market.js
-const SITE_URL = 'https://YOUR-NAME.github.io/YOUR-REPO/'; // <-- แก้เป็นที่อยู่เกมของคุณ (หน้าที่กลับมาหลังจ่ายเงิน)
+const SITE_URL = 'https://burin24011990-design.github.io/My-mmorpg2/'; // <-- แก้เป็นที่อยู่เกมของคุณ (หน้าที่กลับมาหลังจ่ายเงิน)
 const DAY = 24 * 3600000;
 const MAX_TICKETS_PER_DAY = 30;                           // ซื้อตั๋วได้สูงสุดกี่ใบต่อ 24 ชม. ต่อบัญชี
 
