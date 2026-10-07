@@ -197,7 +197,9 @@ function slipErr(code, body) {
   const m = body && body.message ? String(body.message) : '';
   const tag = ' (รหัส ' + (code || '?') + (m ? ': ' + m : '') + ')';
   switch (Number(code)) {
-    case 1000: case 1005: case 1006: case 1007: case 1008:
+    case 1000:
+      return ['invalid-argument', 'ระบบตรวจสลิปปฏิเสธข้อมูลที่ส่ง' + tag + ' แจ้งผู้ดูแล', true, true];
+    case 1005: case 1006: case 1007: case 1008:
       return ['invalid-argument', 'อ่านสลิปไม่ได้' + tag + ' ใช้ภาพสลิปเต็มใบจากแอปธนาคาร (ไม่ครอป)', false, true];
     case 1009: return ['unavailable', 'ระบบธนาคารขัดข้องชั่วคราว ลองใหม่ในอีก 15 นาที' + tag, true, false];
     case 1010: return ['unavailable', (m || 'สลิปยังไม่พร้อมตรวจ รอสักครู่แล้วลองใหม่') + tag, true, false];
@@ -245,20 +247,33 @@ exports.submitSlip = onCall({
 
   // 2) ส่งให้ SlipOK ตรวจ (log=true ตรวจบัญชีผู้รับ+สลิปซ้ำ, amount ตรวจยอด)
   const isPng = buf[0] === 0x89 && buf[1] === 0x50;
-  const fd = new FormData();
-  fd.append('files', new Blob([buf], { type: isPng ? 'image/png' : 'image/jpeg' }), isPng ? 'slip.png' : 'slip.jpg');
-  fd.append('log', 'true');
-  fd.append('amount', (o.cents / 100).toFixed(2));
-  let body = null;
-  let httpStatus = null;
-  try {
+  async function callSlip(withAmount) {
+    const fd = new FormData();
+    fd.append('files', new Blob([buf], { type: isPng ? 'image/png' : 'image/jpeg' }), isPng ? 'slip.png' : 'slip.jpg');
+    fd.append('log', 'true');
+    if (withAmount) fd.append('amount', (o.cents / 100).toFixed(2));
     const r = await fetch('https://api.slipok.com/api/line/apikey/' + encodeURIComponent(SLIP_BRANCH.value().trim()), {
       method: 'POST',
       headers: { 'x-authorization': SLIP_KEY.value().trim() },
       body: fd
     });
-    httpStatus = r.status;
-    body = await r.json().catch(function () { return null; });
+    const b = await r.json().catch(function () { return null; });
+    return { status: r.status, body: b };
+  }
+  function slipOk(b) { return b && b.success === true && b.data && b.data.success === true; }
+  let body = null;
+  let httpStatus = null;
+  try {
+    // ลองส่งพร้อม amount ก่อน ถ้า SlipOK ตอบรหัส 1000 (ข้อมูลไม่ถูกต้อง) ลองใหม่โดยไม่ส่ง amount
+    // (ยอดเงินเซิร์ฟเวอร์เราเช็กซ้ำเองอยู่แล้วในขั้นตอนที่ 3)
+    let rr = await callSlip(true);
+    let c0 = rr.body && (rr.body.code || (rr.body.data && rr.body.data.code));
+    if (!slipOk(rr.body) && Number(c0) === 1000) {
+      console.warn('slipok_retry_no_amount', JSON.stringify(rr.body));
+      rr = await callSlip(false);
+    }
+    httpStatus = rr.status;
+    body = rr.body;
   } catch (e) {
     await refund();
     throw new HttpsError('unavailable', 'ระบบตรวจสลิปไม่ตอบสนอง ลองใหม่อีกครั้ง');
