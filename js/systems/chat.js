@@ -61,7 +61,7 @@
     const log = el('div', 'overflow-y:auto;overflow-x:hidden;word-break:break-word;border-radius:6px;box-sizing:border-box;-webkit-overflow-scrolling:touch;touch-action:pan-y');
     log.id = 'chat-log';
 
-    const inRow = el('div', 'display:none;gap:4px;margin-top:3px;align-items:center');
+    const inRow = el('div', 'display:none;gap:4px;margin-top:3px;align-items:center;pointer-events:auto');
     const toIn = el('input', 'display:none;box-sizing:border-box;border:2px solid #ff9ad5;border-radius:8px;background:#26090f;color:#fff;font-family:inherit;outline:none;padding:3px 6px;min-width:0');
     toIn.type = 'text'; toIn.maxLength = 12; toIn.placeholder = 'ชื่อผู้รับ'; toIn.autocomplete = 'off';
     toIn.addEventListener('input', () => { st.target = toIn.value.trim(); });
@@ -71,6 +71,8 @@
     // กันเกมแย่งปุ่มคีย์บอร์ด (เช่น WASD) ตอนพิมพ์
     [toIn, msgIn].forEach(i => ['keydown', 'keyup', 'keypress'].forEach(ev => i.addEventListener(ev, e => e.stopPropagation())));
     msgIn.addEventListener('keydown', e => { if (e.key === 'Enter') self.chatSend(); });
+    // กันเกม (Phaser/ระบบคุมจอยสติ๊ก) แย่งการแตะ จนช่องพิมพ์โฟกัสไม่ได้
+    [toIn, msgIn, sendBtn].forEach(i => ['pointerdown', 'touchstart', 'mousedown', 'click'].forEach(ev => i.addEventListener(ev, e => e.stopPropagation(), { passive: true })));
     sendBtn.onclick = () => self.chatSend();
     inRow.append(toIn, msgIn, sendBtn);
 
