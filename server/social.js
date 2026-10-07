@@ -1,10 +1,13 @@
 // social.js (เซิร์ฟเวอร์) -- ระบบเพื่อน + ปาร์ตี้ | ใช้ใน server.js: require('./social')(io, players);
+// v+: เพิ่มอีเวนต์ 'pfx' = สกิลฮีล/บัพหมู่ ส่งถึงเพื่อนในปาร์ตี้ที่อยู่ห้องเดียวกันและอยู่ในระยะ
 module.exports = function (io, players) {
   const parties = {};
   let nextPid = 1;
   const MAX = 5;
   const BONUS = { 3: 10, 4: 20, 5: 40 };   // โบนัสปาร์ตี้ (%) ตามจำนวนคน | 2 คน = ไม่มีโบนัส
   const INVITE_MS = 30000;
+  const PFX_KINDS = { heal: 1, buff: 1 };  // ชนิดเอฟเฟกต์หมู่ที่ยอมให้ส่ง
+  const PFX_MAX_RANGE = 800;               // ระยะสูงสุด (px) ที่เพื่อนจะได้รับผล
   const clean = (v, a, b, d) => { v = Number(v); return isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
   const fn = cb => (typeof cb === 'function' ? cb : () => {});
 
@@ -54,6 +57,38 @@ module.exports = function (io, players) {
       p.hp = clean(d.hp, 0, 1e9, 0);
       p.mhp = clean(d.mhp, 1, 1e9, 1);
       p.lv = clean(d.lv, 1, 999, p.lv || 1);
+    });
+
+    // ----- สกิลฮีล/บัพหมู่ -----
+    // ผู้ใช้สกิลส่ง: { kind:'heal'|'buff', name, range, amt, pct, ms, stat }
+    //   heal: amt = HP ที่ฟื้นให้เพื่อนแต่ละคน (ฝั่งผู้รับเป็นคนบวก HP เอง)
+    //   buff: stat = 'atk'|'def'|'spd'|... pct = % ที่เพิ่ม ms = ระยะเวลา
+    // เซิร์ฟเวอร์ส่งต่อเฉพาะเพื่อนในปาร์ตี้เดียวกัน + ห้องเดียวกัน + อยู่ในระยะ แล้วส่ง 'pfx' ให้เพื่อนแต่ละคน
+    socket.on('pfx', d => {
+      const p = me();
+      if (!p || !p.party || !p.room || !d || typeof d !== 'object') return;
+      if (throttle('_tPfx', 150)) return;
+      const kind = String(d.kind || '');
+      if (!PFX_KINDS[kind]) return;
+      const P = parties[p.party];
+      if (!P) return;
+      const range = clean(d.range, 0, PFX_MAX_RANGE, 400);
+      const out = {
+        from: p.id, kind,
+        name: String(d.name || '').slice(0, 24),
+        stat: String(d.stat || '').replace(/[^a-z]/gi, '').slice(0, 12),
+        amt: Math.floor(clean(d.amt, 0, 1e7, 0)),
+        pct: clean(d.pct, 0, 300, 0),
+        ms: Math.floor(clean(d.ms, 0, 60000, 0)),
+        x: p.x, y: p.y,
+      };
+      P.members.forEach(id => {
+        if (id === p.id) return;
+        const q = players[id];
+        if (!q || q.room !== p.room) return;
+        if (Math.hypot(q.x - p.x, q.y - p.y) > range) return;
+        io.to(id).emit('pfx', out);
+      });
     });
 
     // ----- เพื่อน -----
