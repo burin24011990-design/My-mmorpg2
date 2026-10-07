@@ -4,29 +4,29 @@
  * ปรับขนาด/ตำแหน่ง: แก้ HP_HUD_X, HP_HUD_Y, HP_HUD_SCALE ด้านล่าง
  */
 (function () {
-  var HP_HUD_X = 10, HP_HUD_Y = 6;   // ตำแหน่งในพิกัดเกม (มุมซ้ายบน)
+  var HP_HUD_X = 3, HP_HUD_Y = 4;   // ตำแหน่งในพิกัดเกม (มุมซ้ายบน)
   var HP_HUD_SCALE = 1;              // 1 = ปกติ, 1.2 = ใหญ่ขึ้น
 
   var css = `
   #hp-hud{position:fixed;left:0;top:0;z-index:40;display:none;align-items:flex-start;transform-origin:0 0;
     font-family:'Mitr',sans-serif;pointer-events:none;--gold:#ffd45c;--gold-d:#b8862b;--lac:#26090f;--lac2:#3b1119}
-  #hp-hud .seal{position:relative;z-index:2;width:54px;height:54px;flex:none;border-radius:50%;margin-top:4px;
+  #hp-hud .seal{position:relative;z-index:2;width:44px;height:44px;flex:none;border-radius:50%;margin-top:3px;
     background:radial-gradient(circle at 35% 28%,#ffe9a6 0,#e8b440 38%,#8a5a12 100%);
     border:2px solid #4a2a06;box-shadow:0 0 0 2px var(--gold),0 3px 8px rgba(0,0,0,.6),inset 0 2px 3px rgba(255,255,255,.55);
     display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
-  #hp-hud .seal::after{content:'';position:absolute;inset:4px;border-radius:50%;border:1px dashed rgba(74,42,6,.55)}
-  #hp-hud .seal small{font-size:9px;font-weight:600;color:#5a3406;letter-spacing:.5px;margin-bottom:1px}
-  #hp-hud .seal b{font-size:23px;font-weight:700;color:#2a1203;text-shadow:0 1px 0 rgba(255,236,170,.9)}
-  #hp-hud .seal b.s3{font-size:18px}
-  #hp-hud .plate{margin-left:-14px;padding:5px 12px 6px 22px;min-width:176px;
+  #hp-hud .seal::after{content:'';position:absolute;inset:3px;border-radius:50%;border:1px dashed rgba(74,42,6,.55)}
+  #hp-hud .seal small{font-size:7.5px;font-weight:600;color:#5a3406;letter-spacing:.5px;margin-bottom:1px}
+  #hp-hud .seal b{font-size:19px;font-weight:700;color:#2a1203;text-shadow:0 1px 0 rgba(255,236,170,.9)}
+  #hp-hud .seal b.s3{font-size:15px}
+  #hp-hud .plate{margin-left:-12px;padding:4px 9px 5px 17px;width:128px;box-sizing:content-box;
     background:linear-gradient(180deg,var(--lac2),var(--lac));border:1.5px solid var(--gold-d);
     border-radius:0 12px 12px 0;box-shadow:0 3px 8px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,212,92,.18)}
-  #hp-hud .nm{font-size:12px;font-weight:500;color:#ffe9b0;text-shadow:0 1px 2px #000;white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;max-width:150px;margin-bottom:2px}
+  #hp-hud .nm{font-size:10.5px;font-weight:500;color:#ffe9b0;text-shadow:0 1px 2px #000;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;max-width:128px;margin-bottom:1px}
   #hp-hud .nm:empty{display:none}
-  #hp-hud .bar{position:relative;height:13px;margin-top:3px;border-radius:7px;background:#12060a;border:1px solid #000;
+  #hp-hud .bar{position:relative;height:11px;margin-top:2px;border-radius:7px;background:#12060a;border:1px solid #000;
     box-shadow:inset 0 2px 3px rgba(0,0,0,.8),0 0 0 1px rgba(255,212,92,.25);overflow:hidden}
-  #hp-hud .bar.sm{height:9px}
+  #hp-hud .bar.sm{height:7px}
   #hp-hud .fill{position:absolute;left:0;top:0;bottom:0;width:100%;border-radius:7px;transition:width .25s ease-out}
   #hp-hud .fill::after{content:'';position:absolute;left:0;right:0;top:0;height:45%;
     background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,0));border-radius:7px 7px 0 0}
@@ -35,11 +35,11 @@
   #hp-hud .xp .fill{background:linear-gradient(90deg,#5b2aa8,#9a5cf0 60%,#d6a8ff)}
   #hp-hud .hp.low .fill{animation:hpPulse .8s infinite alternate}
   @keyframes hpPulse{to{filter:brightness(1.5)}}
-  #hp-hud .txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9.5px;
+  #hp-hud .txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8.5px;
     font-weight:500;color:#fff;text-shadow:0 1px 2px #000,0 0 3px #000}
-  #hp-hud .tag{position:absolute;left:5px;top:0;bottom:0;display:flex;align-items:center;font-size:8.5px;
+  #hp-hud .tag{position:absolute;left:4px;top:0;bottom:0;display:flex;align-items:center;font-size:7.5px;
     font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 1px 2px #000}
-  #hp-hud .gold{margin-top:5px;display:flex;justify-content:space-between;gap:10px;font-size:10.5px;
+  #hp-hud .gold{margin-top:3px;display:flex;justify-content:space-between;gap:6px;font-size:9.5px;
     color:#ffe28a;text-shadow:0 1px 2px #000;white-space:nowrap}
   #hp-hud .gold span+span{color:#e8c9c9}
   `;
