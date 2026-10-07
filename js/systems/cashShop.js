@@ -55,20 +55,35 @@
     for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.isDark(r, c)) g.fillRect((c + m) * s, (r + m) * s, s, s);
   }
 
-  // ----- ย่อรูปสลิปเป็น JPEG ก่อนส่ง (ยังคงความละเอียดพอให้อ่าน QR ในสลิปได้) -----
+  // ----- ย่อรูปสลิปเป็น JPEG ก่อนส่ง (แก้ใหม่: รองรับไฟล์จากแกลเลอรี่/คลาวด์ได้ดีขึ้น) -----
   function toJpegB64(file, ok, fail) {
-    var img = new Image();
-    var url = URL.createObjectURL(file);
-    img.onload = function () {
-      URL.revokeObjectURL(url);
-      var s = Math.min(1, 2600 / Math.max(img.width, img.height));
-      var c = document.createElement('canvas');
-      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      ok(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
-    };
-    img.onerror = function () { URL.revokeObjectURL(url); fail(new Error('อ่านไฟล์รูปไม่ได้')); };
-    img.src = url;
+    function draw(src, w, h) {
+      try {
+        var s = Math.min(1, 2600 / Math.max(w, h));
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+        var g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(src, 0, 0, c.width, c.height);
+        ok(c.toDataURL('image/jpeg', 0.92).split(',')[1]);
+      } catch (e) {
+        fail(new Error('แปลงรูปไม่สำเร็จ ลองแคปหน้าจอสลิปแล้วส่งรูปแคปแทน'));
+      }
+    }
+    function viaReader() {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var img = new Image();
+        img.onload = function () { draw(img, img.naturalWidth || img.width, img.naturalHeight || img.height); };
+        img.onerror = function () { fail(new Error('อ่านไฟล์รูปไม่ได้ ลองแคปหน้าจอสลิปแล้วส่งรูปแคปแทน')); };
+        img.src = fr.result;
+      };
+      fr.onerror = function () { fail(new Error('อ่านไฟล์รูปไม่ได้ ลองแคปหน้าจอสลิปแล้วส่งรูปแคปแทน')); };
+      fr.readAsDataURL(file);
+    }
+    if (window.createImageBitmap) {
+      createImageBitmap(file).then(function (b) { draw(b, b.width, b.height); }).catch(viaReader);
+    } else viaReader();
   }
 
   function open(onPaid) {
@@ -197,9 +212,29 @@
 
       pick.addEventListener('click', function () { inp.click(); });
       inp.addEventListener('change', function () {
-        file = inp.files && inp.files[0] ? inp.files[0] : null;
-        fname.textContent = file ? file.name : '';
-        setOn(send, !!file);
+        var f = inp.files && inp.files[0] ? inp.files[0] : null;
+        file = null;
+        setOn(send, false);
+        status.style.color = '#bbb';
+        status.textContent = '';
+        if (!f) { fname.textContent = ''; return; }
+        fname.textContent = f.name + ' (กำลังอ่านไฟล์...)';
+        // คัดลอกข้อมูลไฟล์เข้าหน่วยความจำทันที (กันไฟล์จากแกลเลอรี่/คลาวด์ที่ยังไม่โหลดจนอ่านไม่ได้ทีหลัง)
+        var done = function (blob) {
+          if (inp.files[0] !== f) return;
+          file = blob;
+          fname.textContent = f.name;
+          setOn(send, true);
+        };
+        if (f.arrayBuffer) {
+          f.arrayBuffer().then(function (buf) {
+            done(new Blob([buf], { type: f.type || 'image/jpeg' }));
+          }).catch(function () {
+            fname.textContent = f.name;
+            status.style.color = '#ff9a9a';
+            status.textContent = 'อ่านไฟล์ไม่ได้ ลองเปิดรูปในแกลเลอรี่ให้โหลดเต็มก่อน หรือแคปหน้าจอสลิปแล้วเลือกรูปแคปแทน';
+          });
+        } else done(f);
       });
       send.addEventListener('click', function () {
         if (!file || send.disabled) return;
