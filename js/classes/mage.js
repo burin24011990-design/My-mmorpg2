@@ -27,7 +27,15 @@
   // ตัวคูณดาเมจเวทเป็น % ของพลังเวท (ap) ของแต่ละสกิล: 1.2 = ดาเมจฐาน + 120% ของพลังเวท
   // ธารน้ำแข็งโดน 3 ครั้ง จึงตั้งต่อครั้งต่ำกว่า | เวทวาปไม่มีดาเมจ
   const AP_PCT = { mg_bolt: 1.2, mg_fire: 1.5, mg_ice: 0.8, ulti: 3.0 };
-  const pctText = v => ' • +' + Math.round(v * 100) + '% ดาเมจเวท';
+
+  // ตัวช่วยเขียนข้อความอธิบายสกิล (แต่ละท่อนที่คั่นด้วย ' • ' = 1 บรรทัดในหน้าต่างสกิล)
+  const pct = v => Math.round((v || 0) * 100);
+  const secs = ms => (Math.round((ms || 0) / 100) / 10) + ' วิ';
+  const pw = (def, lv, S) => {
+    let v = NaN;
+    try { v = Classes.power(def.id, def, lv, S); } catch (e) { v = NaN; }
+    return isFinite(v) ? v : def.dmg;
+  };
 
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('mage', { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' });
@@ -39,10 +47,12 @@
     dmg: 39, range: 380, halfW: 60, cd: 3500, mp: 20, shockMul: 0.25, shockMs: 4000, critBuff: 0.4, critMs: 3000,
   }, {
     scale: { ap: AP_PCT.mg_bolt },
-    info: (def, lv, S) => 'ยิงสายฟ้าแนวใหญ่ ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + pctText(AP_PCT.mg_bolt) +
-      ' • บัพคริติคอล +' + Math.round(def.critBuff * 100) + '% นาน ' + (def.critMs / 1000) + ' วิ' +
-      ' ติดไฟช็อต ≈' + Math.round(Classes.power(def.id, def, lv, S) * def.shockMul) + '/วิ นาน ' + (def.shockMs / 1000) +
-      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ยิงสายฟ้าแนวใหญ่ ยาว ' + def.range + ' กว้าง ' + (def.halfW * 2),
+      'ดาเมจ ≈' + pw(def, lv, S) + ' (ฐาน + ' + pct(AP_PCT.mg_bolt) + '% ของพลังเวท)',
+      'ไฟช็อต ≈' + Math.round(pw(def, lv, S) * def.shockMul) + '/วิ นาน ' + secs(def.shockMs) + ' (รวม ≈' + Math.round(pw(def, lv, S) * def.shockMul * def.shockMs / 1000) + ')',
+      'ตัวเอง: คริติคอล +' + pct(def.critBuff) + '% นาน ' + secs(def.critMs),
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 2: เวทวาป — วาประยะ range ไปทางที่เลือก | เพิ่มเกราะ armor นาน armorMs มิลลิวินาที
@@ -52,9 +62,11 @@
     dmg: 0, range: 220, cd: 8000, mp: 16, armor: 25, armorMs: 4000, mpRegen: 0.05, mpRegenMs: 6000,
   }, {
     scale: { ap: 1 },
-    info: (def, lv, S) => 'วาปไปทางที่ลาก ระยะ ' + def.range + ' เพิ่มเกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) +
-      ' วิ • รีเจนมานา +' + Math.round(def.mpRegen * 100) + '%/วิ นาน ' + (def.mpRegenMs / 1000) +
-      ' วิ • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['วาปไปทางที่ลาก ระยะ ' + def.range,
+      'เกราะ +' + def.armor + ' นาน ' + secs(def.armorMs),
+      'รีเจนมานา +' + pct(def.mpRegen) + '%/วิ นาน ' + secs(def.mpRegenMs) + ' (รวม ≈' + pct(def.mpRegen * def.mpRegenMs / 1000) + '% ของมานาสูงสุด)',
+      'ลากเลือกทิศได้ (บอทไม่ใช้สกิลนี้)',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 3: ลูกไฟวงกว้าง — วางลงพื้นรัศมี range ระเบิด hits ครั้ง (ครั้งแรกหลังเตือน delay มิลลิวินาที ครั้งต่อไปห่างกัน hitMs) | สตั้น stunMs
@@ -63,8 +75,11 @@
     dmg: 45, range: 200, cd: 7000, mp: 24, delay: 400, hits: 2, hitMs: 450, stunMs: 1500,
   }, {
     scale: { ap: AP_PCT.mg_fire }, ground: { cast: 340 },
-    info: (def, lv, S) => 'วางลูกไฟวงกว้างลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + pctText(AP_PCT.mg_fire) +
-      ' x ' + def.hits + ' ครั้ง สตั้น ' + (def.stunMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['วางลูกไฟวงกว้างลงพื้น รัศมี ' + def.range + ' ระเบิดหลังเตือน ' + secs(def.delay),
+      'ดาเมจครั้งละ ≈' + pw(def, lv, S) + ' (ฐาน + ' + pct(AP_PCT.mg_fire) + '% ของพลังเวท) x ' + def.hits + ' ครั้ง ห่างกัน ' + secs(def.hitMs) + ' (รวม ≈' + (pw(def, lv, S) * def.hits) + ')',
+      'สตั้น ' + secs(def.stunMs) + ' ทุกครั้งที่โดน (บอสสั้นลง ' + pct(1 - BOSS_CC_MUL) + '%)',
+      'ลากเล็งวางได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 4: ธารน้ำแข็ง — วางวงรัศมี range ดาเมจ ticks ครั้ง ห่างกัน tickMs | ทุกครั้งมีโอกาส freezeChance (0-1) แช่แข็ง freezeMs
@@ -74,16 +89,27 @@
     ticks: 3, tickMs: 900, freezeChance: 0.4, freezeMs: 1800,
   }, {
     scale: { ap: AP_PCT.mg_ice }, ground: { cast: 320 },
-    info: (def, lv, S) => 'วางวงน้ำแข็งลงพื้น ดาเมจ ≈' + Classes.power(def.id, def, lv, S) + pctText(AP_PCT.mg_ice) + ' x ' + def.ticks +
-      ' ครั้ง โอกาสแช่แข็ง ' + Math.round(def.freezeChance * 100) + '% ต่อครั้ง (' + (def.freezeMs / 1000) + ' วิ) • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['วางวงน้ำแข็งลงพื้น รัศมี ' + def.range,
+      'ดาเมจครั้งละ ≈' + pw(def, lv, S) + ' (ฐาน + ' + pct(AP_PCT.mg_ice) + '% ของพลังเวท) x ' + def.ticks + ' ครั้ง ห่างกัน ' + secs(def.tickMs) + ' (รวม ≈' + (pw(def, lv, S) * def.ticks) + ')',
+      'โอกาสแช่แข็ง ' + pct(def.freezeChance) + '% ต่อครั้ง นาน ' + secs(def.freezeMs) + ' (บอสสั้นลง ' + pct(1 - BOSS_CC_MUL) + '%)',
+      'ลากเล็งวางได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // อัลติ ระเบิดมหาเวท — ชาจพลัง chargeMs มิลลิวินาที แล้วระเบิดรอบตัวรัศมี range | แช่แข็ง freezeMs + ไฟช็อต shockMs | คูลดาวน์ 60 วิ
   // mpFull: true = เติมมานาเต็มทันทีหลังระเบิด (ตั้ง false ถ้าไม่ต้องการ)
   Classes.ulti('mage', {
     name: 'ระเบิดมหาเวท', dmg: 220, range: 420, cd: 60000, mp: 60, type: 'mult',
-    chargeMs: 1000, freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true,
-  }, { scale: { ap: AP_PCT.ulti } });
+    chargeMs: 1000, freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true, noInfo: true,
+  }, {
+    scale: { ap: AP_PCT.ulti },
+    info: (def, lv, S) => ['ชาจพลัง ' + secs(def.chargeMs) + ' แล้วระเบิดรอบตัว รัศมี ' + def.range,
+      'ดาเมจ ≈' + pw(def, lv, S) + ' (ฐาน + ' + pct(AP_PCT.ulti) + '% ของพลังเวท)',
+      'แช่แข็ง ' + secs(def.freezeMs) + ' ทุกตัวที่โดน (บอสสั้นลง ' + pct(1 - BOSS_CC_MUL) + '%)',
+      'ไฟช็อต ≈' + Math.round(pw(def, lv, S) * def.shockMul) + '/วิ นาน ' + secs(def.shockMs),
+      def.mpFull ? 'เติมมานาเต็มทันทีหลังระเบิด' : 'ไม่เติมมานา',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
+  });
 
   if (TEST_UNLOCK) Classes.testUnlock(MG_IDS);
 
