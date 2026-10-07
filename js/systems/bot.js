@@ -4,6 +4,7 @@
 //   1) หนีมินิบอส (ถ้าติ๊ก)   2) ถ้ามีมอนไล่ตีอยู่ ให้สู้ก่อน   3) เก็บของที่อยู่ใกล้ตัว
 //   4) โจมตีเป้าที่เลือก   5) เดินหามอนที่ตีได้
 // โหลดไฟล์นี้ต่อจาก input.js / ui.js / panels.js (ทับ updateAuto เดิมโดยอัตโนมัติ)
+// ใหม่ (v34): เปิดกระเป๋าแล้วบอทสู้ต่อได้ (ดู botBagTick ด้านล่าง) และบอทกดยาเลือดได้แม้ปุ่มยาถูกซ่อนตอนเปิดกระเป๋า
 
 // ตั้งค่าแยกตามด่าน
 const BOT_DEFAULT = { normal: true, ranged: true, boss: false, flee: true };
@@ -108,6 +109,9 @@ function botPatchGroundCasts() {
   Main.prototype.setupButtons = function () {
     _setupButtons.call(this);
     botPatchGroundCasts();
+    // ตัวช่วยให้บอททำงานต่อตอนเปิดกระเป๋า (ทำงานหลังจบ update ทุกเฟรม ดู botBagTick)
+    this.events.off('postupdate', this.botBagTick, this);   // กันผูกซ้ำเวลาฉากถูกสร้างใหม่
+    this.events.on('postupdate', this.botBagTick, this);
     // ปุ่ม "ตั้งค่าบอท" ย้ายไปอยู่แถบเมนูด้านบนแล้ว (js/systems/topbar.js)
     // ข้อความสถานะบอท วางใต้แถบเมนู
     this.botStatusText = this.add.text(W / 2, 60, '', { fontSize: '12px', color: '#9fd98a', stroke: '#000', strokeThickness: 3 })
@@ -219,6 +223,18 @@ Object.assign(Main.prototype, {
     return n >= 3;
   },
 
+  // ---- ตัวช่วยตอนเปิดกระเป๋า ----
+  // ปกติ updateAuto ถูกเรียกจาก update ของเกม แต่ถ้าโค้ดเกมข้ามการทำงานของบอทเพราะมีหน้าต่างเปิดอยู่ (และเฟรมนี้ยังไม่ได้เรียก updateAuto)
+  // ให้เรียกเองหลังจบ update | ทำเฉพาะตอนเปิดบอท + เปิดกระเป๋าอยู่ + ตัวละครยังไม่ตาย
+  botBagTick() {
+    if (!this.autoMode || !window.BAG_OPEN) return;
+    if (!this.player || !this.player.active || !this.stats || this.stats.hp <= 0) return;
+    const fr = this.game && this.game.getFrame ? this.game.getFrame() : -1;
+    if (this._botAutoAt === fr) return;           // เฟรมนี้บอททำงานแล้ว ไม่ต้องทำซ้ำ
+    if (!this.target || !this.target.active) this.target = this.botPickTarget(600);
+    this.updateAuto();
+  },
+
   // ---- ดูแลเลือด: สกิลฮีล + ยาเลือด ----
   botAutoHeal(say) {
     const g = this.botGlobal(), now = this.time.now;
@@ -295,8 +311,9 @@ Object.assign(Main.prototype, {
 
   // ดื่มยาเลือด: กดปุ่มยาบนจอก่อน (ตรงกับที่ผู้เล่นกดจริง) ไม่เจอปุ่มค่อยลองหาฟังก์ชัน
   botDrinkHp() {
-    const btn = this.botPotionBtn();
-    if (btn === 'hidden') return false;
+    let btn = this.botPotionBtn();
+    // ปุ่มยาถูกซ่อนเพราะเปิดกระเป๋าอยู่ แต่บอทยังกดผ่านโค้ดได้ (ปุ่มที่ซ่อนก็รับคลิกจากโค้ดได้)
+    if (btn === 'hidden') btn = this._botPotEl || null;
     if (btn === 'empty') {                       // ยาหมด: เตือนทุก 20 วิ
       const t = this.time.now;
       if (t > (this._botNoPotAt || 0)) { this._botNoPotAt = t + 20000; if (this.toastMsg) this.toastMsg('บอท: ยาเลือดหมด'); }
@@ -772,7 +789,18 @@ Object.assign(Main.prototype, {
   },
 });
 
+// จดเลขเฟรมทุกครั้งที่ updateAuto ถูกเรียก (ให้ botBagTick รู้ว่าเฟรมนี้บอททำงานไปแล้วหรือยัง)
+// ต้องอยู่หลัง Object.assign ด้านบน เพราะต้องห่อ updateAuto ตัวที่เพิ่งสร้าง
+(function () {
+  const _updateAuto = Main.prototype.updateAuto;
+  Main.prototype.updateAuto = function () {
+    this._botAutoAt = (this.game && this.game.getFrame) ? this.game.getFrame() : -1;
+    return _updateAuto.apply(this, arguments);
+  };
+})();
+
 // ===== หมายเหตุ =====
 // 1) botFindPotionFn()/botDrinkHp(): หาฟังก์ชันดื่มยาในเกมอัตโนมัติ ถ้าไม่เจอจะขึ้นข้อความบนจอ ให้ส่ง inventory.js มาผูกให้ตรง
 // 2) botIsHeal(): สกิลที่ type เป็น lightbeam/holy/melee/proj/dash ถือเป็นสกิลโจมตีเสมอ (ไม่ดูจาก id แล้ว)
 // 3) ตั้งค่าสกิล/เลือดเก็บใน botCfg.g (ใช้ร่วมทุกด่าน) ถ้าเซฟแล้วไม่ติด ให้ตรวจ save.js ว่าเก็บ botCfg ทั้งก้อนหรือเฉพาะเลขด่าน
+// 4) เปิดกระเป๋า (bagWindow.js) ไม่หยุดเกมแล้ว | botBagTick() เป็นตัวสำรอง: ถ้าโค้ดเกมอื่นยังข้ามบอทตอนเปิดกระเป๋า จะเรียก updateAuto ให้เอง
