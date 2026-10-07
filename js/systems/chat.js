@@ -1,4 +1,5 @@
-// chat.js (ฝั่งเกม) -- แชตโลก / ปาร์ตี้ / ส่วนตัว อยู่ล่างซ้าย ข้างขวดยาบัฟ
+// chat.js (ฝั่งเกม) -- แชตโลก / ปาร์ตี้ / ส่วนตัว
+// เริ่มต้นอยู่ล่างกลาง-ซ้าย (พ้นปุ่มขวดยา) | กดค้างที่ปุ่ม 💬 แล้วลากเพื่อย้ายได้ (จำตำแหน่งไว้)
 // โหลดหลัง social.js ก่อน main.js | ต้องใช้คู่กับ server/chat.js
 (function () {
   const P = Main.prototype;
@@ -8,6 +9,18 @@
   const MAX_LOG = 60;        // เก็บข้อความย้อนหลัง
   const FADE_MS = 10000;     // ตอนปิดแชต ข้อความจะแสดงกี่ ms
   const SHADOW = 'text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000;';
+
+  // ---------- ตำแหน่งแชต ----------
+  const DEF_X = 0.30;                 // ตำแหน่งเริ่มต้น: ห่างจากขอบซ้ายจอเกม 30% (ขยับเลขนี้ได้ ถ้ายังทับ)
+  const POS_KEY = 'chatPos2';         // เก็บตำแหน่งที่ลากไว้ (x = สัดส่วนซ้าย, b = สัดส่วนจากขอบล่าง)
+  const LONG_MS = 400;                // กดค้างกี่ ms ถึงเริ่มลาก
+  const loadPos = () => {
+    try {
+      const p = JSON.parse(localStorage.getItem(POS_KEY));
+      if (p && isFinite(p.x) && isFinite(p.b)) return p;
+    } catch (e) {}
+    return null;
+  };
 
   // ---------- เริ่มระบบ (หลังต่อเซิร์ฟเวอร์) ----------
   const _init = P.initNetwork;
@@ -19,10 +32,10 @@
   P.chatInit = function () {
     if (this.chatSt) return;
     const self = this;
-    this.chatSt = { tab: 'world', open: false, log: [], unread: 0, target: '', lastFrom: '' };
+    this.chatSt = { tab: 'world', open: false, log: [], unread: 0, target: '', lastFrom: '', pos: loadPos() };
     this.socket.on('chatMsg', m => self.chatPush(m));
     this.chatBuild();
-    this.chatSys('พิมพ์ /w ชื่อ ข้อความ = กระซิบ | /p = ปาร์ตี้ | /r = ตอบกลับ');
+    this.chatSys('พิมพ์ /w ชื่อ ข้อความ = กระซิบ | /p = ปาร์ตี้ | /r = ตอบกลับ | กดค้างปุ่ม 💬 เพื่อย้ายแชต');
   };
 
   P.chatSys = function (text) { if (text) this.chatPush({ ch: 'sys', text: text }); };
@@ -62,10 +75,65 @@
     inRow.append(toIn, msgIn, sendBtn);
 
     const bar = el('div', 'display:flex;gap:4px;margin-top:3px;align-items:center');
-    const tog = el('button', 'position:relative;cursor:pointer;border:2px solid #8a6a32;border-radius:8px;background:#3a2a5a;color:#fff;font-family:inherit;padding:0 8px;pointer-events:auto;touch-action:manipulation', '💬');
+    // touch-action:none = ให้ลากบนมือถือได้โดยหน้าไม่เลื่อน
+    const tog = el('button', 'position:relative;cursor:pointer;border:2px solid #8a6a32;border-radius:8px;background:#3a2a5a;color:#fff;font-family:inherit;padding:0 8px;pointer-events:auto;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none', '💬');
     const badge = el('span', 'display:none;position:absolute;right:-5px;top:-5px;min-width:14px;height:14px;line-height:14px;border-radius:7px;background:#e0413a;color:#fff;font-size:10px;text-align:center;padding:0 2px');
     tog.appendChild(badge);
-    tog.onclick = () => { st.open = !st.open; if (st.open) st.unread = 0; self.chatRender(); self.chatLayout(); if (st.open) setTimeout(() => { log.scrollTop = log.scrollHeight; }, 0); };
+
+    // ----- กดค้างแล้วลากเพื่อย้ายแชต -----
+    let drag = null, moved = false, timer = null, down = null;
+    const canvasRect = () => { const cv = document.querySelector('canvas'); return cv ? cv.getBoundingClientRect() : null; };
+    tog.addEventListener('pointerdown', e => {
+      const r = canvasRect(); if (!r || r.width < 50) return;
+      moved = false;
+      down = { x: e.clientX, y: e.clientY };
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const rr = root.getBoundingClientRect();
+        drag = {
+          sx: down.x, sy: down.y,
+          x0: (rr.left - r.left) / r.width,              // ตำแหน่งซ้ายตอนเริ่ม (สัดส่วน)
+          b0: (r.bottom - rr.bottom) / r.height          // ตำแหน่งล่างตอนเริ่ม (สัดส่วน)
+        };
+        tog.style.outline = '3px solid #ffd45c';
+        if (navigator.vibrate) { try { navigator.vibrate(30); } catch (e2) {} }
+      }, LONG_MS);
+    });
+    window.addEventListener('pointermove', e => {
+      if (!down) return;
+      if (!drag) {                                       // ขยับนิ้วก่อนครบเวลา = ไม่ใช่การกดค้าง
+        if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) { clearTimeout(timer); down = null; }
+        return;
+      }
+      const r = canvasRect(); if (!r) return;
+      moved = true;
+      const w = root.offsetWidth / r.width;
+      st.pos = {
+        x: Math.max(0, Math.min(1 - w, drag.x0 + (e.clientX - drag.sx) / r.width)),
+        b: Math.max(0, Math.min(0.55, drag.b0 - (e.clientY - drag.sy) / r.height))
+      };
+      self.chatLayout();
+      e.preventDefault();
+    }, { passive: false });
+    const endDrag = () => {
+      clearTimeout(timer);
+      if (drag) {
+        try { localStorage.setItem(POS_KEY, JSON.stringify(st.pos)); } catch (e) {}
+        drag = null; tog.style.outline = '';
+      }
+      down = null;
+    };
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    tog.addEventListener('contextmenu', e => e.preventDefault());   // กันเมนูกดค้างของเบราว์เซอร์
+
+    tog.onclick = () => {
+      if (moved) { moved = false; return; }               // เพิ่งลากเสร็จ = ไม่สลับเปิด/ปิด
+      st.open = !st.open; if (st.open) st.unread = 0;
+      self.chatRender(); self.chatLayout();
+      if (st.open) setTimeout(() => { log.scrollTop = log.scrollHeight; }, 0);
+    };
+
     const tabs = el('div', 'display:none;gap:4px');
     const tabBtns = {};
     ['world', 'party', 'whisper'].forEach(t => {
@@ -84,18 +152,33 @@
     this.chatRender();
   };
 
-  // จัดตำแหน่งตามสเกลจอ (ขวาของปุ่มขวดยา ATK/DEF/HP+ ที่มุมล่างซ้าย)
+  // จัดตำแหน่งตามสเกลจอ
   P.chatLayout = function () {
     const c = this._chat; if (!c) return;
     const cv = document.querySelector('canvas'); if (!cv) return;
     const r = cv.getBoundingClientRect();
     if (r.width < 50) { c.root.style.display = 'none'; return; }
     c.root.style.display = 'flex';
-    const k = r.width / (typeof W !== 'undefined' ? W : 960), open = this.chatSt.open;
+    const st = this.chatSt;
+    const k = r.width / (typeof W !== 'undefined' ? W : 960), open = st.open;
     const fs = Math.max(11, 12 * k);
-    c.root.style.left = (r.left + r.width * 0.108) + 'px';
-    c.root.style.bottom = Math.max(0, window.innerHeight - r.bottom + 4 * k) + 'px';
-    c.root.style.width = (r.width * (open ? 0.36 : 0.30)) + 'px';
+    const wFrac = open ? 0.36 : 0.30;
+    const w = r.width * wFrac;
+
+    // ตำแหน่ง: ใช้ที่ลากไว้ ถ้าไม่มีใช้ค่าเริ่มต้น (ขยับมาทางขวา พ้นปุ่มขวดยา)
+    let x, bottomPx;
+    if (st.pos) {
+      x = st.pos.x;
+      bottomPx = st.pos.b * r.height;
+    } else {
+      x = DEF_X;
+      bottomPx = 4 * k;
+    }
+    x = Math.max(0, Math.min(1 - wFrac, x));          // กันล้นขอบขวา
+    c.root.style.left = (r.left + x * r.width) + 'px';
+    c.root.style.bottom = Math.max(0, window.innerHeight - r.bottom + bottomPx) + 'px';
+    c.root.style.width = w + 'px';
+
     c.log.style.fontSize = fs + 'px';
     c.log.style.lineHeight = '1.3';
     c.log.style.maxHeight = (fs * 1.3 * (open ? 8 : 4) + 6) + 'px';
@@ -176,6 +259,13 @@
     }
     else if ((m = text.match(/^\/p\s+([\s\S]+)/i))) { ch = 'party'; text = m[1]; }
     else if ((m = text.match(/^\/(?:world|all|s)\s+([\s\S]+)/i))) { ch = 'world'; text = m[1]; }
+    else if (/^\/resetchat\s*$/i.test(text)) {            // รีเซ็ตตำแหน่งแชตกลับค่าเริ่มต้น
+      st.pos = null;
+      try { localStorage.removeItem(POS_KEY); } catch (e) {}
+      c.msgIn.value = '';
+      this.chatLayout();
+      return this.chatSys('รีเซ็ตตำแหน่งแชตแล้ว');
+    }
     if (ch === 'party' && !this.party) return this.chatSys('คุณยังไม่ได้อยู่ในปาร์ตี้');
     if (ch === 'whisper' && !to) return this.chatSys('ใส่ชื่อผู้รับ หรือแตะชื่อในแชต');
     const members = this.party ? this.party.members.map(x => x.id) : [];
