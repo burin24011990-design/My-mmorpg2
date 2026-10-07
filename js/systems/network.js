@@ -1,6 +1,8 @@
 // ===== ระบบออนไลน์ (Socket.IO) + แชนเนล/ห้อง =====
 // v+: ส่งเลเวลตอน join (ใช้กับ social.js: แสดง Lv. ข้างชื่อ + ปาร์ตี้)
 // v++: ส่งคลาส (cls) ไปกับ join/move และให้ผู้เล่นอื่นใช้สกิน+อนิเมชันใหม่ (HeroAnims) เหมือนตัวเรา
+// v+++: แก้บั๊ก state (ช่องที่ 5 คือเลเวล ไม่ใช่คลาส -> เดิมทำให้สกินผู้เล่นอื่นถูกรีเซ็ตเป็นชุดเก่าตลอด)
+//       คลาสอยู่ช่องที่ 6 | เอฟเฟกต์สกิลผู้เล่นอื่นเรียก RemoteFx (js/systems/remoteFx.js)
 
 // ชื่อตัวละครเหนือหัว (ปรับตรงนี้)
 const NET_NAME_SIZE = '20px';    // ขนาดชื่อ (เดิม 12px)
@@ -73,7 +75,7 @@ function netDirFromVec(x, y) {
   return y < 0 ? 'up' : 'down';
 }
 function netApplyClass(o, cls) {   // ตั้งสกินให้ผู้เล่นอื่นตามคลาสที่ได้รับ
-  if (!o || !cls || !window.HeroAnims) return;
+  if (!o || typeof cls !== 'string' || !cls || !window.HeroAnims) return;
   o.cls = cls;
   if (o.s) o.s.heroSkin = HeroAnims.skinOf(cls);
 }
@@ -132,12 +134,14 @@ Object.assign(Main.prototype, {
     });
     this.socket.on('joined', p => this.addOther(p));
     this.socket.on('left', id => this.removeOther(id));
+    // state: [id, x, y, ด่าน, เลเวล, คลาส]  (ช่องที่ 5 = เลเวล ใช้กับ social.js | ช่องที่ 6 = คลาส)
     this.socket.on('state', list => {
-      list.forEach(([id, x, y, st, cls]) => {
+      list.forEach(row => {
+        const id = row[0], x = row[1], y = row[2], st = row[3], cls = row[5];
         const o = this.others[id];
         if (!o) return;
         o.tx = x; o.ty = y; o.stage = st;
-        if (cls && cls !== o.cls) netApplyClass(o, cls);   // เซิร์ฟเวอร์ส่งคลาสมากับ state (ถ้ารองรับ)
+        if (typeof cls === 'string' && cls && cls !== o.cls) netApplyClass(o, cls);
       });
       this.statusText.setText('ออนไลน์ CH' + this.channel + '-' + this.netRoom + ': ' + list.length + '/' + NET_ROOM_CAP + ' คน');
     });
@@ -340,23 +344,36 @@ Object.assign(Main.prototype, {
   },
 
   showRemoteSkill(d) {
+    if (!d) return;
     if (d.stage !== undefined && d.stage !== this.stageIdx) return; // อยู่คนละด่าน ไม่ต้องแสดง
     this.netRemoteAttack(d);
-    if (String(d.name).startsWith('ulti_')) {
-      const cls = d.name.replace('ulti_', ''); const def = ULTI_DEFS[cls];
-      if (def) this.flash(d.x, d.y, def.range, CLASSES[cls].color);
-      return;
-    }
-    if (String(d.name).startsWith('basic_')) {
-      const cls = d.name.replace('basic_', ''); const def = BASIC_ATTACKS[cls];
-      if (!def) return;
-      if (def.type === 'proj') this.remoteProjectile(d, CLASSES[cls].color);
-      else this.flash(d.x + d.fx * 40, d.y + d.fy * 40, 45, 0xffffff);
-      return;
-    }
-    const def = SKILL_DEFS[d.name]; if (!def) return;
-    if (def.type === 'proj') this.remoteProjectile(d, CLASSES[def.class].color);
-    else this.flash(d.x, d.y, def.range || 60, CLASSES[def.class] ? CLASSES[def.class].color : 0xffffff);
+
+    // เอฟเฟกต์สกิลจริง (สไปรต์) ที่ตัวผู้เล่นอื่น -- ถ้าเล่นได้จะไม่ใช้วงกลมสำรองด้านล่าง
+    try {
+      if (window.RemoteFx && RemoteFx.play(this, d, this.netFindCaster(d))) return;
+    } catch (e) { console.error('RemoteFx', e); }
+
+    // ----- สำรอง: วงกลม/กระสุนสีเรียบๆ (กรณีไม่มี remoteFx.js หรือสกิลนั้นไม่มีภาพ) -----
+    try {
+      const nm = String(d.name || '');
+      if (nm.startsWith('ulti_')) {
+        const cls = nm.replace('ulti_', ''); const def = ULTI_DEFS[cls];
+        if (def) this.flash(d.x, d.y, def.range, CLASSES[cls] ? CLASSES[cls].color : 0xffffff);
+        return;
+      }
+      if (nm.startsWith('basic_')) {
+        const cls = nm.replace('basic_', ''); const def = BASIC_ATTACKS[cls];
+        if (!def) return;
+        const col = CLASSES[cls] ? CLASSES[cls].color : 0xffffff;
+        if (def.type === 'proj') this.remoteProjectile(d, col);
+        else this.flash(d.x + d.fx * 40, d.y + d.fy * 40, 45, 0xffffff);
+        return;
+      }
+      const def = SKILL_DEFS[nm]; if (!def) return;
+      const col = CLASSES[def.class] ? CLASSES[def.class].color : 0xffffff;
+      if (def.type === 'proj') this.remoteProjectile(d, col);
+      else this.flash(d.x, d.y, def.range || 60, col);
+    } catch (e) { console.error('showRemoteSkill', e); }
   },
 
   remoteProjectile(d, color) {
