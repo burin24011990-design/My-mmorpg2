@@ -1,4 +1,4 @@
-// functions/names.js — ตั้งชื่อตัวละคร: ไม่ซ้ำ / 2-15 ตัวอักษร / ไม่มีคำหยาบ (v2, asia-southeast1)
+// functions/names.js — ตั้งชื่อตัวละคร: ไม่ซ้ำ / 2-15 ตัวอักษร / ไม่มีคำหยาบ / ตั้งแล้วเปลี่ยนไม่ได้ (v2, asia-southeast1)
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 if (!admin.apps.length) admin.initializeApp();
@@ -51,15 +51,24 @@ function validate(rawName) {
   return { name, key };
 }
 
-// ผู้ล็อกอิน: ตรวจ + จองชื่อ | ผู้เยี่ยม (ไม่ล็อกอิน): ตรวจอย่างเดียว ไม่จอง
+// ผู้ล็อกอิน: ตรวจ + จองชื่อ (ครั้งแรกครั้งเดียว แล้วล็อกถาวร) | ผู้เยี่ยม (ไม่ล็อกอิน): ตรวจอย่างเดียว ไม่จอง
 exports.claimName = onCall({ region: 'asia-southeast1' }, async (request) => {
   const data = request.data;
   const auth = request.auth;
 
+  const db = admin.firestore();
+
+  // ผู้ล็อกอินที่เคยตั้งชื่อแล้ว -> ส่งชื่อเดิมกลับ ไม่สนชื่อที่ส่งมา (เปลี่ยนไม่ได้)
+  if (auth) {
+    const existing = await db.collection('users').doc(auth.uid).get();
+    if (existing.exists && existing.data().nameKey) {
+      return { ok: true, name: existing.data().name, reserved: true, locked: true };
+    }
+  }
+
   const v = validate(data && data.name);
   if (v.err) throw new HttpsError('invalid-argument', v.err);
 
-  const db = admin.firestore();
   const ref = db.collection('names').doc(v.key);
 
   if (!auth) {
@@ -70,16 +79,21 @@ exports.claimName = onCall({ region: 'asia-southeast1' }, async (request) => {
 
   const uid = auth.uid;
   const userRef = db.collection('users').doc(uid);
+  let result;
   await db.runTransaction(async (t) => {
+    const u = await t.get(userRef);
+    // กันกรณีชนกันระหว่างสองคำขอพร้อมกัน: ถ้ามีชื่อแล้ว ใช้ชื่อเดิม
+    if (u.exists && u.data().nameKey) {
+      result = { ok: true, name: u.data().name, reserved: true, locked: true };
+      return;
+    }
     const snap = await t.get(ref);
     if (snap.exists && snap.data().uid !== uid) {
       throw new HttpsError('already-exists', 'ชื่อนี้มีคนใช้แล้ว');
     }
-    const u = await t.get(userRef);
-    const oldKey = u.exists ? u.data().nameKey : null;
-    if (oldKey && oldKey !== v.key) t.delete(db.collection('names').doc(oldKey)); // ปล่อยชื่อเก่า
     t.set(ref, { uid, name: v.name });
     t.set(userRef, { name: v.name, nameKey: v.key }, { merge: true });
+    result = { ok: true, name: v.name, reserved: true, locked: false };
   });
-  return { ok: true, name: v.name, reserved: true };
+  return result;
 });
