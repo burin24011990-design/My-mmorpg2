@@ -26,20 +26,30 @@
   const MP_COST_MUL = 0.5;
   const mpc = n => Math.max(1, Math.round(n * MP_COST_MUL));
 
+  // ตัวช่วยเขียนข้อความอธิบายสกิล (แต่ละท่อนที่คั่นด้วย ' • ' = 1 บรรทัดในหน้าต่างสกิล)
+  const pct = v => Math.round((v || 0) * 100);
+  const secs = ms => (Math.round((ms || 0) / 100) / 10) + ' วิ';
+  const pw = (def, lv, S) => {
+    let v = NaN;
+    try { v = Classes.power(def.id, def, lv, S); } catch (e) { v = NaN; }
+    return isFinite(v) ? v : def.dmg;
+  };
+
   // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
   Classes.basic('sword', { name: 'โจมตี', dmg: 10, range: 60, cd: 650, type: 'melee', class: 'sword' });
 
   // ฟันตรง: ฟันเป็นแนวสี่เหลี่ยม ยาว range (เดิม 60 -> 140) กว้าง halfW*2 (halfW 55 = กว้าง 110)
   // ทุกครั้งที่ฟัน เพิ่มพลังโจมตี atkBuffPct (0.25 = +25%) นาน atkBuffMs มิลลิวินาที
   Classes.skill('sw_slash', {
-    name: 'ฟันตรง', class: 'sword', type: 'sslash',
+    name: 'ฟันตรง', class: 'sword', type: 'sslash', noInfo: true,
     dmg: 20, range: 140, halfW: 55, cd: 4000, mp: mpc(8),
     atkBuffPct: 0.25, atkBuffMs: 3000,
   }, {
     scale: { patk: 1 },
     noInfo: true,
-    info: (def, lv, S) => 'ฟันตรงเป็นแนวยาวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' • ฟันแล้วเพิ่มพลังโจมตี +' + Math.round(def.atkBuffPct * 100) + '% นาน ' + (def.atkBuffMs / 1000) + ' วิ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ฟันตรงเป็นแนวสี่เหลี่ยม ยาว ' + def.range + ' กว้าง ' + (def.halfW * 2) + ' ดาเมจ ≈' + pw(def, lv, S),
+      'ฟันแล้วเพิ่มพลังโจมตี +' + pct(def.atkBuffPct) + '% นาน ' + secs(def.atkBuffMs),
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 1: พุ่งทะยาน (แบบกลุ่ม) — พุ่งทะลวงระยะ range ตีทุกตัวที่อยู่ในแนวทางพุ่ง กว้าง pathW*2 | บล็อก 1 ครั้ง blockMs
@@ -49,8 +59,11 @@
     dmg: 16, range: 260, cd: 3600, mp: mpc(14), pathW: 95, blockMs: 3000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'พุ่งทะลวงเป็นแนวยาวกว้าง โจมตีศัตรูทุกตัวที่ขวางทาง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' ต่อตัว • บล็อกการโจมตี 1 ครั้ง (นาน ' + (def.blockMs / 1000) + ' วิ) • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['พุ่งทะลวง ระยะ ' + def.range + ' กว้าง ' + (def.pathW * 2) + ' ตีทุกตัวที่ขวางทาง',
+      'ดาเมจ ≈' + pw(def, lv, S) + ' ต่อตัว',
+      'บล็อกการโจมตี 1 ครั้ง นาน ' + secs(def.blockMs),
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 2: ฟันสตั้น — ฟันตรงด้านหน้า ยาว range กว้าง halfW*2 | สตั้น stunMs มิลลิวินาที
@@ -63,11 +76,13 @@
     mpPct: 0.2, atkPct: 0.2, atkMs: 4000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ฟันตรงด้านหน้าเป็นแนวกว้าง ดาเมจ ≈' + Classes.power(def.id, def, lv, S) +
-      ' สตั้น ' + (def.stunMs / 1000) + ' วิ • ฟื้นเลือด ' + Math.round(def.healPct * 100) + '% ของ HP สูงสุด' +
-      ' • ฟื้นมานา ' + Math.round(def.mpPct * 100) + '% ของมานาสูงสุด' +
-      ' • บัพดาเมจ +' + Math.round(def.atkPct * 100) + '% นาน ' + (def.atkMs / 1000) + ' วิ' +
-      ' • ลากเลือกทิศได้ • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ฟันตรงด้านหน้า ยาว ' + def.range + ' กว้าง ' + (def.halfW * 2) + ' ดาเมจ ≈' + pw(def, lv, S),
+      'สตั้น ' + secs(def.stunMs) + ' (บอสสั้นลง ' + pct(1 - BOSS_STUN_MUL) + '%)',
+      'ฟื้นเลือด ' + pct(def.healPct) + '% ของ HP สูงสุด',
+      'ฟื้นมานา ' + pct(def.mpPct) + '% ของมานาสูงสุด',
+      'บัพดาเมจ +' + pct(def.atkPct) + '% นาน ' + secs(def.atkMs),
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // สกิล 3: ฟันหมุน — ฟันรอบตัวรัศมี range จำนวน spins ครั้ง ห่างกัน spinGap มิลลิวินาที (ดาเมจต่อครั้ง = dmg)
@@ -77,17 +92,26 @@
     dmg: 18, range: 150, cd: 5000, mp: mpc(18), spins: 2, spinGap: 350, armorPct: 0.3, armorMs: 6000, blockMs: 3000,
   }, {
     scale: { patk: 1 },
-    info: (def, lv, S) => 'ฟันรอบตัววงกว้าง ' + def.spins + ' ครั้ง ครั้งละ ≈' + Classes.power(def.id, def, lv, S) +
-      ' เพิ่มเกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ' +
-      ' • บล็อกการโจมตี 1 ครั้ง (นาน ' + (def.blockMs / 1000) + ' วิ) • คูลดาวน์ ' + Classes.cdText(def, S),
+    info: (def, lv, S) => ['ฟันรอบตัว รัศมี ' + def.range + ' จำนวน ' + def.spins + ' ครั้ง ห่างกัน ' + secs(def.spinGap),
+      'ดาเมจครั้งละ ≈' + pw(def, lv, S) + ' (รวม ≈' + (pw(def, lv, S) * def.spins) + ')',
+      'เพิ่มเกราะ +' + pct(def.armorPct) + '% นาน ' + secs(def.armorMs),
+      'บล็อกการโจมตี 1 ครั้ง นาน ' + secs(def.blockMs),
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
   // อัลติ ดาบสังหาร — ฟันตรงยาว range กว้าง halfW*2 ฟัน shots ที ห่างกัน shotGap มิลลิวินาที | สตั้น stunMs | ลากเลือกทิศได้ | คูลดาวน์ 30 วิ
   // (เดิม ดาเมจ 70 / ยาว 300 / กว้าง 130 / ฟัน 1 ที -> ตอนนี้ ดาเมจ 190 ต่อที / ยาว 520 / กว้าง 150 / ฟัน 2 ที)
   Classes.ulti('sword', {
     name: 'ดาบสังหาร', dmg: 190, range: 520, halfW: 150, cd: SWORD_ULTI_CD, mp: mpc(50), type: 'sult', stunMs: 2000,
-    shots: 2, shotGap: 400,
-  }, { scale: { patk: 1 } });
+    shots: 2, shotGap: 400, noInfo: true,
+  }, {
+    scale: { patk: 1 },
+    info: (def, lv, S) => ['ฟันตรง ยาว ' + def.range + ' กว้าง ' + (def.halfW * 2),
+      def.shots + ' ที ห่างกัน ' + secs(def.shotGap) + ' ทีละ ≈' + pw(def, lv, S) + ' (รวม ≈' + (pw(def, lv, S) * def.shots) + ')',
+      'สตั้น ' + secs(def.stunMs) + ' ทุกที (บอสสั้นลง ' + pct(1 - BOSS_STUN_MUL) + '%)',
+      'ลากเลือกทิศได้',
+      'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
+  });
 
   if (TEST_UNLOCK) Classes.testUnlock(SW_IDS);
 
