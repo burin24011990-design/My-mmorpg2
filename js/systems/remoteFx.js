@@ -2,8 +2,9 @@
 // ปัญหาเดิม: skillFx.js / priestFx.js / basicFx.js ผูกกับ this.player (ตัวเราเอง) เท่านั้น
 //            ผู้เล่นอื่นเลยเห็นแค่วงกลมสีเรียบๆ ไฟล์นี้ใช้ตารางเอฟเฟกต์เดิม (SkillFx.FX / PriestFx.FX / BasicFx.CFG)
 //            แต่วางเอฟเฟกต์ที่ตัวผู้เล่นอื่นแทน และไม่แตะดาเมจ/ฮีลใดๆ
+// v2: สกิลลากเล็ง/สกิลวางพื้น เล่นเอฟเฟกต์ที่ "จุดตกจริง" (d.gx, d.gy ที่เซิร์ฟเวอร์ส่งต่อมา) ไม่ใช่ที่ตัวคนใช้
 // วางไฟล์: js/systems/remoteFx.js  แล้วเพิ่มใน index.html ต่อจาก targetFix.js (ก่อน main.js)
-//   <script src="js/systems/remoteFx.js?v=1"></script>
+//   <script src="js/systems/remoteFx.js?v=2"></script>
 // network.js (showRemoteSkill) จะเรียก RemoteFx.play(scene, d, caster) ให้เอง ถ้าเล่นไม่ได้จะใช้วงกลมแบบเดิมแทน
 (function () {
   const ADD = Phaser.BlendModes.ADD;
@@ -16,6 +17,13 @@
 
   function casterPos(caster, d) {
     if (caster && caster.s && caster.s.active) return { x: caster.s.x, y: caster.s.y };
+    return { x: d.x, y: d.y };
+  }
+  // จุดตกของสกิลลากเล็ง (ถ้าไม่มี gx,gy ใช้ตำแหน่งคนใช้เหมือนเดิม)
+  function groundPos(d) {
+    if (typeof d.gx === 'number' && typeof d.gy === 'number' && isFinite(d.gx) && isFinite(d.gy)) {
+      return { x: d.gx, y: d.gy };
+    }
     return { x: d.x, y: d.y };
   }
   // ให้เอฟเฟกต์ตามตัวผู้เล่นอื่น (ไม่ใช่ตัวเรา)
@@ -85,7 +93,8 @@
       const dd = cfg.distRange ? (def.range || 100) * cfg.distRange : (cfg.dist || 0);
       px += ux * dd; py += uy * dd;
     } else if (cfg.at === 'ground') {
-      px = d.x; py = d.y;                       // จุดตกที่เซิร์ฟเวอร์ส่งมา
+      const g = groundPos(d);                   // จุดตกที่ผู้เล่นลากเล็งไว้ (gx, gy)
+      px = g.x; py = g.y;
     }
     let tx, ty;
     if (cfg.travel) { tx = px; ty = py; px = cp.x + ux * (cfg.startDist || 0); py = cp.y + uy * (cfg.startDist || 0); }
@@ -150,7 +159,7 @@
     if (!cfg || !prEnsure(scene, cfg.sheet)) return false;
     const D = PF.SHEETS[cfg.sheet];
     let px = cp.x, py = cp.y;
-    if (cfg.at === 'ground') { px = d.x; py = d.y; }
+    if (cfg.at === 'ground') { const g = groundPos(d); px = g.x; py = g.y; }   // จุดตกที่ลากเล็งไว้
     const R = def.range || 100;
     const sc = cfg.diam ? cfg.diam / D.ring : (cfg.fit ? (R * 2 * (cfg.fitMul || 1)) / D.ring : (cfg.scale || 1));
     const sy = sc * (cfg.sy || 1), top = cfg.alpha || 1, dy = cfg.dy || 0;
@@ -288,7 +297,8 @@
 
   // =====================================================================
   // ทางเข้าหลัก: คืน true ถ้าเล่นเอฟเฟกต์ได้ (network.js จะไม่ใช้วงกลมสำรอง)
-  // d = ข้อมูลจากเซิร์ฟเวอร์ { id, name, x, y, fx, fy } | caster = ผู้เล่นอื่นที่ร่าย (others[id]) หรือ null
+  // d = ข้อมูลจากเซิร์ฟเวอร์ { id, name, x, y, fx, fy, gx?, gy? } | caster = ผู้เล่นอื่นที่ร่าย (others[id]) หรือ null
+  // gx,gy = จุดตกของสกิลลากเล็ง (ถ้ามี)
   // =====================================================================
   function play(scene, d, caster) {
     if (!scene || !d) return false;
@@ -305,9 +315,13 @@
     }
     if (!def) return false;
 
+    // ทิศ: ใช้ fx,fy ก่อน -> ไม่มีก็คำนวณจากตัวคนใช้ไปจุดตก (gx,gy) -> ไม่มีก็ใช้ทิศที่ตัวหันอยู่
     let ux = 1, uy = 0;
     const u = unit(d.fx, d.fy);
+    const g = groundPos(d);
+    const ug = (g.x !== d.x || g.y !== d.y) ? unit(g.x - d.x, g.y - d.y) : null;
     if (u) { ux = u[0]; uy = u[1]; }
+    else if (ug) { ux = ug[0]; uy = ug[1]; }
     else if (caster && DIR_VEC[caster._dir]) { ux = DIR_VEC[caster._dir][0]; uy = DIR_VEC[caster._dir][1]; }
 
     if (kind === 'basic') return playBasic(scene, cls, def, d, caster, ux, uy);
