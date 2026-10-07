@@ -1,10 +1,16 @@
 // ===== ระบบออนไลน์ (Socket.IO) + แชนเนล/ห้อง =====
 // v+: ส่งเลเวลตอน join (ใช้กับ social.js: แสดง Lv. ข้างชื่อ + ปาร์ตี้)
+// v++: ส่งคลาส (cls) ไปกับ join/move และให้ผู้เล่นอื่นใช้สกิน+อนิเมชันใหม่ (HeroAnims) เหมือนตัวเรา
 
 // ชื่อตัวละครเหนือหัว (ปรับตรงนี้)
 const NET_NAME_SIZE = '20px';    // ขนาดชื่อ (เดิม 12px)
 const NET_NAME_STROKE = 6;       // ความหนาขอบดำ
 const NET_NAME_Y = 32;           // ระยะชื่อเหนือตัวละคร (px)
+
+// อนิเมชันผู้เล่นอื่น (ให้ตรงกับ heroPatch.js)
+const NET_HERO_SCALE = 0.75;     // ขนาดตัวละคร
+const NET_ATK_MS = 430;          // ล็อกท่าโจมตีปกติ
+const NET_SKILL_MS = 300;        // ล็อกท่าสกิล
 
 // แชนเนล/ห้อง (ต้องตรงกับ server.js)
 const NET_CH_COUNT = 10;                 // แชนเนลต่อด่าน
@@ -57,6 +63,31 @@ function netFmtTime(ms) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+// ----- ตัวช่วยสกิน/อนิเมชันของผู้เล่นอื่น -----
+function netMyClass(scene) {   // คลาสของตัวเราตอนนี้ (ตามอาวุธที่สวม)
+  try { if (typeof scene.currentClass === 'function') return scene.currentClass() || 'sword'; } catch (e) {}
+  return 'sword';
+}
+function netDirFromVec(x, y) {
+  if (Math.abs(x) >= Math.abs(y)) return x < 0 ? 'left' : 'right';
+  return y < 0 ? 'up' : 'down';
+}
+function netApplyClass(o, cls) {   // ตั้งสกินให้ผู้เล่นอื่นตามคลาสที่ได้รับ
+  if (!o || !cls || !window.HeroAnims) return;
+  o.cls = cls;
+  if (o.s) o.s.heroSkin = HeroAnims.skinOf(cls);
+}
+function netInitHeroSprite(scene, o) {   // ทำให้สไปรต์ผู้เล่นอื่นเป็นชุด hero (ทำครั้งเดียว ไม่ว่า addOther จะมาจากไฟล์ไหน)
+  if (!o || o._heroInit || !o.s || !scene.textures.exists('hero')) return;
+  o._heroInit = true;
+  try {
+    if (o.s.texture && o.s.texture.key === 'player') o.s.setTexture('hero', 18);
+    if (o.s.clearTint) o.s.clearTint();
+    o.s.setScale(window.HeroAnims ? HeroAnims.SCALE : NET_HERO_SCALE);
+    if (o.cls) netApplyClass(o, o.cls);
+  } catch (e) {}
+}
+
 Object.assign(Main.prototype, {
   initNetwork() {
     this.others = {}; this.online = false; this.lastSend = 0;
@@ -76,7 +107,8 @@ Object.assign(Main.prototype, {
       this.online = true; this.statusText.setText('ออนไลน์');
       this.socket.emit('join', {
         name, stage: this.stageIdx || 0, ch: this.channel, rm: this.netRoom, cid: netClientId(),
-        lv: (this.stats && this.stats.level) || 1
+        lv: (this.stats && this.stats.level) || 1,
+        cls: netMyClass(this)
       });
     });
     this.socket.on('disconnect', () => {
@@ -101,9 +133,16 @@ Object.assign(Main.prototype, {
     this.socket.on('joined', p => this.addOther(p));
     this.socket.on('left', id => this.removeOther(id));
     this.socket.on('state', list => {
-      list.forEach(([id, x, y, st]) => { const o = this.others[id]; if (o) { o.tx = x; o.ty = y; o.stage = st; } });
+      list.forEach(([id, x, y, st, cls]) => {
+        const o = this.others[id];
+        if (!o) return;
+        o.tx = x; o.ty = y; o.stage = st;
+        if (cls && cls !== o.cls) netApplyClass(o, cls);   // เซิร์ฟเวอร์ส่งคลาสมากับ state (ถ้ารองรับ)
+      });
       this.statusText.setText('ออนไลน์ CH' + this.channel + '-' + this.netRoom + ': ' + list.length + '/' + NET_ROOM_CAP + ' คน');
     });
+    // เซิร์ฟเวอร์แจ้งว่าผู้เล่นคนนั้นเปลี่ยนคลาส/อาวุธ (ถ้ารองรับ)
+    this.socket.on('cls', d => { if (d && this.others[d.id]) netApplyClass(this.others[d.id], d.cls); });
     this.socket.on('skill', d => this.showRemoteSkill(d));
   },
 
@@ -263,8 +302,46 @@ Object.assign(Main.prototype, {
   },
 
   // ----- เหตุการณ์จากผู้เล่นอื่น -----
+
+  // หาผู้เล่นอื่นที่เป็นเจ้าของสกิล (ใช้ id ถ้าเซิร์ฟเวอร์ส่งมา ไม่งั้นเลือกคนที่อยู่ใกล้จุดปล่อยที่สุด)
+  netFindCaster(d) {
+    if (d.id && this.others[d.id]) return this.others[d.id];
+    let best = null, bd = 90 * 90;
+    Object.values(this.others || {}).forEach(o => {
+      if (!o.s) return;
+      const dx = o.s.x - d.x, dy = o.s.y - d.y, dd = dx * dx + dy * dy;
+      if (dd < bd) { bd = dd; best = o; }
+    });
+    return best;
+  },
+
+  // เล่นท่าโจมตีให้ผู้เล่นอื่น + อัปเดตสกินจากชื่อสกิล (กรณีเซิร์ฟเวอร์ไม่ได้ส่ง cls มา)
+  netRemoteAttack(d) {
+    try {
+      if (!window.HeroAnims) return;
+      const name = String(d.name || '');
+      let cls = null, isSkill = true;
+      if (name.startsWith('ulti_')) cls = name.slice(5);
+      else if (name.startsWith('basic_')) { cls = name.slice(6); isSkill = false; }
+      else if (typeof SKILL_DEFS !== 'undefined' && SKILL_DEFS[name]) cls = SKILL_DEFS[name].class;
+      const o = this.netFindCaster(d);
+      if (!o || !o.s) return;
+      if (cls && cls !== o.cls) netApplyClass(o, cls);
+      netInitHeroSprite(this, o);
+      const c = o.cls || cls || 'sword';
+      let dir = o._dir || 'right';
+      if (typeof d.fx === 'number' && typeof d.fy === 'number' && (d.fx || d.fy)) dir = netDirFromVec(d.fx, d.fy);
+      o._dir = dir;
+      const act = HeroAnims.attackOf(c, isSkill);
+      o._atkUntil = this.time.now + (act === 'skill' ? NET_SKILL_MS : NET_ATK_MS);
+      o.s.anims.timeScale = 1;
+      HeroAnims.play(o.s, act, dir);
+    } catch (e) {}
+  },
+
   showRemoteSkill(d) {
     if (d.stage !== undefined && d.stage !== this.stageIdx) return; // อยู่คนละด่าน ไม่ต้องแสดง
+    this.netRemoteAttack(d);
     if (String(d.name).startsWith('ulti_')) {
       const cls = d.name.replace('ulti_', ''); const def = ULTI_DEFS[cls];
       if (def) this.flash(d.x, d.y, def.range, CLASSES[cls].color);
@@ -293,12 +370,16 @@ Object.assign(Main.prototype, {
     this.socket.emit(ev, Object.assign({ stage: this.stageIdx }, data));
   },
 
-  // (social.js จะทับฟังก์ชันนี้ให้เป็นตัวละครจริง ถ้าไม่โหลด social.js จะใช้แบบวงกลมนี้)
+  // (social.js จะทับฟังก์ชันนี้ให้เป็นตัวละครจริง ถ้าไม่โหลด social.js จะใช้แบบนี้)
   addOther(p) {
     if (this.others[p.id]) return;
-    const s = this.add.sprite(p.x, p.y, 'player').setTint(0xffaa44);
+    const useHero = !!(window.HeroAnims && this.textures.exists('hero'));
+    const s = this.add.sprite(p.x, p.y, useHero ? 'hero' : 'player', useHero ? 18 : undefined);
+    if (useHero) s.setScale(HeroAnims.SCALE); else s.setTint(0xffaa44);
     const t = netNameFx(this.add.text(p.x, p.y - NET_NAME_Y, p.name, netNameStyle('#ffd9a0')).setOrigin(0.5).setDepth(50));
-    this.others[p.id] = { s, t, tx: p.x, ty: p.y, stage: p.stage };
+    const o = { s, t, tx: p.x, ty: p.y, stage: p.stage, _heroInit: useHero };
+    this.others[p.id] = o;
+    if (p.cls) netApplyClass(o, p.cls);
   },
 
   removeOther(id) { const o = this.others[id]; if (!o) return; o.s.destroy(); o.t.destroy(); delete this.others[id]; },
@@ -313,14 +394,27 @@ Object.assign(Main.prototype, {
       this.netEnter(this.stageIdx, this.channel, this.netRoom, false);
     }
 
+    const now = this.time.now;
     Object.values(this.others || {}).forEach(o => {
       o.s.x += (o.tx - o.s.x) * 0.25; o.s.y += (o.ty - o.s.y) * 0.25;
       o.t.setPosition(o.s.x, o.s.y - NET_NAME_Y);
       const vis = o.stage === undefined || o.stage === this.stageIdx; // เห็นเฉพาะคนในด่านเดียวกัน
       o.s.setVisible(vis); o.t.setVisible(vis);
+
+      // ----- อนิเมชันเดิน/ยืนของผู้เล่นอื่น (ใช้ชุดใหม่ตามคลาส) -----
+      if (!vis || !window.HeroAnims || !o.s.anims) return;
+      netInitHeroSprite(this, o);
+      if (now < (o._atkUntil || 0)) return;               // กำลังเล่นท่าโจมตีอยู่
+      const dx = o.tx - o.s.x, dy = o.ty - o.s.y;
+      if (Math.hypot(dx, dy) > 2.5) { o._movingTill = now + 140; o._dir = netDirFromVec(dx, dy); }
+      const moving = now < (o._movingTill || 0);
+      HeroAnims.play(o.s, moving ? 'walk' : 'idle', o._dir || 'down');
+      o.s.anims.timeScale = 1;
     });
+
     if (this.online && this.inRoom && time - this.lastSend > 66) {
-      this.lastSend = time; this.sendNet('move', { x: Math.round(p.x), y: Math.round(p.y) });
+      this.lastSend = time;
+      this.sendNet('move', { x: Math.round(p.x), y: Math.round(p.y), cls: netMyClass(this) });
     }
   },
 });
