@@ -57,6 +57,14 @@
 
   // ----- ย่อรูปสลิปเป็น JPEG ก่อนส่ง (แก้ใหม่: รองรับไฟล์จากแกลเลอรี่/คลาวด์ได้ดีขึ้น) -----
   function toJpegB64(file, ok, fail) {
+    // รูป JPEG/PNG ไม่ใหญ่เกิน 4MB ส่งไฟล์ต้นฉบับตรงๆ ไม่ผ่านการแปลง (QR บนสลิปคมชัดที่สุด)
+    if (file.size <= 4 * 1024 * 1024 && /^image\/(jpeg|png)$/.test(file.type)) {
+      var fr0 = new FileReader();
+      fr0.onload = function () { ok(String(fr0.result).split(',')[1]); };
+      fr0.onerror = function () { fail(new Error('อ่านไฟล์รูปไม่ได้ ลองแคปหน้าจอสลิปแล้วส่งรูปแคปแทน')); };
+      fr0.readAsDataURL(file);
+      return;
+    }
     function draw(src, w, h) {
       try {
         var s = Math.min(1, 2600 / Math.max(w, h));
