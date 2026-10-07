@@ -82,9 +82,13 @@
   var cfg = window.FIREBASE_CONFIG || {};
   var fbOK = !!(window.firebase && cfg.apiKey && cfg.projectId);
   var cloudName = '', nameEdited = false;
-  var auth = null, db = null, user = null, canPush = false, mode = 'login', syncing = false;
+  var auth = null, db = null, fns = null, user = null, canPush = false, mode = 'login', syncing = false;
   if (fbOK) {
-    try { firebase.initializeApp(cfg); auth = firebase.auth(); db = firebase.firestore(); }
+    try {
+      firebase.initializeApp(cfg); auth = firebase.auth(); db = firebase.firestore();
+      // ถ้า functions deploy ไว้นอก us-central1 ให้เปลี่ยนเป็น firebase.app().functions('ชื่อ-region')
+      fns = (firebase.functions ? firebase.functions() : null);
+    }
     catch (e) { fbOK = false; }
   }
   if (!fbOK) {
@@ -158,7 +162,11 @@
   }
 
   // ---------- หน้าจอ ----------
-  function cleanName(s) { return String(s || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 12); }
+  // ชื่อตัวละครยาวสุด 15 ตัวอักษร (นับแบบ code point)
+  function cleanName(s) {
+    var t = String(s || '').replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
+    return Array.from(t).slice(0, 15).join('');
+  }
   function showReady(m, u) {
     mode = m;
     $('u-card').hidden = !u;
@@ -242,9 +250,10 @@
     window.CloudSave = { now: function () { return pushNow(false, true); }, soon: pushSoon };
   }
 
-  $('btn-start').onclick = function () {
-    if (syncing) return;
-    var name = cleanName($('in-name').value) || 'ผู้เล่น';
+  var checking = false;
+
+  // เริ่มเกมจริง (เรียกหลังชื่อผ่านการตรวจแล้ว)
+  function begin(name) {
     try { LS.setItem('mmo_cloud_lastname', name); } catch (e) {}
 
     // เกมถามชื่อตัวละครด้วย prompt() -> ตอบด้วยชื่อที่กรอกไว้ (ครั้งเดียว)
@@ -259,5 +268,24 @@
     setTimeout(function () { $('login-screen').style.display = 'none'; }, 450);
     if (RealGame) { Phaser.Game = RealGame; if (pendingCfg) new RealGame(pendingCfg); }
     startAutosave();
+  }
+
+  $('btn-start').onclick = function () {
+    if (syncing || checking) return;
+    var name = cleanName($('in-name').value);
+    var cs = $('cloud-state'), btn = $('btn-start');
+    if (!name) { toast('กรุณาตั้งชื่อตัวละคร'); return; }
+    if (!fns) { begin(name); return; }          // Firebase/Functions ไม่พร้อม -> ข้ามการเช็คชื่อ
+
+    // ให้เซิร์ฟเวอร์ตรวจ: ความยาว 2-15 / คำหยาบ / ชื่อซ้ำ (ผู้ล็อกอินจะจองชื่อด้วย)
+    checking = true; btn.disabled = true;
+    fns.httpsCallable('claimName')({ name: name }).then(function (r) {
+      begin((r.data && r.data.name) || name);
+    }).catch(function (e) {
+      var c = (e && e.code) || '', msg;
+      if (c === 'functions/already-exists' || c === 'functions/invalid-argument') msg = e.message;
+      else msg = 'ตรวจสอบชื่อไม่ได้ ลองใหม่อีกครั้ง';
+      cs.className = 'ls-cloud warn'; cs.textContent = '⚠ ' + msg; toast(msg);
+    }).then(function () { checking = false; btn.disabled = false; });
   };
 })();
