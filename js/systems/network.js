@@ -1,26 +1,25 @@
 // ===== ระบบออนไลน์ (Socket.IO) + แชนเนล/ห้อง =====
-// v+: ส่งเลเวลตอน join (ใช้กับ social.js: แสดง Lv. ข้างชื่อ + ปาร์ตี้)
-// v++: ส่งคลาส (cls) ไปกับ join/move และให้ผู้เล่นอื่นใช้สกิน+อนิเมชันใหม่ (HeroAnims) เหมือนตัวเรา
-// v+++: แก้บั๊ก state (ช่องที่ 5 คือเลเวล ไม่ใช่คลาส -> เดิมทำให้สกินผู้เล่นอื่นถูกรีเซ็ตเป็นชุดเก่าตลอด)
-//       คลาสอยู่ช่องที่ 6 | เอฟเฟกต์สกิลผู้เล่นอื่นเรียก RemoteFx (js/systems/remoteFx.js)
-// v++++: วงกลมสำรองของสกิลวางพื้น แสดงที่จุดตกจริง (gx, gy) แทนที่ตัวคนใช้
+// v+: ส่งเลเวลตอน join | v++: ส่งคลาส (cls) ไปกับ join/move | v+++: state ช่อง 5 = เลเวล ช่อง 6 = คลาส
+// v++++: วงกลมสำรองของสกิลวางพื้นแสดงที่จุดตกจริง (gx, gy)
+// v5: แก้มองไม่เห็นผู้เล่นอื่น: state เจอคนที่ไม่รู้จัก -> ขอรายชื่อห้องใหม่ (getPlayers) | ลบสไปรต์ที่ถูกทำลายทิ้ง
+//     สกิลธนู (ashot2/aroot/aheavy) ใช้กระสุนสำรองได้
 
-// ชื่อตัวละครเหนือหัว (ปรับตรงนี้)
-const NET_NAME_SIZE = '20px';    // ขนาดชื่อ (เดิม 12px)
-const NET_NAME_STROKE = 6;       // ความหนาขอบดำ
-const NET_NAME_Y = 32;           // ระยะชื่อเหนือตัวละคร (px)
+const NET_NAME_SIZE = '20px';
+const NET_NAME_STROKE = 6;
+const NET_NAME_Y = 32;
 
-// อนิเมชันผู้เล่นอื่น (ให้ตรงกับ heroPatch.js)
-const NET_HERO_SCALE = 0.75;     // ขนาดตัวละคร
-const NET_ATK_MS = 430;          // ล็อกท่าโจมตีปกติ
-const NET_SKILL_MS = 300;        // ล็อกท่าสกิล
+const NET_HERO_SCALE = 0.75;
+const NET_ATK_MS = 430;
+const NET_SKILL_MS = 300;
 
-// แชนเนล/ห้อง (ต้องตรงกับ server.js)
-const NET_CH_COUNT = 10;                 // แชนเนลต่อด่าน
-const NET_RM_COUNT = 10;                 // ห้องต่อแชนเนล
-const NET_ROOM_CAP = 20;                 // คนสูงสุดต่อห้อง
-const NET_SWITCH_CD_MS = 5 * 60 * 1000;  // ดีเลย์สลับห้อง 5 นาที
-const NET_CH_BTN_CSS = 'position:fixed;left:96px;top:8px;z-index:9000;'; // ตำแหน่งปุ่มแชนเนล (แก้ได้ถ้าทับ UI)
+const NET_CH_COUNT = 10;
+const NET_RM_COUNT = 10;
+const NET_ROOM_CAP = 20;
+const NET_SWITCH_CD_MS = 5 * 60 * 1000;
+const NET_CH_BTN_CSS = 'position:fixed;left:96px;top:8px;z-index:9000;';
+
+// ชนิดสกิลที่เป็นกระสุนยิงออกไป (ใช้ในส่วนสำรอง)
+const NET_PROJ_TYPES = { proj: 1, ashot2: 1, aroot: 1, aheavy: 1 };
 
 function netNameStyle(color) {
   return {
@@ -32,14 +31,14 @@ function netNameStyle(color) {
     strokeThickness: NET_NAME_STROKE
   };
 }
-function netNameFx(t) {   // เงา + ความคมชัดบนมือถือ
+function netNameFx(t) {
   t.setShadow(0, 2, '#000000', 3, true, true);
   t.setResolution(2);
   return t;
 }
 
 // ----- ตัวช่วยแชนเนล -----
-function netClientId() {   // ใช้ระบุผู้เล่นข้ามการรีเฟรช (เป็นคำใบ้ให้เซิร์ฟเวอร์เท่านั้น)
+function netClientId() {
   try {
     const u = window.firebase && firebase.auth && firebase.auth().currentUser;
     if (u && u.uid) return u.uid;
@@ -54,11 +53,11 @@ function netSavedNum(key, max) {
   try { const v = parseInt(localStorage.getItem(key), 10); if (v >= 1 && v <= max) return v; } catch (e) {}
   return 1;
 }
-function netCdLeft() {      // เวลาดีเลย์ที่เหลือ (ms) ตามที่จำไว้ในเครื่อง
+function netCdLeft() {
   try { const ts = parseInt(localStorage.getItem('mmo_ch_ts'), 10) || 0; return Math.max(0, ts + NET_SWITCH_CD_MS - Date.now()); }
   catch (e) { return 0; }
 }
-function netSetCdLeft(left) {   // บันทึกดีเลย์ที่เหลือ
+function netSetCdLeft(left) {
   try { localStorage.setItem('mmo_ch_ts', left > 0 ? String(Date.now() - (NET_SWITCH_CD_MS - left)) : '0'); } catch (e) {}
 }
 function netFmtTime(ms) {
@@ -67,7 +66,7 @@ function netFmtTime(ms) {
 }
 
 // ----- ตัวช่วยสกิน/อนิเมชันของผู้เล่นอื่น -----
-function netMyClass(scene) {   // คลาสของตัวเราตอนนี้ (ตามอาวุธที่สวม)
+function netMyClass(scene) {
   try { if (typeof scene.currentClass === 'function') return scene.currentClass() || 'sword'; } catch (e) {}
   return 'sword';
 }
@@ -75,12 +74,12 @@ function netDirFromVec(x, y) {
   if (Math.abs(x) >= Math.abs(y)) return x < 0 ? 'left' : 'right';
   return y < 0 ? 'up' : 'down';
 }
-function netApplyClass(o, cls) {   // ตั้งสกินให้ผู้เล่นอื่นตามคลาสที่ได้รับ
+function netApplyClass(o, cls) {
   if (!o || typeof cls !== 'string' || !cls || !window.HeroAnims) return;
   o.cls = cls;
   if (o.s) o.s.heroSkin = HeroAnims.skinOf(cls);
 }
-function netInitHeroSprite(scene, o) {   // ทำให้สไปรต์ผู้เล่นอื่นเป็นชุด hero (ทำครั้งเดียว ไม่ว่า addOther จะมาจากไฟล์ไหน)
+function netInitHeroSprite(scene, o) {
   if (!o || o._heroInit || !o.s || !scene.textures.exists('hero')) return;
   o._heroInit = true;
   try {
@@ -135,20 +134,35 @@ Object.assign(Main.prototype, {
     });
     this.socket.on('joined', p => this.addOther(p));
     this.socket.on('left', id => this.removeOther(id));
-    // state: [id, x, y, ด่าน, เลเวล, คลาส]  (ช่องที่ 5 = เลเวล ใช้กับ social.js | ช่องที่ 6 = คลาส)
+    // state: [id, x, y, ด่าน, เลเวล, คลาส]
     this.socket.on('state', list => {
+      let missing = false;
       list.forEach(row => {
         const id = row[0], x = row[1], y = row[2], st = row[3], cls = row[5];
         const o = this.others[id];
-        if (!o) return;
+        if (!o) { if (id !== this.socket.id) missing = true; return; }   // คนที่ยังไม่รู้จัก -> ขอรายชื่อใหม่
         o.tx = x; o.ty = y; o.stage = st;
         if (typeof cls === 'string' && cls && cls !== o.cls) netApplyClass(o, cls);
       });
+      if (missing) this.netSyncPlayers();
       this.statusText.setText('ออนไลน์ CH' + this.channel + '-' + this.netRoom + ': ' + list.length + '/' + NET_ROOM_CAP + ' คน');
     });
-    // เซิร์ฟเวอร์แจ้งว่าผู้เล่นคนนั้นเปลี่ยนคลาส/อาวุธ (ถ้ารองรับ)
+    // รายชื่อคนในห้อง (ตอบกลับ getPlayers)
+    this.socket.on('players', map => {
+      Object.values(map || {}).forEach(p => {
+        if (p.id !== this.socket.id && !this.others[p.id]) this.addOther(p);
+      });
+    });
     this.socket.on('cls', d => { if (d && this.others[d.id]) netApplyClass(this.others[d.id], d.cls); });
     this.socket.on('skill', d => this.showRemoteSkill(d));
+  },
+
+  // ขอรายชื่อผู้เล่นในห้องซ้ำ (จำกัดไม่ให้ถี่เกิน)
+  netSyncPlayers() {
+    const now = Date.now();
+    if (!this.online || !this.inRoom || now < (this._syncNext || 0)) return;
+    this._syncNext = now + 1500;
+    this.socket.emit('getPlayers');
   },
 
   // ----- เปลี่ยนด่าน / สลับห้อง -----
@@ -161,7 +175,7 @@ Object.assign(Main.prototype, {
     this._enterPending = true;
     this.socket.emit('enter', { stage, ch, rm }, res => {
       this._enterPending = false;
-      this._enterNext = Date.now() + 1200;       // กันยิงซ้ำถี่เกิน
+      this._enterNext = Date.now() + 1200;
       res = res || {};
       if (res.ok) {
         this.inRoom = true; this._netStage = res.stage; this.channel = res.ch; this.netRoom = res.rm;
@@ -169,12 +183,14 @@ Object.assign(Main.prototype, {
         if (manual) netSetCdLeft(NET_SWITCH_CD_MS);
         if (res.moved) this.toastMsg('ห้อง CH' + ch + '-' + rm + ' เต็ม ย้ายไป CH' + res.ch + '-' + res.rm);
         else if (manual) this.toastMsg('เข้าห้อง CH' + res.ch + '-' + res.rm + ' แล้ว');
+        this._syncNext = 0;
+        this.netSyncPlayers();                    // เข้าห้องแล้วขอรายชื่อคนในห้องอีกรอบ กันพลาด init
       } else if (res.reason === 'cooldown') {
         netSetCdLeft(res.left || 0);
         this.toastMsg('สลับห้องได้อีก ' + netFmtTime(res.left || 0));
       } else if (res.reason === 'full') {
         if (manual) this.toastMsg('ห้อง CH' + ch + '-' + rm + ' เต็ม (' + NET_ROOM_CAP + '/' + NET_ROOM_CAP + ')');
-        else {                                    // เปลี่ยนด่านแต่ทุกห้องเต็ม
+        else {
           this.inRoom = false; this._netStage = stage;
           Object.keys(this.others).forEach(id => this.removeOther(id));
           this.toastMsg('ด่านนี้เต็มทุกห้อง ผู้เล่นอื่นจะมองไม่เห็นคุณ');
@@ -244,7 +260,6 @@ Object.assign(Main.prototype, {
     const res = P.res, card = P.card, view = P.viewCh;
     card.textContent = '';
     const mk = (tag, css, text) => { const e = document.createElement(tag); e.style.cssText = css; if (text != null) e.textContent = text; return e; };
-    // สี: เขียว = ว่าง, ส้ม = เริ่มแน่น (>=75%), แดง = เต็ม
     const tone = (n, cap) => {
       if (n === null) return { bg: '#1d3b24', border: '#4caf50', color: '#fff', num: '#fff' };
       if (n >= cap) return { bg: '#6b1111', border: '#ff3b3b', color: '#ffd0d0', num: '#ff6b6b' };
@@ -262,7 +277,6 @@ Object.assign(Main.prototype, {
     const counts = res ? res.counts : null;
     const curCh = res ? res.curCh : 0, curRm = res ? res.curRm : 0;
 
-    // แถวแชนเนล (แสดงผลรวมคนทั้งแชนเนล)
     card.appendChild(mk('div', 'font-size:12px;color:#ffe28a;margin-bottom:4px', 'แชนเนล'));
     const chRow = mk('div', 'display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin-bottom:10px');
     for (let c = 1; c <= NET_CH_COUNT; c++) {
@@ -278,7 +292,6 @@ Object.assign(Main.prototype, {
     }
     card.appendChild(chRow);
 
-    // กริดห้องของแชนเนลที่เลือก
     card.appendChild(mk('div', 'font-size:12px;color:#ffe28a;margin-bottom:4px', 'แชนเนล ' + view + ' — เลือกห้อง (คนในห้อง/' + NET_ROOM_CAP + ')'));
     const grid = mk('div', 'display:grid;grid-template-columns:repeat(5,1fr);gap:8px');
     for (let r = 1; r <= NET_RM_COUNT; r++) {
@@ -307,8 +320,6 @@ Object.assign(Main.prototype, {
   },
 
   // ----- เหตุการณ์จากผู้เล่นอื่น -----
-
-  // หาผู้เล่นอื่นที่เป็นเจ้าของสกิล (ใช้ id ถ้าเซิร์ฟเวอร์ส่งมา ไม่งั้นเลือกคนที่อยู่ใกล้จุดปล่อยที่สุด)
   netFindCaster(d) {
     if (d.id && this.others[d.id]) return this.others[d.id];
     let best = null, bd = 90 * 90;
@@ -320,7 +331,6 @@ Object.assign(Main.prototype, {
     return best;
   },
 
-  // เล่นท่าโจมตีให้ผู้เล่นอื่น + อัปเดตสกินจากชื่อสกิล (กรณีเซิร์ฟเวอร์ไม่ได้ส่ง cls มา)
   netRemoteAttack(d) {
     try {
       if (!window.HeroAnims) return;
@@ -347,17 +357,15 @@ Object.assign(Main.prototype, {
 
   showRemoteSkill(d) {
     if (!d) return;
-    if (d.stage !== undefined && d.stage !== this.stageIdx) return; // อยู่คนละด่าน ไม่ต้องแสดง
+    if (d.stage !== undefined && d.stage !== this.stageIdx) return;
     this.netRemoteAttack(d);
 
-    // เอฟเฟกต์สกิลจริง (สไปรต์) ที่ตัวผู้เล่นอื่น/จุดตก -- ถ้าเล่นได้จะไม่ใช้วงกลมสำรองด้านล่าง
     try {
       if (window.RemoteFx && RemoteFx.play(this, d, this.netFindCaster(d))) return;
     } catch (e) { console.error('RemoteFx', e); }
 
-    // ----- สำรอง: วงกลม/กระสุนสีเรียบๆ (กรณีไม่มี remoteFx.js หรือสกิลนั้นไม่มีภาพ) -----
+    // ----- สำรอง: วงกลม/กระสุนสีเรียบๆ -----
     try {
-      // จุดตกของสกิลลากเล็ง (ถ้าไม่มี ใช้ตำแหน่งคนใช้)
       const gx = (typeof d.gx === 'number') ? d.gx : d.x;
       const gy = (typeof d.gy === 'number') ? d.gy : d.y;
       const nm = String(d.name || '');
@@ -370,13 +378,13 @@ Object.assign(Main.prototype, {
         const cls = nm.replace('basic_', ''); const def = BASIC_ATTACKS[cls];
         if (!def) return;
         const col = CLASSES[cls] ? CLASSES[cls].color : 0xffffff;
-        if (def.type === 'proj') this.remoteProjectile(d, col);
+        if (NET_PROJ_TYPES[def.type]) this.remoteProjectile(d, col);
         else this.flash(d.x + d.fx * 40, d.y + d.fy * 40, 45, 0xffffff);
         return;
       }
       const def = SKILL_DEFS[nm]; if (!def) return;
       const col = CLASSES[def.class] ? CLASSES[def.class].color : 0xffffff;
-      if (def.type === 'proj') this.remoteProjectile(d, col);
+      if (NET_PROJ_TYPES[def.type]) this.remoteProjectile(d, col);
       else this.flash(gx, gy, def.range || 60, col);
     } catch (e) { console.error('showRemoteSkill', e); }
   },
@@ -386,13 +394,11 @@ Object.assign(Main.prototype, {
     this.tweens.add({ targets: f, x: d.x + d.fx * 462, y: d.y + d.fy * 462, duration: 1100, onComplete: () => f.destroy() });
   },
 
-  // ส่งข้อมูลไปเซิร์ฟเวอร์พร้อมบอกด่านที่อยู่ (ส่งเฉพาะตอนอยู่ในห้อง)
   sendNet(ev, data) {
     if (!this.online || !this.inRoom) return;
     this.socket.emit(ev, Object.assign({ stage: this.stageIdx }, data));
   },
 
-  // (social.js จะทับฟังก์ชันนี้ให้เป็นตัวละครจริง ถ้าไม่โหลด social.js จะใช้แบบนี้)
   addOther(p) {
     if (this.others[p.id]) return;
     const useHero = !!(window.HeroAnims && this.textures.exists('hero'));
@@ -404,29 +410,39 @@ Object.assign(Main.prototype, {
     if (p.cls) netApplyClass(o, p.cls);
   },
 
-  removeOther(id) { const o = this.others[id]; if (!o) return; o.s.destroy(); o.t.destroy(); delete this.others[id]; },
+  removeOther(id) {
+    const o = this.others[id]; if (!o) return;
+    try { if (o.s && o.s.scene) o.s.destroy(); } catch (e) {}
+    try { if (o.t && o.t.scene) o.t.destroy(); } catch (e) {}
+    delete this.others[id];
+  },
 
   updateNetwork(time) {
     const p = this.player;
     if (this.myLabel) this.myLabel.setPosition(p.x, p.y - NET_NAME_Y);
 
-    // เปลี่ยนด่านแล้ว -> แจ้งเซิร์ฟเวอร์ให้ย้ายห้อง (คงแชนเนล/ห้องเดิม)
     if (this.online && this._netStage !== null && this.stageIdx !== this._netStage &&
         !this._enterPending && Date.now() >= this._enterNext) {
       this.netEnter(this.stageIdx, this.channel, this.netRoom, false);
     }
 
     const now = this.time.now;
-    Object.values(this.others || {}).forEach(o => {
+    Object.keys(this.others || {}).forEach(id => {
+      const o = this.others[id];
+      // สไปรต์ถูกทำลายไปแล้ว (เช่น ตอนเปลี่ยนด่าน/เข้าเมือง) -> ลบทิ้งแล้วขอรายชื่อใหม่ แทนที่จะค้างเป็นผีมองไม่เห็น
+      if (!o || !o.s || !o.s.scene) {
+        delete this.others[id];
+        this.netSyncPlayers();
+        return;
+      }
       o.s.x += (o.tx - o.s.x) * 0.25; o.s.y += (o.ty - o.s.y) * 0.25;
       o.t.setPosition(o.s.x, o.s.y - NET_NAME_Y);
-      const vis = o.stage === undefined || o.stage === this.stageIdx; // เห็นเฉพาะคนในด่านเดียวกัน
+      const vis = o.stage === undefined || o.stage === this.stageIdx;
       o.s.setVisible(vis); o.t.setVisible(vis);
 
-      // ----- อนิเมชันเดิน/ยืนของผู้เล่นอื่น (ใช้ชุดใหม่ตามคลาส) -----
       if (!vis || !window.HeroAnims || !o.s.anims) return;
       netInitHeroSprite(this, o);
-      if (now < (o._atkUntil || 0)) return;               // กำลังเล่นท่าโจมตีอยู่
+      if (now < (o._atkUntil || 0)) return;
       const dx = o.tx - o.s.x, dy = o.ty - o.s.y;
       if (Math.hypot(dx, dy) > 2.5) { o._movingTill = now + 140; o._dir = netDirFromVec(dx, dy); }
       const moving = now < (o._movingTill || 0);
