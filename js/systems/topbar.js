@@ -1,5 +1,6 @@
 // ===== แถบเมนูด้านบน (ไอคอนวาดเอง) =====
-const TB = { w: 50, h: 46, gap: 5, top: 8 };
+// ปรับขนาดปุ่มที่นี่: w = กว้าง, h = สูง, gap = ระยะห่าง, top = ระยะจากขอบบน
+const TB = { w: 62, h: 58, gap: 6, top: 8 };
 
 Main.prototype.makeTopIcons = function () {
   if (this.textures.exists('tb_bag')) return;
@@ -53,6 +54,16 @@ Main.prototype.makeTopIcons = function () {
     g.fillStyle(0x3a2a3a); g.fillCircle(20, 20, 5);
     g.lineStyle(2, 0x5a6270); g.strokeCircle(20, 20, 12);
   });
+  // ไอคอนร้านแคช: เพชรสีฟ้า
+  mk('tb_cash', g => {
+    g.fillStyle(0x3fb8ee); g.fillTriangle(5, 15, 20, 36, 35, 15);
+    g.fillStyle(0x7fdcff); g.fillTriangle(5, 15, 13, 5, 20, 15); g.fillTriangle(20, 15, 27, 5, 35, 15);
+    g.fillRect(13, 5, 14, 10);
+    g.fillStyle(0xd8f6ff); g.fillTriangle(13, 5, 20, 15, 20, 5);
+    g.lineStyle(2, 0x1d5f86); g.lineBetween(5, 15, 35, 15); g.lineBetween(13, 5, 27, 5);
+    g.lineBetween(5, 15, 13, 5); g.lineBetween(35, 15, 27, 5);
+    g.lineBetween(5, 15, 20, 36); g.lineBetween(35, 15, 20, 36);
+  });
   g.destroy();
 };
 
@@ -61,14 +72,14 @@ Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick
   const bg = this.add.graphics().setScrollFactor(0).setDepth(98);
   const draw = (down) => {
     bg.clear();
-    bg.fillStyle(color, down ? 1 : 0.92); bg.fillRoundedRect(x, y, w, h, 8);
-    bg.fillStyle(0xffffff, down ? 0.05 : 0.14); bg.fillRoundedRect(x + 2, y + 2, w - 4, h * 0.4, 6);
-    bg.lineStyle(2, down ? 0xffe28a : 0x8a6a32, 1); bg.strokeRoundedRect(x, y, w, h, 8);
+    bg.fillStyle(color, down ? 1 : 0.92); bg.fillRoundedRect(x, y, w, h, 9);
+    bg.fillStyle(0xffffff, down ? 0.05 : 0.14); bg.fillRoundedRect(x + 2, y + 2, w - 4, h * 0.4, 7);
+    bg.lineStyle(2, down ? 0xffe28a : 0x8a6a32, 1); bg.strokeRoundedRect(x, y, w, h, 9);
   };
   draw(false);
   const c = this.add.rectangle(cx, cy, w, h, color, 0.01).setScrollFactor(0).setDepth(99).setInteractive();
-  const icon = this.add.image(cx, cy - 6, iconKey).setDisplaySize(26, 26).setScrollFactor(0).setDepth(101);
-  const t = this.add.text(cx, y + h - 9, label, { fontFamily: 'Mitr, sans-serif', fontSize: '9px', color: '#fff', stroke: '#000', strokeThickness: 3 })
+  const icon = this.add.image(cx, cy - 8, iconKey).setDisplaySize(34, 34).setScrollFactor(0).setDepth(101);
+  const t = this.add.text(cx, y + h - 10, label, { fontFamily: 'Mitr, sans-serif', fontSize: '11px', color: '#fff', stroke: '#000', strokeThickness: 3 })
     .setOrigin(0.5).setScrollFactor(0).setDepth(101);
   c.on('pointerdown', () => { draw(true); onClick(); });
   c.on('pointerup', () => draw(false));
