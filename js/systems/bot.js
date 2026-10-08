@@ -5,6 +5,8 @@
 //   4) โจมตีเป้าที่เลือก   5) เดินหามอนที่ตีได้
 // โหลดไฟล์นี้ต่อจาก input.js / ui.js / panels.js (ทับ updateAuto เดิมโดยอัตโนมัติ)
 // ใหม่ (v34): เปิดกระเป๋าแล้วบอทสู้ต่อได้ (ดู botBagTick ด้านล่าง) และบอทกดยาเลือดได้แม้ปุ่มยาถูกซ่อนตอนเปิดกระเป๋า
+// ใหม่ (v35): แก้ botIsHeal -- สกิลโจมตีที่มีดูดเลือด/ฟื้นเลือด (เช่น ฟันตัดเอ็น) ไม่ถูกนับเป็นสกิลฮีลอีกต่อไป
+//             (ไม่มีปุ่ม "ตลอด" และตัวปรับ % เลือด ใช้เหมือนสกิลโจมตีทั่วไป)
 
 // ตั้งค่าแยกตามด่าน
 const BOT_DEFAULT = { normal: true, ranged: true, boss: false, flee: true };
@@ -27,6 +29,10 @@ const BOT_SPEED = 190;
 const BOT_WARP_DIST = 180;    // ระยะวาปโดยประมาณ ถ้าสกิลไม่ระบุ range/dist เอง
 const BOT_WARP_MIN_MP = 40;   // วาปเพื่อเดินทาง เฉพาะตอน MP เหลือมากกว่า % นี้ (เก็บ MP ไว้โจมตี) | วาปหนีบอสไม่จำกัด
 
+// สกิลที่ "ไม่ใช่ฮีล" แน่นอน (บังคับให้เป็นสกิลโจมตี) -- ถ้ามีสกิลอื่นโดนนับเป็นฮีลผิด ให้เพิ่มคำในชื่อสกิลตรงนี้ หรือเพิ่ม id ใน BOT_NOT_HEAL_IDS
+const BOT_NOT_HEAL_NAMES = /ตัดเอ็น/;
+const BOT_NOT_HEAL_IDS = {};   // เช่น { rg_tendon: true }
+
 // อาวุธ/คลาสใหม่ที่ยังไม่ได้ลงทะเบียนใน BASIC_ATTACKS จะไม่ทำให้บอทค้าง: ใช้ค่าของดาบแทนไปก่อน
 const _botWarned = {};
 function botAtk(cls) {
@@ -41,16 +47,25 @@ function botAtk(cls) {
 
 // สกิลนี้เป็นสกิลฮีลหรือไม่ (เดาจากข้อมูลใน SKILL_DEFS -- ถ้าไม่ตรงกับเกมจริง แก้ตรงนี้ที่เดียว)
 // หมายเหตุ: ไม่ดูจาก id สกิลแล้ว เพราะ pr_heal (พลังแห่งแสง) ถูกเปลี่ยนเป็นสกิลโจมตี แต่ id ยังมีคำว่า heal
+// v35: สกิลที่แค่ "ฟื้นเลือดตอนโจมตี" (มีฟิลด์ heal แต่มีค่าดาเมจด้วย) ถือเป็นสกิลโจมตี ไม่ใช่สกิลฮีล
 function botIsHeal(sid) {
   const d = (typeof SKILL_DEFS !== 'undefined') ? SKILL_DEFS[sid] : null;
   if (!d) return false;
+  // บังคับว่าไม่ใช่ฮีล (ฟันตัดเอ็น ฯลฯ)
+  if (BOT_NOT_HEAL_IDS[sid] || BOT_NOT_HEAL_NAMES.test(String(d.name || ''))) return false;
   // สกิลโจมตีที่รู้ชนิดแน่นอน ไม่ใช่ฮีล
   const atkTypes = ['lightbeam', 'holy', 'melee', 'proj', 'dash'];
   const t = String(d.type || d.kind || d.effect || '').toLowerCase();
   if (atkTypes.indexOf(t) >= 0) return false;
-  if (d.heal || d.healAmt || d.healPct) return true;
+  // ชนิดหรือชื่อเป็นฮีลชัดเจน
   if (t.indexOf('heal') >= 0) return true;
-  return /heal|ฮิล|ฮีล|รักษา/i.test(String(d.name || ''));
+  if (/heal|ฮิล|ฮีล|รักษา/i.test(String(d.name || ''))) return true;
+  // มีฟิลด์ฮีล: ถ้าสกิลนี้มีค่าดาเมจด้วย = สกิลโจมตีที่ดูดเลือด ไม่ใช่สกิลฮีล
+  if (d.heal || d.healAmt || d.healPct) {
+    const hasDmg = !!(d.dmg || d.damage || d.mul || d.atk || d.power || d.hits || d.coef);
+    return !hasDmg;
+  }
+  return false;
 }
 
 // สกิลนี้เป็นสกิลวาป/เทเลพอร์ตหรือไม่ (เดาจากข้อมูลใน SKILL_DEFS -- ถ้าไม่ตรงกับเกมจริง แก้ตรงนี้ที่เดียว)
@@ -802,5 +817,6 @@ Object.assign(Main.prototype, {
 // ===== หมายเหตุ =====
 // 1) botFindPotionFn()/botDrinkHp(): หาฟังก์ชันดื่มยาในเกมอัตโนมัติ ถ้าไม่เจอจะขึ้นข้อความบนจอ ให้ส่ง inventory.js มาผูกให้ตรง
 // 2) botIsHeal(): สกิลที่ type เป็น lightbeam/holy/melee/proj/dash ถือเป็นสกิลโจมตีเสมอ (ไม่ดูจาก id แล้ว)
+//    v35: สกิลที่ชื่อตรงกับ BOT_NOT_HEAL_NAMES (ฟันตัดเอ็น) หรืออยู่ใน BOT_NOT_HEAL_IDS ถือเป็นสกิลโจมตีเสมอ
 // 3) ตั้งค่าสกิล/เลือดเก็บใน botCfg.g (ใช้ร่วมทุกด่าน) ถ้าเซฟแล้วไม่ติด ให้ตรวจ save.js ว่าเก็บ botCfg ทั้งก้อนหรือเฉพาะเลขด่าน
 // 4) เปิดกระเป๋า (bagWindow.js) ไม่หยุดเกมแล้ว | botBagTick() เป็นตัวสำรอง: ถ้าโค้ดเกมอื่นยังข้ามบอทตอนเปิดกระเป๋า จะเรียก updateAuto ให้เอง
