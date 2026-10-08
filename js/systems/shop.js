@@ -165,7 +165,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     g.generateTexture('tb_shop', 40, 40); g.destroy();
   };
 
- // จัดแถบใหม่ให้มี 9 ปุ่ม (เดิม 8 + ร้านแคชท้ายแถว)
+  // จัดแถบ: ปุ่มเลือกด่านอยู่กลางบน ขนาดใหญ่ | ปุ่มอื่นเรียงชิดขวา
   Main.prototype.setupTopBar = function () {
     this.makeTopIcons();
     const items = [
@@ -179,9 +179,16 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
       ['tb_shop',   'ร้านค้า',    0x5a3a1a, () => toggle(),                    'shopBtn'],
       ['tb_cash',   'ร้านแคช',    0x1a4a5a, () => { if (window.CashShop) CashShop.open(); }, 'cashBtn'],
     ];
-    let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
+    // แก้: แยกปุ่มเลือกด่านออกมาไว้กลางจอ ใหญ่กว่าปุ่มอื่น
+    const others = items.filter(it => it[4] !== 'stageBtn');
+    let x = W - 12 - (others.length * TB.w + (others.length - 1) * TB.gap);
     items.forEach(it => {
-      this[it[4]] = this.makeTopBtn(x, TB.top, TB.w, TB.h, it[0], it[1], it[2], it[3]);
+      if (it[4] === 'stageBtn') {
+        const bx = Math.round(W / 2 - TB.bigW / 2);
+        this.stageBtn = this.makeTopBtn(bx, TB.top, TB.bigW, TB.bigH, it[0], it[1], it[2], it[3], true);
+        return;
+      }
+      this[it[4]] = this.makeTopBtn(x, TB.top, TB.w, TB.h, it[0], it[1], it[2], it[3], false);
       x += TB.w + TB.gap;
     });
   };
