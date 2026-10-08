@@ -1,15 +1,9 @@
 // ===== เอฟเฟกต์สกิล/โจมตีของ "ผู้เล่นอื่น" (ฝั่งคนดู) =====
-// ปัญหาเดิม: skillFx.js / priestFx.js / basicFx.js ผูกกับ this.player (ตัวเราเอง) เท่านั้น
-//            ผู้เล่นอื่นเลยเห็นแค่วงกลมสีเรียบๆ ไฟล์นี้ใช้ตารางเอฟเฟกต์เดิม (SkillFx.FX / PriestFx.FX / BasicFx.CFG)
-//            แต่วางเอฟเฟกต์ที่ตัวผู้เล่นอื่นแทน และไม่แตะดาเมจ/ฮีลใดๆ
-// v2: สกิลลากเล็ง/สกิลวางพื้น เล่นเอฟเฟกต์ที่ "จุดตกจริง" (d.gx, d.gy ที่เซิร์ฟเวอร์ส่งต่อมา) ไม่ใช่ที่ตัวคนใช้
-// v3: แก้สกิล "ยิงออกไป" (กระสุน/ลูกศร/สายฟ้า) ของผู้เล่นอื่นไม่โชว์
-//     - สร้าง animation ของสไปรต์สกิลให้เองถ้ายังไม่เคยถูกสร้าง (เดิมข้ามเงียบๆ ทำให้ไม่เห็นอะไรเลย)
-//     - ถ้าเล่นเอฟเฟกต์จากตารางไม่ได้จริง จะคืน false เพื่อให้ network.js ใช้ภาพสำรองแทน (เดิมคืน true ทั้งที่ไม่มีภาพ)
-//     - สกิลชนิดกระสุน (proj) มีกระสุนแสงสำรองในไฟล์นี้เสมอ ถ้า SkillFx.arrow ใช้ไม่ได้
-// วางไฟล์: js/systems/remoteFx.js  แล้วเพิ่มใน index.html ต่อจาก targetFix.js (ก่อน main.js)
-//   <script src="js/systems/remoteFx.js?v=3"></script>
-// network.js (showRemoteSkill) จะเรียก RemoteFx.play(scene, d, caster) ให้เอง ถ้าเล่นไม่ได้จะใช้วงกลมแบบเดิมแทน
+// ใช้ตารางเอฟเฟกต์เดิม (SkillFx.FX / PriestFx.FX / BasicFx.CFG) แต่วางที่ตัวผู้เล่นอื่น และไม่แตะดาเมจ/ฮีลใดๆ
+// v2: สกิลลากเล็ง/วางพื้น เล่นที่จุดตกจริง (gx, gy)
+// v3: สร้าง animation ให้เองถ้ายังไม่มี | เล่นไม่ได้จริงคืน false | สกิลกระสุนมีกระสุนแสงสำรอง
+// v4: เพิ่มสกิลธนู (ashot2 ยิงคู่ / aroot ตรึงขา / aheavy เจาะเกราะ) และโจร rg_dash (rdash) ที่ไม่เคยแสดงให้ผู้เล่นอื่น
+// วางไฟล์: js/systems/remoteFx.js (เรียกจาก network.js: RemoteFx.play(scene, d, caster))
 (function () {
   const ADD = Phaser.BlendModes.ADD;
 
@@ -23,14 +17,12 @@
     if (caster && caster.s && caster.s.active) return { x: caster.s.x, y: caster.s.y };
     return { x: d.x, y: d.y };
   }
-  // จุดตกของสกิลลากเล็ง (ถ้าไม่มี gx,gy ใช้ตำแหน่งคนใช้เหมือนเดิม)
   function groundPos(d) {
     if (typeof d.gx === 'number' && typeof d.gy === 'number' && isFinite(d.gx) && isFinite(d.gy)) {
       return { x: d.gx, y: d.gy };
     }
     return { x: d.x, y: d.y };
   }
-  // สีประจำคลาส (ใช้กับกระสุนสำรอง)
   function classColor(def, cls) {
     try {
       if (typeof CLASSES !== 'undefined') {
@@ -40,7 +32,6 @@
     } catch (e) {}
     return 0xffffff;
   }
-  // ให้เอฟเฟกต์ตามตัวผู้เล่นอื่น (ไม่ใช่ตัวเรา)
   function followCaster(scene, s, caster, dy) {
     const fol = () => {
       if (!s.active) return;
@@ -52,15 +43,14 @@
   }
 
   // =====================================================================
-  // 1) สกิลที่อยู่ในตาราง SkillFx.FX (ดาบ เมจ ธนู โจร + อัลติ)
+  // 1) สกิลที่อยู่ในตาราง SkillFx.FX
   // =====================================================================
-  // ตรวจว่าสไปรต์ชีตพร้อมเล่น + สร้าง animation ให้ถ้ายังไม่มี (เครื่องเราเองอาจยังไม่เคยใช้สกิลนี้ จึงยังไม่ถูกสร้าง)
   function ensureSheet(scene, sheet) {
     const SF = window.SkillFx;
     const d = SF && SF.SHEETS && SF.SHEETS[sheet];
     if (!d || !scene.textures.exists(sheet)) return false;
     if (scene.anims.exists(sheet)) return true;
-    if (d.rects || !d.frames) return false;      // ชีตแบบกำหนดช่องเอง สร้างเองไม่ได้
+    if (d.rects || !d.frames) return false;
     try {
       scene.anims.create({
         key: sheet, frameRate: d.fps || 12, repeat: 0,
@@ -94,7 +84,6 @@
     return true;
   }
 
-  // คืน true ถ้าสร้าง/ตั้งเวลาสร้างเอฟเฟกต์ได้จริง
   function playBolt(scene, cfg, p, ang, def, caster, late) {
     if (!scene.textures.exists(cfg.image)) return false;
     const wait = cfg.delayField ? (def[cfg.delayField] || 0) : 0;
@@ -116,20 +105,19 @@
     return true;
   }
 
-  // คืน true ถ้ามีเอฟเฟกต์ถูกเล่นจริงอย่างน้อย 1 อัน
   function playSkillFx(scene, key, def, d, caster, ux, uy) {
     const cfg = window.SkillFx.FX[key];
     if (!cfg) return false;
     const ang = Math.atan2(uy, ux);
     const cp = casterPos(caster, d);
     if (cfg.bolt) return playBolt(scene, cfg, cp, ang, def, caster, false);
-    if (!ensureSheet(scene, cfg.sheet)) return false;     // ไม่มีภาพจริง -> ให้ผู้เรียกใช้ภาพสำรอง
+    if (!ensureSheet(scene, cfg.sheet)) return false;
     let px = cp.x, py = cp.y;
     if (cfg.at === 'front') {
       const dd = cfg.distRange ? (def.range || 100) * cfg.distRange : (cfg.dist || 0);
       px += ux * dd; py += uy * dd;
     } else if (cfg.at === 'ground') {
-      const g = groundPos(d);                   // จุดตกที่ผู้เล่นลากเล็งไว้ (gx, gy)
+      const g = groundPos(d);
       px = g.x; py = g.y;
     }
     let tx, ty;
@@ -148,11 +136,11 @@
     return true;
   }
 
-  // กระสุนสกิล (ลูกศรนักธนู / ลูกเวท): ใช้ SkillFx.arrow ถ้าได้ ไม่ได้ก็ใช้กระสุนแสงสำรองของไฟล์นี้ (เห็นแน่นอน)
+  // กระสุนสกิล (type 'proj'): ใช้ SkillFx.arrow ถ้าได้ ไม่ได้ก็ใช้กระสุนแสงสำรอง
   function playProj(scene, def, d, caster, ux, uy, cls) {
     const SF = window.SkillFx;
     const cp = casterPos(caster, d);
-    const dist = 462, dur = Math.max(300, dist / 420 * 1000);   // เท่ากับกระสุนฝั่งผู้เล่น (420px/วิ นาน 1.1 วิ)
+    const dist = 462, dur = Math.max(300, dist / 420 * 1000);
     let s = null;
     try {
       if (SF && typeof SF.arrow === 'function') s = SF.arrow(scene, def, cp.x, cp.y, ux, uy, dist, dur, false);
@@ -161,7 +149,6 @@
       scene.tweens.add({ targets: s, x: cp.x + ux * dist, y: cp.y + uy * dist, duration: dur, onComplete: () => s.destroy() });
       return true;
     }
-    // สำรอง: กระสุนแสงสีตามคลาส + หาง + ประกายตอนถึงปลายทาง
     ensureTex(scene);
     const color = classColor(def, cls);
     glowFlash(scene, cp.x + ux * 14, cp.y + uy * 14 - 6, color, 0.25, 0.8, 160);
@@ -169,8 +156,51 @@
     return true;
   }
 
+  // ===== ธนู: ashot2 (ยิงคู่) / aroot (ตรึงขา) / aheavy (เจาะเกราะ ลำใหญ่) =====
+  const ARROW_TYPES = { ashot2: 1, aroot: 1, aheavy: 1 };
+
+  function flyArrow(scene, def, cp, ux, uy, dist, big, cls) {
+    const SF = window.SkillFx, dur = Math.max(80, dist / 900 * 1000);
+    let s = null;
+    try { if (SF && SF.arrow) s = SF.arrow(scene, def, cp.x, cp.y, ux, uy, dist, dur, big); } catch (e) { s = null; }
+    if (!s || !s.active) {
+      s = scene.add.rectangle(cp.x, cp.y, big ? 60 : 26, big ? 10 : 4, big ? 0xffe9a8 : classColor(def, cls))
+        .setRotation(Math.atan2(uy, ux)).setDepth(61);
+    }
+    scene.tweens.add({ targets: s, x: cp.x + ux * dist, y: cp.y + uy * dist, duration: dur, onComplete: () => s.destroy() });
+  }
+
+  function playArrowSkill(scene, def, d, caster, ux, uy, cls) {
+    const cp = casterPos(caster, d), dist = def.range || 420;
+    if (def.type === 'ashot2') {
+      const n = def.shots || 2, gap = def.gap || 140;
+      for (let i = 0; i < n; i++) {
+        if (i === 0) flyArrow(scene, def, cp, ux, uy, dist, false, cls);
+        else scene.time.delayedCall(i * gap, () => flyArrow(scene, def, casterPos(caster, d), ux, uy, dist, false, cls));
+      }
+    } else if (def.type === 'aheavy') {
+      const hw = def.hw || 70;
+      const lane = scene.add.rectangle(cp.x + ux * dist / 2, cp.y + uy * dist / 2, dist, hw * 2, 0xffe9a8, 0.2)
+        .setRotation(Math.atan2(uy, ux)).setDepth(55);
+      scene.tweens.add({ targets: lane, alpha: 0, duration: 450, onComplete: () => lane.destroy() });
+      flyArrow(scene, def, cp, ux, uy, dist, true, cls);
+    } else {
+      flyArrow(scene, def, cp, ux, uy, dist, false, cls);
+    }
+    return true;
+  }
+
+  // ===== โจร: เงาพุ่งฟัน =====
+  function playRogueDash(scene, def, d, caster, ux, uy) {
+    const SF = window.SkillFx, cp = casterPos(caster, d);
+    if (SF && SF.dashTrail) SF.dashTrail(scene, cp.x, cp.y, ux, uy, def.range || 170);
+    ensureTex(scene);
+    ring(scene, cp.x, cp.y, 0xb98cff, 10, 34, 240);
+    return true;
+  }
+
   // =====================================================================
-  // 2) สกิลสายพระ (ตาราง PriestFx.FX ตาม def.type)
+  // 2) สกิลสายพระ
   // =====================================================================
   function prEnsure(scene, key) {
     const D = window.PriestFx.SHEETS[key];
@@ -187,7 +217,7 @@
   function playPriest(scene, def, d, caster, ux, uy) {
     const PF = window.PriestFx;
     const cp = casterPos(caster, d);
-    if (def.type === 'lightbeam') {          // พลังแห่งแสง
+    if (def.type === 'lightbeam') {
       const B = PF.BEAM;
       if (!B || !scene.textures.exists(B.image)) return false;
       const src = scene.textures.get(B.image).getSourceImage();
@@ -204,7 +234,7 @@
     if (!cfg || !prEnsure(scene, cfg.sheet)) return false;
     const D = PF.SHEETS[cfg.sheet];
     let px = cp.x, py = cp.y;
-    if (cfg.at === 'ground') { const g = groundPos(d); px = g.x; py = g.y; }   // จุดตกที่ลากเล็งไว้
+    if (cfg.at === 'ground') { const g = groundPos(d); px = g.x; py = g.y; }
     const R = def.range || 100;
     const sc = cfg.diam ? cfg.diam / D.ring : (cfg.fit ? (R * 2 * (cfg.fitMul || 1)) / D.ring : (cfg.scale || 1));
     const sy = sc * (cfg.sy || 1), top = cfg.alpha || 1, dy = cfg.dy || 0;
@@ -227,7 +257,7 @@
   }
 
   // =====================================================================
-  // 3) โจมตีธรรมดา (ตาราง BasicFx.CFG) + ตัวช่วยวาดแสง/กระสุน
+  // 3) โจมตีธรรมดา + ตัวช่วยวาดแสง/กระสุน
   // =====================================================================
   function ensureTex(scene) {
     if (!scene.textures.exists('fx_glow')) {
@@ -292,7 +322,6 @@
     draw();
     scene.tweens.add({ targets: t, v: 1, duration: o.dur, ease: 'Quad.easeOut', onUpdate: draw, onComplete: () => g.destroy() });
   }
-  // กระสุนธนู/เวท (วาดเองด้วยแสง + หาง)
   function remoteShot(scene, cfg, def, x, y, ux, uy) {
     const dist = def.range ? Math.min(def.range, 462) : 400;
     const dur = Math.max(250, dist / 420 * 1000);
@@ -343,9 +372,7 @@
   }
 
   // =====================================================================
-  // ทางเข้าหลัก: คืน true ถ้าเล่นเอฟเฟกต์ได้จริง (network.js จะไม่ใช้วงกลมสำรอง)
-  // d = ข้อมูลจากเซิร์ฟเวอร์ { id, name, x, y, fx, fy, gx?, gy? } | caster = ผู้เล่นอื่นที่ร่าย (others[id]) หรือ null
-  // gx,gy = จุดตกของสกิลลากเล็ง (ถ้ามี)
+  // ทางเข้าหลัก: คืน true ถ้าเล่นเอฟเฟกต์ได้จริง
   // =====================================================================
   function play(scene, d, caster) {
     if (!scene || !d) return false;
@@ -362,7 +389,6 @@
     }
     if (!def) return false;
 
-    // ทิศ: ใช้ fx,fy ก่อน -> ไม่มีก็คำนวณจากตัวคนใช้ไปจุดตก (gx,gy) -> ไม่มีก็ใช้ทิศที่ตัวหันอยู่
     let ux = 1, uy = 0;
     const u = unit(d.fx, d.fy);
     const g = groundPos(d);
@@ -383,7 +409,11 @@
       catch (e) { console.error('RemoteFx table', name, e); tableOk = false; }
     }
 
-    // สกิลชนิดกระสุน: ต้องมีกระสุนบินออกไปให้เห็นเสมอ (ยกเว้นตารางเอฟเฟกต์วาดตัววิ่งไปเองอยู่แล้ว)
+    // สกิลธนู (ยิงคู่ / ตรึงขา / เจาะเกราะ) และโจรพุ่งฟัน -- ไม่อยู่ในตารางเอฟเฟกต์ จึงวาดเองที่นี่
+    if (ARROW_TYPES[def.type]) return playArrowSkill(scene, def, d, caster, ux, uy, cls);
+    if (def.type === 'rdash') return playRogueDash(scene, def, d, caster, ux, uy);
+
+    // สกิลชนิดกระสุน: ต้องมีกระสุนบินออกไปให้เห็นเสมอ
     if (def.type === 'proj') {
       const cfg = key && SF.FX[key];
       if (!(tableOk && cfg && cfg.travel)) playProj(scene, def, d, caster, ux, uy, cls);
