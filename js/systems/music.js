@@ -3,9 +3,9 @@
 //   <script src="js/systems/music.js?v=8"></script>
 //
 // วางไฟล์เสียงที่โฟลเดอร์ assets/audio/ ตามนี้ (ไฟล์ไหนไม่มี เกมจะเงียบเฉพาะเสียงนั้น ไม่พัง):
-//   assets/audio/bgm/town.mp3          เพลงในเมือง (วนซ้ำเพลงเดียว)
+//   assets/audio/bgm/town_01.mp3 ... town_07.mp3     เพลงในเมือง (สุ่มเล่นวนไม่ซ้ำจนครบทุกเพลง)
 //   assets/audio/bgm/field_01.mp3 ... field_10.mp3   เพลงนอกเมือง (สุ่มเล่นวนไม่ซ้ำจนครบทุกเพลง)
-//   อยากเพิ่ม/ลดเพลงนอกเมือง: แก้เลข FIELD_COUNT ด้านล่าง
+//   อยากเพิ่ม/ลดเพลง: แก้เลข TOWN_COUNT / FIELD_COUNT ด้านล่าง
 //   assets/audio/sfx/hit.mp3           โจมตีปกติ (ทุกอาชีพใช้ร่วมกัน)
 //   assets/audio/sfx/crit.mp3          คริติคอล
 //   assets/audio/sfx/skill.mp3         ใช้สกิล (รวมอัลติเมต)
@@ -15,11 +15,14 @@
 
 window.XhMusic = (function () {
   var BASE = 'assets/audio/';
-  var AUDIO_VER = '3';
+  var AUDIO_VER = '4';
+  var TOWN_COUNT = 7;            // จำนวนเพลงในเมือง (town_01 ... town_NN)
   var FIELD_COUNT = 10;          // จำนวนเพลงนอกเมือง (field_01 ... field_NN)
   var XFADE = 2;                 // วินาทีที่ครอสเฟดระหว่างเพลง
-  var BGM = { town: ['bgm/town.mp3'], field: [] };
-  for (var fi = 1; fi <= FIELD_COUNT; fi++) BGM.field.push('bgm/field_' + (fi < 10 ? '0' : '') + fi + '.mp3');
+  var BGM = { town: [], field: [] };
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  for (var ti = 1; ti <= TOWN_COUNT; ti++) BGM.town.push('bgm/town_' + pad2(ti) + '.mp3');
+  for (var fi = 1; fi <= FIELD_COUNT; fi++) BGM.field.push('bgm/field_' + pad2(fi) + '.mp3');
   var SFX_NAMES = ['hit', 'crit', 'skill', 'hurt', 'heal', 'dash', 'coin', 'levelup'];
 
   var ctx = null, master = null, bgmGain = null, sfxGain = null;
