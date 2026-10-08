@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const WORLD_W = 3600, WORLD_H = 2250;
-const STAGES = 10;                        // 9 ด่านล่ามอน + เมือง (ดัชนี 9 ไม่มีมอน)
+const STAGES = 30;                        // 9 ด่านล่ามอน + เมือง (ดัชนี 9 ไม่มีมอน)
 const CHANNELS = 10;
 const ROOMS = 10;
 const ROOM_CAP = 20;
