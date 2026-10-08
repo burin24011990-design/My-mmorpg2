@@ -5,6 +5,9 @@
 // - v7 เก็บ cls ของผู้เล่น | v8 getMons | v9 เมืองเป็นด่านที่ 10 (ดัชนี 9)
 // - v10: เพิ่มอีเวนต์ 'getPlayers' ให้เครื่องผู้เล่นขอรายชื่อคนในห้องซ้ำ (แก้มองไม่เห็นผู้เล่นอื่นในเมือง)
 // - v11: ปาร์ตี้แชร์ EXP + โหมดแจกไอเทม (own / random / rotate) -- killMonster ส่ง who + lootTo ใน 'mdead'
+// - v12: EXP หารตามจำนวนคนในปาร์ตี้ -- 'mdead' ส่ง exp = { id: สัดส่วน } (เช่น 3 คน = 0.3333 ต่อคน)
+//        โบนัสปาร์ตี้ (+10/20/40%) ยังคูณฝั่งเกมใน social.js เหมือนเดิม -> ต้องใช้คู่กับ roomMonsters.js v5
+// - v13: ยกเลิกการจำกัดระยะของ EXP และของดรอปในปาร์ตี้ (อยู่ห้องเดียวกันก็ได้ ไม่ว่าอยู่ตรงไหนของแผนที่)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -58,9 +61,7 @@ const CONTACT_CD = 600;
 const MON_TICK_MS = 100;
 const HIT_MAX_DIST = 1200;
 
-// ระยะของปาร์ตี้ตอนมอนตาย (px) -- ปรับตรงนี้
-const PARTY_EXP_RANGE = 1500;    // สมาชิกที่อยู่ห่างมอนไม่เกินนี้ได้ EXP (เมื่อเปิดแชร์ EXP)
-const PARTY_LOOT_RANGE = 900;    // สมาชิกที่อยู่ห่างมอนไม่เกินนี้มีสิทธิ์ได้ของ (โหมดสุ่ม/สลับ)
+// ปาร์ตี้แชร์ EXP/ของ: ไม่จำกัดระยะ -- สมาชิกที่อยู่ "ห้องเดียวกับมอน" (ช่อง/ห้องเดียวกัน) ได้ทุกคน อยู่ตรงไหนของแผนที่ก็ได้
 
 const MFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };
 const MFX_MAX_MS = 8000;
@@ -232,31 +233,44 @@ function tickRoom(key, R, now, dt) {
   if (changed.length) io.to(key).emit('mstate', changed);
 }
 
-// มอนตาย: คิดว่าใครได้ EXP (who) และใครได้ของดรอป (lootTo) ที่เซิร์ฟเวอร์ทั้งหมด (กันโกง)
-// - EXP: คนที่ตีมอน + (ถ้าปาร์ตี้เปิดแชร์ EXP) สมาชิกปาร์ตี้ในห้องเดียวกันที่อยู่ในระยะ PARTY_EXP_RANGE
-// - ของ: own = คนที่ตีตัวสุดท้าย | random = สุ่มในปาร์ตี้ | rotate = สลับกันตามลำดับ (เฉพาะคนที่อยู่ในระยะ PARTY_LOOT_RANGE)
+// มอนตาย: คิดว่าใครได้ EXP (exp) และใครได้ของดรอป (lootTo) ที่เซิร์ฟเวอร์ทั้งหมด (กันโกง)
+// - EXP: exp = { socketId: สัดส่วน } ฝั่งเกมเอา (EXP มอน x สัดส่วน) ไปบวก แล้วคูณโบนัสปาร์ตี้ตามจำนวนคนต่อ (social.js ฝั่งเกม)
+//     * ไม่มีปาร์ตี้ / ปาร์ตี้ปิดแชร์ EXP = สัดส่วน 1 (ได้เต็มเหมือนเล่นเดี่ยว)
+//     * ปาร์ตี้เปิดแชร์ EXP = หารเท่ากันทุกคนที่ได้รับ (คนที่ตีมอน + สมาชิกในห้องเดียวกัน ไม่จำกัดระยะ)
+//       เช่น 3 คน = 1/3 ต่อคน แล้วคูณโบนัส +10% -> คนละ 0.3667 ของ EXP มอน (รวมทั้งปาร์ตี้ 1.1 เท่า)
+// - ของ: own = คนที่ตีตัวสุดท้าย | random = สุ่มในปาร์ตี้ | rotate = สลับกันตามลำดับ (ทุกคนในห้องเดียวกัน ไม่จำกัดระยะ)
 function killMonster(key, R, m, byId) {
   R.mons.delete(m.id);
   const here = id => !!(players[id] && players[id].room === key);
-  const near = (id, r) => Math.hypot(players[id].x - m.x, players[id].y - m.y) <= r;
 
-  const who = new Set();
-  m.contrib.forEach(id => { if (here(id)) who.add(id); });
-  const done = new Set();
-  Array.from(who).forEach(id => {
+  // ----- EXP -----
+  const exp = {};                         // id -> สัดส่วน EXP (1 = เต็ม)
+  const partyIds = new Set();
+  m.contrib.forEach(id => {
+    if (!here(id)) return;
     const pid = players[id].party;
-    if (!pid || done.has(pid)) return;
-    done.add(pid);
+    const Pt = pid ? social.getParty(pid) : null;
+    if (!Pt || Pt.expShare === false) { exp[id] = 1; return; }   // เดี่ยว หรือปาร์ตี้ปิดแชร์ = ได้เต็ม
+    partyIds.add(pid);
+  });
+  partyIds.forEach(pid => {
     const Pt = social.getParty(pid);
-    if (!Pt || Pt.expShare === false) return;
-    Pt.members.forEach(mid => { if (here(mid) && near(mid, PARTY_EXP_RANGE)) who.add(mid); });
+    if (!Pt) return;
+    const got = new Set();
+    Pt.members.forEach(mid => {
+      if (!here(mid)) return;
+      got.add(mid);                       // อยู่ห้องเดียวกัน = ได้ ไม่จำกัดระยะ
+    });
+    if (!got.size) return;
+    const share = 1 / got.size;
+    got.forEach(mid => { exp[mid] = share; });
   });
 
   let lootTo = here(byId) ? byId : null;
   const killer = here(byId) ? players[byId] : null;
   const Pt = killer && killer.party ? social.getParty(killer.party) : null;
   if (Pt && Pt.lootMode && Pt.lootMode !== 'own') {
-    const el = Pt.members.filter(id => here(id) && near(id, PARTY_LOOT_RANGE));
+    const el = Pt.members.filter(id => here(id));   // ทุกคนในห้องเดียวกัน ไม่จำกัดระยะ
     if (el.length) {
       if (Pt.lootMode === 'random') {
         lootTo = el[rnd(0, el.length - 1)];
@@ -271,7 +285,7 @@ function killMonster(key, R, m, byId) {
     }
   }
 
-  io.to(key).emit('mdead', { id: m.id, by: byId, who: Array.from(who), lootTo });
+  io.to(key).emit('mdead', { id: m.id, by: byId, who: Object.keys(exp), exp, lootTo });
   const delay = m.kind === 'boss' ? rnd(BOSS_RESPAWN_MIN_MS, BOSS_RESPAWN_MAX_MS) : RESPAWN_DELAY;
   setTimeout(() => {
     if (roomMons[key] !== R) return;
