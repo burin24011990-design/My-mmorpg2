@@ -118,6 +118,7 @@ Object.assign(Main.prototype, {
     this.miniDots.clear();
     const mx = this.mini.x + (p.x / WORLD_W) * this.mini.w, my = this.mini.y + (p.y / WORLD_H) * this.mini.h;
     this.enemies.getChildren().forEach(e => {
+      if (e.isPvp) return;   // PvP: ไม่แสดงฝั่งตรงข้ามบนแผนที่ย่อ
       const ex = this.mini.x + (e.x / WORLD_W) * this.mini.w, ey = this.mini.y + (e.y / WORLD_H) * this.mini.h;
       const col = e.isBoss ? 0xb35ae0 : (e.ranged ? 0xe0883a : 0xe05a5a);
       this.miniDots.fillStyle(col, 0.95).fillCircle(ex, ey, e.isBoss ? 4 : 2);
