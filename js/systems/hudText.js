@@ -1,28 +1,37 @@
-// ===== ข้อความกลางจอด้านบน: ชื่อ/เลือดมอนเป้าหมาย + ข้อความแจ้งเตือน (ไอเทมที่ได้รับ ฯลฯ) =====
-// ไฟล์: js/systems/hudText.js  (โหลด "หลัง" ไฟล์ระบบทั้งหมด ก่อน js/main.js)
-// - ตัวหนังสือใหญ่ขึ้น หนาขึ้น ขอบดำหนา + พื้นหลังดำโปร่งแสง อ่านชัดบนพื้นหญ้า
-// - ข้อความแจ้งเตือน (toastMsg) ซ้อนเป็นแถวได้สูงสุด TOAST_MAX บรรทัด ค่อยๆ จางหายเอง
-// ปรับขนาด/ตำแหน่งได้ที่ค่าคงที่ด้านล่าง
+// ===== ข้อความกลางจอด้านบน: ชื่อ/เลือดมอนเป้าหมาย + ข้อความแจ้งเตือน =====
+// ไฟล์: js/systems/hudText.js  (โหลดหลังไฟล์ระบบทั้งหมด ก่อน js/main.js)
 
 (function () {
+  if (typeof Main === 'undefined' || !Main.prototype) {
+    console.error('hudText: ไม่พบ Main');
+    return;
+  }
   const P = Main.prototype;
   const FONT = 'Mitr, sans-serif';
 
   // ---- ปรับตรงนี้ ----
-  const TARGET_SIZE = '22px';     // ขนาดข้อความ "เป้าหมาย: ชื่อมอน Lv. HP"
-  const TARGET_Y = 78;            // ตำแหน่งแนวตั้ง (ใต้ข้อความสถานะบอท)
-  const TOAST_SIZE = '24px';      // ขนาดข้อความแจ้งเตือน (ได้รับไอเทม ฯลฯ)
-  const TOAST_Y = 124;            // ตำแหน่งแนวตั้งของบรรทัดแรก
+  const TARGET_SIZE = '22px';     // ขนาดข้อความเป้าหมาย
+  const TARGET_Y = 78;            // ตำแหน่งแนวตั้ง
+  const TOAST_SIZE = '24px';      // ขนาดข้อความแจ้งเตือน
+  const TOAST_Y = 124;            // ตำแหน่งบรรทัดแรก
   const TOAST_GAP = 6;            // ระยะห่างระหว่างบรรทัด
-  const TOAST_MAX = 4;            // แสดงพร้อมกันได้สูงสุดกี่บรรทัด
-  const TOAST_MS = 2600;          // เวลาที่ค้างบนจอ (มิลลิวินาที) ก่อนเริ่มจาง
-  const BG = 'rgba(0,0,0,0.5)';   // พื้นหลังหลังตัวหนังสือ
+  const TOAST_MAX = 4;            // แสดงพร้อมกันสูงสุด
+  const TOAST_MS = 2600;          // เวลาค้างก่อนจาง (ms)
+  const BG = 'rgba(0,0,0,0.5)';   // พื้นหลังตัวหนังสือ
+
+  // ความกว้างจอ: ใช้ W ถ้ามี ไม่งั้นอ่านจากฉากโดยตรง
+  function getW(sc) {
+    if (typeof W !== 'undefined' && W) return W;
+    return (sc.scale && sc.scale.width) || 800;
+  }
 
   // ---------- ข้อความเป้าหมาย ----------
   function styleTarget(sc) {
     const t = sc.targetNameText;
     if (!t || typeof t.setFontSize !== 'function') return;
-    if (!t._htStyled) {
+
+    // ตั้งสไตล์ครั้งแรก หรือตั้งใหม่ถ้าไฟล์อื่นเปลี่ยนขนาดฟอนต์ทับ
+    if (!t._htStyled || t.style.fontSize !== TARGET_SIZE) {
       t._htStyled = true;
       t.setFontFamily(FONT).setFontSize(TARGET_SIZE).setFontStyle('bold')
         .setColor('#ffffff').setStroke('#000000', 6)
@@ -32,8 +41,8 @@
       if (t.setResolution) t.setResolution(2);
       if (t.setScrollFactor) t.setScrollFactor(0);
     }
-    t.setPosition(W / 2, TARGET_Y);
-    t.setVisible(!!t.text);            // ไม่มีเป้าหมาย = ซ่อน (กันกรอบดำว่างๆ โผล่)
+    t.setPosition(getW(sc) / 2, TARGET_Y);
+    t.setVisible(!!t.text);   // ไม่มีเป้าหมาย = ซ่อนกรอบดำ
   }
 
   // ---------- ข้อความแจ้งเตือน ----------
@@ -46,6 +55,7 @@
   function layout(list) {
     let y = TOAST_Y;
     list.forEach(function (o) {
+      if (!o.scene) return;
       o.setY(y);
       y += o.height + TOAST_GAP;
     });
@@ -57,16 +67,17 @@
     const text = String(msg);
     const list = sc._htToasts || (sc._htToasts = []);
 
-    // เก็บกวาดอันที่หายไปแล้ว + ข้อความซ้ำที่ยังโชว์อยู่ให้ย้ายลงมาล่างสุดแทนการซ้อน
+    // เก็บกวาดอันที่หายแล้ว + ลบข้อความซ้ำเพื่อย้ายลงล่างสุด
     for (let i = list.length - 1; i >= 0; i--) {
       if (!list[i].scene) list.splice(i, 1);
       else if (list[i].text === text) { killToast(list[i]); list.splice(i, 1); }
     }
 
-    const txt = sc.add.text(W / 2, TOAST_Y, text, {
+    const w = getW(sc);
+    const txt = sc.add.text(w / 2, TOAST_Y, text, {
       fontFamily: FONT, fontSize: TOAST_SIZE, fontStyle: 'bold',
       color: '#fff3b0', stroke: '#000000', strokeThickness: 6, align: 'center',
-      wordWrap: { width: Math.min(W - 80, 640) },
+      wordWrap: { width: Math.min(w - 80, 640) },
       padding: { x: 12, y: 4 }, backgroundColor: BG,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(300);
     txt.setShadow(0, 2, '#000000', 4, true, true);
@@ -91,12 +102,14 @@
 
   P.toastMsg = htToast;
 
-  // ทุกเฟรม: จัดสไตล์ข้อความเป้าหมาย (และกันกรณีเกมสร้าง toastMsg ทับเป็นของตัวเองในฉาก)
+  // ทุกเฟรม: จัดสไตล์ข้อความเป้าหมาย และกัน toastMsg ถูกทับ
   const oUT = P.updateTargeting;
   P.updateTargeting = function () {
     const r = typeof oUT === 'function' ? oUT.apply(this, arguments) : undefined;
-    styleTarget(this);
-    if (Object.prototype.hasOwnProperty.call(this, 'toastMsg') && this.toastMsg !== htToast) this.toastMsg = htToast;
+    try { styleTarget(this); } catch (e) { console.error('hudText:', e); }
+    if (Object.prototype.hasOwnProperty.call(this, 'toastMsg') && this.toastMsg !== htToast) {
+      this.toastMsg = htToast;
+    }
     return r;
   };
 })();
