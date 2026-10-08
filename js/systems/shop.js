@@ -165,7 +165,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
     g.generateTexture('tb_shop', 40, 40); g.destroy();
   };
 
-  // จัดแถบใหม่ให้มี 8 ปุ่ม (เหมือนของเดิม + ร้านค้าท้ายแถว)
+ // จัดแถบใหม่ให้มี 9 ปุ่ม (เดิม 8 + ร้านแคชท้ายแถว)
   Main.prototype.setupTopBar = function () {
     this.makeTopIcons();
     const items = [
@@ -177,6 +177,7 @@ const BUFF_LABEL = { atk: 'ATK', def: 'DEF', hp: 'Max HP' };
       ['tb_map',    'เลือกด่าน',  0x2a4a5a, () => this.openStageSelect(),      'stageBtn'],
       ['tb_chart',  'สเตตัส',     0x3a2a4a, () => this.openStatusPanel(),      'statusBtn'],
       ['tb_shop',   'ร้านค้า',    0x5a3a1a, () => toggle(),                    'shopBtn'],
+      ['tb_cash',   'ร้านแคช',    0x1a4a5a, () => { if (window.CashShop) CashShop.open(); }, 'cashBtn'],
     ];
     let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
     items.forEach(it => {
