@@ -78,22 +78,36 @@
   }
 
   // วงเวท (วาดที่ 0,0 แล้วย้ายตำแหน่ง เพื่อให้หมุนรอบจุดกึ่งกลางจริง)
-  function magicCircle(scene, x, y, radius, color, duration) {
-    const g = scene.add.graphics({ x: x, y: y }).setDepth(55);
-    g.lineStyle(2, color, 0.8); g.strokeCircle(0, 0, radius);
-    g.strokeCircle(0, 0, radius * 0.62);
-    g.lineStyle(1, color, 0.45);
-    for (let i = 0; i < 8; i++) {
-      const a = i * TAU / 8;
+  // วงเวท + ดาวเต็มวง | points: 5 = ดาวห้าแฉก, 6 = ดาวหกแฉก (ค่าเริ่มต้น), 0 = ไม่มีดาว
+function magicCircle(scene, x, y, radius, color, duration, points) {
+  const n = points === undefined ? 6 : points;
+  const g = scene.add.graphics({ x: x, y: y }).setDepth(55);
+
+  // กรอบวง
+  g.lineStyle(3, color, 0.9);
+  g.strokeCircle(0, 0, radius);
+
+  // ดาว: ปลายแฉกแตะขอบวงพอดี (R = radius)
+  if (n >= 5) {
+    const R = radius, rot = -Math.PI / 2;   // rot = ให้แฉกแรกชี้ขึ้นบน
+    const poly = (cnt, step, off) => {
       g.beginPath();
-      g.moveTo(Math.cos(a) * radius * 0.62, Math.sin(a) * radius * 0.62);
-      g.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
-      g.strokePath();
-    }
-    scene.tweens.add({
-      targets: g, angle: 180, alpha: 0, duration: duration || 900, ease: 'Cubic.easeOut',
-      onComplete: () => g.destroy(),
-    });
+      for (let i = 0; i < cnt; i++) {
+        const a = rot + off + ((i * step) % cnt) * TAU / cnt;
+        const px = Math.cos(a) * R, py = Math.sin(a) * R;
+        if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.closePath(); g.strokePath();
+    };
+    g.lineStyle(2, color, 0.75);
+    if (n % 2) poly(n, (n - 1) / 2, 0);                    // เลขคี่ = ดาวห้าแฉก
+    else { poly(n / 2, 1, 0); poly(n / 2, 1, TAU / n); }   // เลขคู่ = สามเหลี่ยมซ้อน (หกแฉก)
+  }
+
+  scene.tweens.add({
+    targets: g, angle: 180, alpha: 0, duration: duration || 900, ease: 'Cubic.easeOut',
+    onComplete: () => g.destroy(),
+  });
   }
 
   // เส้นสายฟ้าซิกแซก 1 เส้น (กราฟิกเดียว วาด 3 ชั้น)
