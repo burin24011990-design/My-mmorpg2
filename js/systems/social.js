@@ -1,5 +1,6 @@
 // social.js (ฝั่งเกม) -- ผู้เล่นอื่นเป็นตัวละครจริง + เพิ่มเพื่อน + ปาร์ตี้
 // โหลดหลัง network.js ก่อน main.js | ต้องใช้คู่กับ server/social.js
+// v+: เพิ่มข้อความตรวจสอบมุมซ้ายล่าง (สีเขียว) เพื่อหาสาเหตุมองไม่เห็นผู้เล่นอื่น -- ลบได้ที่บล็อก "ข้อความตรวจสอบ" ใน updateNetwork
 (function () {
   const P = Main.prototype;
   const FR_KEY = 'mmo_friends';
@@ -74,6 +75,7 @@
     const pd = this.player.depth || 10;
     Object.keys(this.others || {}).forEach(id => {
       const o = this.others[id];
+      if (!o || !o.s || !o.s.scene) return;
       const dx = o.s.x - o.px, dy = o.s.y - o.py;
       const moving = Math.hypot(dx, dy) > 0.4;
       if (moving) o.dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down');
@@ -86,10 +88,24 @@
     });
     const mine = !!this.party;
     if (this.myLabel && this._myP !== mine) { this._myP = mine; this.myLabel.setColor(mine ? '#7dff9a' : '#ffffff'); }
+
+    // ===== ข้อความตรวจสอบ (ลบได้ทีหลัง) =====
+    if (!this._dbgText) this._dbgText = this.add.text(8, H - 40, '', { fontSize: '11px', color: '#00ff99', backgroundColor: '#000000aa' }).setScrollFactor(0).setDepth(9999);
+    if (!this._dbgT || time - this._dbgT > 400) {
+      this._dbgT = time;
+      const ids = Object.keys(this.others || {});
+      const vis = ids.filter(i => this.others[i].s && this.others[i].s.visible).length;
+      const f = ids.length ? this.others[ids[0]] : null;
+      this._dbgText.setText(
+        'CH' + this.channel + '-' + this.netRoom + ' in:' + (this.inRoom ? 1 : 0) + ' online:' + (this.online ? 1 : 0) +
+        ' stage:' + this.stageIdx + '/' + this._netStage + '\n' +
+        'others:' + ids.length + ' vis:' + vis +
+        (f && f.s ? ' | อีกคน st:' + f.stage + ' (' + Math.round(f.s.x) + ',' + Math.round(f.s.y) + ') เรา (' + Math.round(this.player.x) + ',' + Math.round(this.player.y) + ')' : '')
+      );
+    }
   };
 
   // ---------- โบนัส EXP ปาร์ตี้ (3 คน +10% / 4 คน +20% / 5 คน +40%) ----------
-  // ครอบ gainExp: EXP ที่ได้ทุกครั้ง (ทั้งมอนในเครื่องและโหมดห้องออนไลน์) คูณตามโบนัสปาร์ตี้
   const _gx = P.gainExp;
   if (typeof _gx === 'function') {
     P.gainExp = function (n) {
@@ -128,7 +144,7 @@
     s.on('pMsg', m => self.toastMsg(m));
     s.on('state', list => list.forEach(a => {
       const o = self.others[a[0]];
-      if (o && a[4] && o.lv !== a[4]) { o.lv = a[4]; o.t.setText('Lv.' + a[4] + ' ' + o.name); }
+      if (o && o.t && o.t.scene && a[4] && o.lv !== a[4]) { o.lv = a[4]; o.t.setText('Lv.' + a[4] + ' ' + o.name); }
     }));
     // ส่ง HP/เลเวลให้เซิร์ฟเวอร์ทุก 1 วินาที (ใช้แสดงในปาร์ตี้)
     setInterval(() => {
@@ -138,7 +154,7 @@
     this.socialBuildBtn();
   };
 
-  // ---------- ปุ่ม 👥 + กรอบปาร์ตี้ (จัดตำแหน่งตามสเกลจอ เหมือนปุ่มเมือง) ----------
+  // ---------- ปุ่ม 👥 + กรอบปาร์ตี้ ----------
   P.socialBuildBtn = function () {
     if (document.getElementById('btn-social')) return;
     const self = this;
