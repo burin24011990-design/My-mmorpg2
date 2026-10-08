@@ -12,6 +12,8 @@
 // - v7: เก็บ "คลาส" (cls) ของผู้เล่นจาก join/move แล้วส่งต่อให้คนอื่น (pub / state / skill)
 //       -> ผู้เล่นอื่นเห็นสกิน+อนิเมชันถูกอาชีพ | state ส่ง [id, x, y, stage, lv, cls] (ช่อง 5 = lv เหมือนเดิม, ช่อง 6 = cls)
 //       skill ส่งต่อพร้อมจุดตกของสกิลลากเล็ง (gx, gy) และคลาสของคนใช้ -> เล่นเอฟเฟกต์สกิลให้ครบที่ฝั่งผู้ชม
+// - v8: แก้มอนไม่ตรงกันระหว่างผู้เล่น: ส่งมอนทั้งห้อง ('mons') ซ้ำให้ผู้เล่นที่ขอ ('getMons')
+//       และส่งซ้ำตอนสั่งเข้าห้องเดิม (เช่น ออกจากเมือง/โหลดด่านใหม่แต่ยังอยู่ห้องเดิม)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -311,6 +313,14 @@ function playersInRoom(key) {
   return out;
 }
 
+// ส่งมอนทั้งห้องให้ผู้เล่นคนนี้ (ใช้ตอนเข้าห้อง / ตอนขอซ้ำ)
+function sendMons(socket, p) {
+  if (!p || !p.room) return;
+  const R = roomMons[p.room];
+  if (!R) return;
+  socket.emit('mons', { stage: p.stage, list: Array.from(R.mons.values()).map(packMon) });
+}
+
 function leaveRoom(socket) {
   const p = players[socket.id];
   if (!p || !p.room) return;
@@ -333,7 +343,7 @@ function enterRoom(socket, stage, ch, rm) {
   socket.join(key);
   p.room = key; p.stage = stage; p.ch = ch; p.rm = rm;
   socket.emit('init', { id: socket.id, stage, ch, rm, cap: ROOM_CAP, players: playersInRoom(key) });
-  socket.emit('mons', { stage, list: Array.from(roomMons[key].mons.values()).map(packMon) });
+  sendMons(socket, p);
   socket.to(key).emit('joined', pub(p));
 }
 
@@ -357,7 +367,7 @@ io.on('connection', socket => {
     const stage = validStage(d.stage) ? d.stage : 0;
     players[socket.id] = {
       id: socket.id, name, x: 1800, y: 1125, stage, ch: 0, rm: 0, room: null,
-      cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0,
+      cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0, lastMons: 0,
       lv: clamp(parseInt(d.lv, 10) || 1, 1, 999),
       cls: validCls(d.cls) || 'sword',
       hitCd: 0, hitWin: 0, hitN: 0, fxWin: 0, fxN: 0, skWin: 0, skN: 0,
@@ -383,6 +393,17 @@ io.on('connection', socket => {
     });
   });
 
+  // เครื่องผู้เล่นขอมอนทั้งห้องซ้ำ (เช่น โหลดด่านใหม่แต่ยังอยู่ห้องเดิม จึงไม่มีการเข้าห้องใหม่ให้เซิร์ฟเวอร์ส่งมอนให้)
+  socket.on('getMons', stage => {
+    const p = players[socket.id];
+    if (!p || !p.room) return;
+    const now = Date.now();
+    if (now - p.lastMons < 500) return;
+    p.lastMons = now;
+    if (Number.isInteger(stage) && stage !== p.stage) return;   // เครื่องอยู่คนละด่านกับห้อง = ให้ใช้ 'enter' ก่อน
+    sendMons(socket, p);
+  });
+
   // เปลี่ยนด่าน (ห้องเดิม) หรือสลับห้อง: d = { stage, ch, rm }
   socket.on('enter', (d, cb) => {
     cb = typeof cb === 'function' ? cb : () => {};
@@ -394,7 +415,10 @@ io.on('connection', socket => {
 
     const stage = d.stage, ch = d.ch, rm = d.rm;
     if (!validStage(stage) || !validCh(ch) || !validRm(rm)) return cb({ ok: false, reason: 'bad' });
-    if (p.room === roomKey(stage, ch, rm)) return cb({ ok: true, stage, ch, rm });
+    if (p.room === roomKey(stage, ch, rm)) {
+      sendMons(socket, p);                    // อยู่ห้องนี้อยู่แล้ว: ส่งมอนซ้ำให้เครื่องที่เพิ่งโหลดด่านใหม่
+      return cb({ ok: true, stage, ch, rm });
+    }
 
     // เปลี่ยนด่านโดยคงแชนเนล/ห้องเดิม: ไม่ติดดีเลย์ ถ้าเต็มจะย้ายไปห้องที่ว่างให้
     if (p.ch === 0 || (ch === p.ch && rm === p.rm)) {
