@@ -90,6 +90,7 @@ Main.prototype.setupButtons = function () {
 
 // ไอคอนโจมตีปกติ (ดาบ/คทา/ธนู/พระ/โจร) และแดช: วาดเอง ไม่ต้องมีไฟล์รูป
 // ถ้าต้องการรูปของตัวเอง ใส่ไฟล์ที่ assets/skills/basic_<อาชีพ>.png (เช่น basic_sword.png) และ assets/skills/dash.png
+// แล้วลบชื่อนั้นออกจากรายการ SKIP ในฟังก์ชัน loadSkillIcons ด้านล่าง
 Main.prototype.makeActionIcons = function () {
   if (this.textures.exists('atk_sword')) return;
   const g = this.make.graphics({ x: 0, y: 0, add: false });
@@ -147,17 +148,22 @@ Main.prototype.makeActionIcons = function () {
 // ถ้าไฟล์ไหนไม่มี จะใช้ไอคอนเดิมของปุ่มแทนอัตโนมัติ
 const SKILL_ICON_VER = '1';   // ตรงกับ IMG_VER ใน skillPanelData.js (เปลี่ยนรูปแล้วมือถือยังโชว์ของเก่า ให้เพิ่มเลขทั้งสองที่)
 Main.prototype.loadSkillIcons = function () {
+  // รูปที่ "ไม่มีในรีโป" ไม่ต้องโหลด ใช้ไอคอนวาดเองแทน (พออัปโหลดรูปแล้ว ลบชื่อออกจากรายการนี้)
+  const SKIP = { dash: 1, basic_sword: 1, basic_mage: 1, basic_archer: 1, basic_priest: 1, basic_rogue: 1 };
+  const SKIP_ULTI = {};   // ถ้ารูปอัลติบางอาชีพไม่มี ใส่ชื่ออาชีพตรงนี้ เช่น { sword: 1 }
   let n = 0;
   Object.keys(SKILL_DEFS).forEach(id => {
     const k = 'sk_' + id;
     if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/' + id + '.png?v=' + SKILL_ICON_VER); n++; }
   });
   Object.keys(BASIC_ATTACKS).forEach(cls => {       // โจมตีปกติ: assets/skills/basic_<อาชีพ>.png (ไม่มีไฟล์ = ใช้ไอคอนที่วาดเอง)
+    if (SKIP['basic_' + cls]) return;
     const k = 'sk_basic_' + cls;
     if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/basic_' + cls + '.png?v=' + SKILL_ICON_VER); n++; }
   });
-  if (!this.textures.exists('sk_dash')) { this.load.image('sk_dash', 'assets/skills/dash.png?v=' + SKILL_ICON_VER); n++; }   // แดช
+  if (!SKIP.dash && !this.textures.exists('sk_dash')) { this.load.image('sk_dash', 'assets/skills/dash.png?v=' + SKILL_ICON_VER); n++; }   // แดช
   Object.keys(ULTI_DEFS).forEach(cls => {          // อัลติ: assets/skills/ulti_<อาชีพ>.png
+    if (SKIP_ULTI[cls]) return;
     const k = 'sk_ulti_' + cls;
     if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/ulti_' + cls + '.png?v=' + SKILL_ICON_VER); n++; }
   });
