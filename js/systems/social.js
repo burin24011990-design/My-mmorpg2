@@ -90,17 +90,25 @@
     if (this.myLabel && this._myP !== mine) { this._myP = mine; this.myLabel.setColor(mine ? '#7dff9a' : '#ffffff'); }
 
     // ===== ข้อความตรวจสอบ (ลบได้ทีหลัง) =====
-    if (!this._dbgText) this._dbgText = this.add.text(8, H - 40, '', { fontSize: '11px', color: '#00ff99', backgroundColor: '#000000aa' }).setScrollFactor(0).setDepth(9999);
+    if (!this._dbgText) this._dbgText = this.add.text(W / 2, 150, '', { fontSize: '15px', color: '#00ff99', backgroundColor: '#000000cc', align: 'center' })
+      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(9999);
     if (!this._dbgT || time - this._dbgT > 400) {
       this._dbgT = time;
       const ids = Object.keys(this.others || {});
       const vis = ids.filter(i => this.others[i].s && this.others[i].s.visible).length;
       const f = ids.length ? this.others[ids[0]] : null;
+      let l2 = 'ไม่มีผู้เล่นอื่นในลิสต์';
+      if (f && f.s) {
+        const s = f.s, wv = this.cameras.main.worldView;
+        l2 = 'อีกคน stage:' + f.stage + ' vis:' + s.visible + ' active:' + s.active + ' alpha:' + s.alpha +
+          ' depth:' + (Math.round(s.depth * 100) / 100) + ' scale:' + (Math.round(s.scaleX * 100) / 100) +
+          '\nframe:' + (s.frame && s.frame.name) + ' tex:' + (s.texture && s.texture.key) +
+          ' ในกล้อง:' + wv.contains(s.x, s.y);
+      }
       this._dbgText.setText(
-        'CH' + this.channel + '-' + this.netRoom + ' in:' + (this.inRoom ? 1 : 0) + ' online:' + (this.online ? 1 : 0) +
-        ' stage:' + this.stageIdx + '/' + this._netStage + '\n' +
-        'others:' + ids.length + ' vis:' + vis +
-        (f && f.s ? ' | อีกคน st:' + f.stage + ' (' + Math.round(f.s.x) + ',' + Math.round(f.s.y) + ') เรา (' + Math.round(this.player.x) + ',' + Math.round(this.player.y) + ')' : '')
+        'stage เรา:' + this.stageIdx + ' (server ' + this._netStage + ') CH' + this.channel + '-' + this.netRoom +
+        ' online:' + (this.online ? 1 : 0) + ' in:' + (this.inRoom ? 1 : 0) + '\n' +
+        'others:' + ids.length + ' มองเห็น:' + vis + '\n' + l2
       );
     }
   };
