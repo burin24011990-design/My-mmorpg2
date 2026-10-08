@@ -1,21 +1,9 @@
 // เซิร์ฟเวอร์เกม: ผู้เล่นหลายคนเห็นกันและกัน + ระบบแชนเนล/ห้อง + มอนสเตอร์แยกตามห้อง
-// - แต่ละด่านมี 10 แชนเนล x 10 ห้อง = 100 ห้อง  ห้องละไม่เกิน 20 คน  -> ชื่อห้อง s{ด่าน}-c{แชนเนล}-r{ห้อง}
-// - สลับแชนเนล/ห้องเองได้ทุก 5 นาที (เปลี่ยนด่านไม่ติดดีเลย์ และพยายามคงแชนเนล/ห้องเดิม)
-// - ผู้เล่นเห็น/ได้รับสกิลเฉพาะคนในห้องเดียวกัน
-// - v2: มอนสเตอร์ถูกสร้างและคุมโดยเซิร์ฟเวอร์ "แยกตามห้อง" คนในห้องเดียวกันเห็น/ตีมอนชุดเดียวกัน
-//       ห้องที่ไม่มีคนจะไม่มีมอน (สร้างใหม่ทั้งชุดเมื่อมีคนเข้า)
-// - v3: เพิ่มระบบเพื่อน + ปาร์ตี้ (social.js) และส่งเลเวลผู้เล่น
-// - v4: เพิ่มระบบ PvP 1v1 / 3v3 / 5v5 + เพดานจุติต่อห้อง (pvpServer.js)
-// - v5: สถานะสกิลบนมอน (อีเวนต์ 'mfx' จากผู้เล่น): สตั้น/แช่แข็ง = ขยับ+โจมตีไม่ได้ | ล็อกขา = เดินไม่ได้
-//       เดินช้าลง (slow) | ตีเบาลง (weak) -> ดาเมจที่มอนทำกับผู้เล่นลดลง
-// - v6: เพิ่มระบบแชต โลก/ปาร์ตี้/ส่วนตัว + ตัวกรองคำหยาบ (chat.js)
-// - v7: เก็บ "คลาส" (cls) ของผู้เล่นจาก join/move แล้วส่งต่อให้คนอื่น (pub / state / skill)
-//       -> ผู้เล่นอื่นเห็นสกิน+อนิเมชันถูกอาชีพ | state ส่ง [id, x, y, stage, lv, cls] (ช่อง 5 = lv เหมือนเดิม, ช่อง 6 = cls)
-//       skill ส่งต่อพร้อมจุดตกของสกิลลากเล็ง (gx, gy) และคลาสของคนใช้ -> เล่นเอฟเฟกต์สกิลให้ครบที่ฝั่งผู้ชม
-// - v8: แก้มอนไม่ตรงกันระหว่างผู้เล่น: ส่งมอนทั้งห้อง ('mons') ซ้ำให้ผู้เล่นที่ขอ ('getMons')
-//       และส่งซ้ำตอนสั่งเข้าห้องเดิม (เช่น ออกจากเมือง/โหลดด่านใหม่แต่ยังอยู่ห้องเดิม)
-// - v9: รองรับ "เมือง" เป็นด่านที่ 10 (ดัชนี 9): เดิม STAGES = 9 ทำให้เข้าเมืองแล้วเซิร์ฟเวอร์ปฏิเสธ
-//       (validStage ไม่ผ่าน) ผู้เล่นเลยค้างอยู่ห้องด่านเก่า ไม่เห็นกันในเมือง | เมืองไม่มีมอน
+// - แต่ละด่านมี 10 แชนเนล x 10 ห้อง ห้องละไม่เกิน 20 คน -> ชื่อห้อง s{ด่าน}-c{แชนเนล}-r{ห้อง}
+// - สลับแชนเนล/ห้องเองได้ทุก 5 นาที (เปลี่ยนด่านไม่ติดดีเลย์)
+// - v2 มอนแยกตามห้อง | v3 เพื่อน+ปาร์ตี้ | v4 PvP | v5 สถานะสกิลบนมอน (mfx) | v6 แชต
+// - v7 เก็บ cls ของผู้เล่น | v8 getMons | v9 เมืองเป็นด่านที่ 10 (ดัชนี 9)
+// - v10: เพิ่มอีเวนต์ 'getPlayers' ให้เครื่องผู้เล่นขอรายชื่อคนในห้องซ้ำ (แก้มองไม่เห็นผู้เล่นอื่นในเมือง)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -23,14 +11,14 @@ const { Server } = require('socket.io');
 const app = express();
 app.get('/', (req, res) => res.send('MMORPG server OK'));
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } }); // ภายหลังควรจำกัดเฉพาะเว็บของเรา
+const io = new Server(server, { cors: { origin: '*' } });
 
 const WORLD_W = 3600, WORLD_H = 2250;
-const STAGES = 10;                        // จำนวนด่าน (ตรงกับ ZONES) = 9 ด่านล่ามอน + เมือง (ดัชนี 9 ไม่มีมอน)
-const CHANNELS = 10;                      // แชนเนลต่อด่าน
-const ROOMS = 10;                         // ห้องต่อแชนเนล
-const ROOM_CAP = 20;                      // คนสูงสุดต่อห้อง
-const SWITCH_COOLDOWN_MS = 5 * 60 * 1000; // ดีเลย์สลับแชนเนล/ห้อง 5 นาที
+const STAGES = 10;                        // 9 ด่านล่ามอน + เมือง (ดัชนี 9 ไม่มีมอน)
+const CHANNELS = 10;
+const ROOMS = 10;
+const ROOM_CAP = 20;
+const SWITCH_COOLDOWN_MS = 5 * 60 * 1000;
 
 const players = {};
 const rooms = {};       // ชื่อห้อง -> Set ของ socket.id
@@ -39,19 +27,15 @@ const cooldowns = {};   // clientId -> เวลาที่สลับห้�
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
-// รหัสสกิลที่ยอมให้ส่งต่อ: รูปแบบ basic_xxx / ulti_xxx / รหัสสกิล 2-3 ตัวอักษร_ชื่อ (เช่น sw_slash, rg_dash)
-// ใช้รูปแบบแทนรายการตายตัว -> เพิ่มสกิล/อาชีพใหม่ (นักบวช โจร ฯลฯ) ได้โดยไม่ต้องแก้เซิร์ฟเวอร์
-// เป็นแค่เอฟเฟกต์ที่ฝั่งผู้เล่นอื่นดูเฉยๆ ฝั่งเกมจะค้นหาในตารางสกิลเอง ชื่อที่ไม่รู้จักจะถูกข้าม
 const SKILL_NAME_RE = /^(basic|ulti)_[a-z]{3,10}$|^[a-z]{2,3}_[a-z0-9_]{2,20}$/;
 const validSkillName = n => typeof n === 'string' && n.length <= 28 && SKILL_NAME_RE.test(n);
-// ชื่อคลาส (sword / mage / archer / priest / rogue ...) ยอมรับเฉพาะตัวพิมพ์เล็ก 3-10 ตัว
 const CLS_RE = /^[a-z]{3,10}$/;
 const validCls = v => (typeof v === 'string' && CLS_RE.test(v) ? v : null);
 
 // =====================================================================
 // มอนสเตอร์ (ค่าต้องตรงกับ js/data/zones.js + js/systems/monsters.js ฝั่งเกม)
 // =====================================================================
-const ZCFG = [   // ต่อด่าน: count = มอนธรรมดา, ranged = มอนยิงไกล, ช่วงเลเวล
+const ZCFG = [
   { count: 45, ranged: 15, minLv: 1,  maxLv: 10 },
   { count: 45, ranged: 15, minLv: 11, maxLv: 20 },
   { count: 45, ranged: 15, minLv: 21, maxLv: 30 },
@@ -68,16 +52,14 @@ const BOSS_COUNT = 1, BOSS_MULT = 20, BOSS_SPEED = 130;
 const BOSS_TELEPORT_MIN_MS = 5 * 60000, BOSS_TELEPORT_MAX_MS = 10 * 60000;
 const BOSS_RESPAWN_MIN_MS = 10 * 60000, BOSS_RESPAWN_MAX_MS = 20 * 60000;
 const RESPAWN_DELAY = 7000;
-const AGGRESSIVE_FROM_STAGE = 5;     // ด่าน 5 ขึ้นไปโจมตีก่อน (ด่าน 1-4 สู้กลับเมื่อโดนตี)
-const CONTACT_CD = 600;              // ดีเลย์ชนตัวทำดาเมจ (ms) ต่อผู้เล่น
-const MON_TICK_MS = 100;             // รอบคำนวณมอน (10 ครั้ง/วินาที)
-const HIT_MAX_DIST = 1200;           // โจมตีมอนที่ไกลจากผู้เล่นเกินนี้ = ไม่นับ (กันโกงเบื้องต้น)
+const AGGRESSIVE_FROM_STAGE = 5;
+const CONTACT_CD = 600;
+const MON_TICK_MS = 100;
+const HIT_MAX_DIST = 1200;
 
-// สถานะสกิลบนมอน (ผู้เล่นส่งมาทางอีเวนต์ 'mfx' = [id มอน, ชนิด, มิลลิวินาที, พารามิเตอร์])
-const MFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };   // ชนิดอื่น (ไฟช็อต/เกราะ ฯลฯ) ฝั่งเกมคิดเองผ่านดาเมจ
-const MFX_MAX_MS = 8000;             // เวลาสถานะสูงสุดต่อครั้ง (กันส่งค่าเว่อร์)
+const MFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };
+const MFX_MAX_MS = 8000;
 
-// ขนาดตัว (ใช้คำนวณระยะตีของมอน) ตรงกับ monsterDefs.js
 const SIZE_NORMAL = [1.0, 1.0, 1.0, 1.0, 1.25, 1.4, 1.55, 1.7, 1.85];
 const SIZE_BOSS   = [2.2, 2.2, 2.2, 2.2, 2.6, 2.9, 3.2, 3.5, 3.8];
 const MUL_NORMAL  = [1, 1, 1.06, 1.25, 1.34, 1.05, 1.13, 1.4, 1.3];
@@ -99,7 +81,7 @@ function makeMonster(R, stage, kind) {
     aggressive: (stage + 1) >= AGGRESSIVE_FROM_STAGE,
     nextShot: 0, nextSkill: 0, nextTeleport: 0,
     contrib: new Set(),
-    fx: {},                          // สถานะที่ติดอยู่ { stun: {until}, slow: {until, mul}, ... }
+    fx: {},
   };
   let scale;
   if (boss) {
@@ -124,7 +106,7 @@ function makeMonster(R, stage, kind) {
 function spawnRoomMonsters(stage) {
   const R = { mons: new Map(), nextId: 1 };
   const z = ZCFG[stage];
-  if (!z) return R;                          // เมือง (ด่านที่ไม่มีมอน) = ห้องว่างไม่มีมอน
+  if (!z) return R;                          // เมือง = ห้องว่างไม่มีมอน
   const add = kind => { const m = makeMonster(R, stage, kind); R.mons.set(m.id, m); };
   for (let i = 0; i < z.count; i++) add('normal');
   for (let i = 0; i < z.ranged; i++) add('ranged');
@@ -133,7 +115,7 @@ function spawnRoomMonsters(stage) {
   return R;
 }
 
-// รูปแบบส่งให้ผู้เล่น: [id, kind, ด่าน, เลเวล, x, y, hp, maxHp, dmg]
+// [id, kind, ด่าน, เลเวล, x, y, hp, maxHp, dmg]
 const packMon = m => [m.id, m.kind, m.stage, m.lv, Math.round(m.x), Math.round(m.y), Math.ceil(m.hp), m.maxHp, m.dmg];
 
 function moveToward(m, tx, ty, speed, dt) {
@@ -143,7 +125,6 @@ function moveToward(m, tx, ty, speed, dt) {
   m.x += dx / d * st; m.y += dy / d * st;
 }
 
-// สถานะที่ยังไม่หมดอายุ (คืน null ถ้าไม่มี/หมดแล้ว)
 function fxOn(m, type, now) {
   const f = m.fx && m.fx[type];
   return f && now < f.until ? f : null;
@@ -158,7 +139,6 @@ function tickRoom(key, R, now, dt) {
   const changed = [];
 
   R.mons.forEach(m => {
-    // บอสวาปย้ายที่ (ถ้ากำลังสู้อยู่เลื่อนไป 15 วิ)
     if (m.kind === 'boss' && now > m.nextTeleport) {
       if (m.state === 'chase') m.nextTeleport = now + 15000;
       else {
@@ -169,20 +149,17 @@ function tickRoom(key, R, now, dt) {
       }
     }
 
-    // สถานะสกิลที่ติดอยู่
-    const stunned = !!(fxOn(m, 'stun', now) || fxOn(m, 'freeze', now));   // ขยับ/โจมตี/ใช้สกิลไม่ได้
-    const rooted = stunned || !!fxOn(m, 'root', now);                     // เดินไม่ได้ (ล็อกขายังตีได้ถ้าอยู่ในระยะ)
+    const stunned = !!(fxOn(m, 'stun', now) || fxOn(m, 'freeze', now));
+    const rooted = stunned || !!fxOn(m, 'root', now);
     const slowF = fxOn(m, 'slow', now), weakF = fxOn(m, 'weak', now);
-    const spdMul = slowF ? slowF.mul : 1;                                  // เดินช้าลง
-    const dmgMul = weakF ? Math.max(0, 1 - weakF.pct) : 1;                 // ตีเบาลง
+    const spdMul = slowF ? slowF.mul : 1;
+    const dmgMul = weakF ? Math.max(0, 1 - weakF.pct) : 1;
 
-    // ผู้เล่นที่ใกล้ที่สุด
     let near = null, nd = Infinity;
     for (let i = 0; i < pl.length; i++) {
       const d = Math.hypot(pl[i].x - m.x, pl[i].y - m.y);
       if (d < nd) { nd = d; near = pl[i]; }
     }
-    // ถ้าถูกตี ให้ไล่คนที่ตี (ถ้ายังอยู่ในห้อง)
     let tp = near, td = nd;
     if (m.tgt && players[m.tgt] && players[m.tgt].room === key) {
       tp = players[m.tgt]; td = Math.hypot(tp.x - m.x, tp.y - m.y);
@@ -219,13 +196,11 @@ function tickRoom(key, R, now, dt) {
         } else if (!rooted) {
           moveToward(m, tp.x, tp.y, m.speed * spdMul, dt);
         }
-        // ชนตัวทำดาเมจ (สตั้น/แช่แข็งทำไม่ได้)
         if (!stunned && td < m.hitRange && now > (tp.hitCd || 0)) {
           tp.hitCd = now + CONTACT_CD;
           io.to(tp.id).emit('mhurt', { id: m.id, dmg: Math.max(1, Math.round(m.dmg * dmgMul)) });
           io.to(key).emit('matk', m.id);
         }
-        // สกิลของ epic / บอส (สตั้น/แช่แข็งใช้ไม่ได้)
         if (!stunned && (m.kind === 'epic' || m.kind === 'boss') && td < 380 && now > m.nextSkill) {
           const a = Math.atan2(tp.y - m.y, tp.x - m.x);
           if (m.kind === 'epic') {
@@ -259,7 +234,7 @@ function killMonster(key, R, m, byId) {
   io.to(key).emit('mdead', { id: m.id, by: byId, who });
   const delay = m.kind === 'boss' ? rnd(BOSS_RESPAWN_MIN_MS, BOSS_RESPAWN_MAX_MS) : RESPAWN_DELAY;
   setTimeout(() => {
-    if (roomMons[key] !== R) return;        // ห้องว่างไปแล้ว (ถูกรีเซ็ต)
+    if (roomMons[key] !== R) return;
     const n = makeMonster(R, m.stage, m.kind);
     R.mons.set(n.id, n);
     io.to(key).emit('mspawn', packMon(n));
@@ -283,7 +258,6 @@ const validRm = v => Number.isInteger(v) && v >= 1 && v <= ROOMS;
 const cdKey = (p, socket) => p.cid || socket.id;
 const cdLeft = (p, socket, now) => Math.max(0, (cooldowns[cdKey(p, socket)] || 0) + SWITCH_COOLDOWN_MS - now);
 
-// ตารางจำนวนคน counts[แชนเนล-1][ห้อง-1]
 function countMatrix(stage) {
   const m = [];
   for (let c = 1; c <= CHANNELS; c++) {
@@ -294,7 +268,6 @@ function countMatrix(stage) {
   return m;
 }
 
-// เลือกห้องที่ไม่เต็ม: 1) ห้องที่ต้องการ 2) ห้องว่างในแชนเนลเดียวกัน 3) ห้องว่างที่ไหนก็ได้ | คืน null ถ้าเต็มหมด
 function pickFree(stage, ch, rm) {
   if (validCh(ch) && validRm(rm) && roomCount(stage, ch, rm) < ROOM_CAP) return { ch, rm };
   if (validCh(ch)) {
@@ -306,7 +279,6 @@ function pickFree(stage, ch, rm) {
   return null;
 }
 
-// ข้อมูลผู้เล่นที่ส่งให้คนอื่น (v7: เพิ่ม cls)
 const pub = p => ({ id: p.id, name: p.name, x: p.x, y: p.y, stage: p.stage, lv: p.lv, cls: p.cls });
 
 function playersInRoom(key) {
@@ -316,7 +288,6 @@ function playersInRoom(key) {
   return out;
 }
 
-// ส่งมอนทั้งห้องให้ผู้เล่นคนนี้ (ใช้ตอนเข้าห้อง / ตอนขอซ้ำ)
 function sendMons(socket, p) {
   if (!p || !p.room) return;
   const R = roomMons[p.room];
@@ -330,7 +301,7 @@ function leaveRoom(socket) {
   const set = rooms[p.room];
   if (set) {
     set.delete(socket.id);
-    if (!set.size) { delete rooms[p.room]; delete roomMons[p.room]; }   // ห้องว่าง = ล้างมอน
+    if (!set.size) { delete rooms[p.room]; delete roomMons[p.room]; }
   }
   socket.leave(p.room);
   io.to(p.room).emit('left', socket.id);
@@ -350,18 +321,12 @@ function enterRoom(socket, stage, ch, rm) {
   socket.to(key).emit('joined', pub(p));
 }
 
-// ระบบเพื่อน + ปาร์ตี้ (ไฟล์ social.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
 require('./social')(io, players);
-
-// ระบบ PvP 1v1 / 3v3 / 5v5 (ไฟล์ pvpServer.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
 require('./pvpServer')(io, players, { leaveRoom });
-
-// ระบบแชต โลก/ปาร์ตี้/ส่วนตัว + กรองคำหยาบ (ไฟล์ chat.js อยู่โฟลเดอร์เดียวกับไฟล์นี้)
 require('./chat')(io);
 
 // ---------- การเชื่อมต่อ ----------
 io.on('connection', socket => {
-  // เข้าเกม: d = { name, stage, ch, rm, cid, lv, cls }
   socket.on('join', d => {
     if (players[socket.id]) return;
     if (typeof d === 'string') d = { name: d };
@@ -370,7 +335,7 @@ io.on('connection', socket => {
     const stage = validStage(d.stage) ? d.stage : 0;
     players[socket.id] = {
       id: socket.id, name, x: 1800, y: 1125, stage, ch: 0, rm: 0, room: null,
-      cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0, lastMons: 0,
+      cid: String(d.cid || '').slice(0, 64), lastEnter: 0, lastList: 0, lastMons: 0, lastSync: 0,
       lv: clamp(parseInt(d.lv, 10) || 1, 1, 999),
       cls: validCls(d.cls) || 'sword',
       hitCd: 0, hitWin: 0, hitN: 0, fxWin: 0, fxN: 0, skWin: 0, skN: 0,
@@ -380,7 +345,6 @@ io.on('connection', socket => {
     enterRoom(socket, stage, f.ch, f.rm);
   });
 
-  // ขอตารางจำนวนคนทุกห้องของด่าน + ดีเลย์ที่เหลือ
   socket.on('getChannels', (stage, cb) => {
     const p = players[socket.id];
     if (typeof cb !== 'function' || !p) return;
@@ -396,18 +360,26 @@ io.on('connection', socket => {
     });
   });
 
-  // เครื่องผู้เล่นขอมอนทั้งห้องซ้ำ (เช่น โหลดด่านใหม่แต่ยังอยู่ห้องเดิม จึงไม่มีการเข้าห้องใหม่ให้เซิร์ฟเวอร์ส่งมอนให้)
   socket.on('getMons', stage => {
     const p = players[socket.id];
     if (!p || !p.room) return;
     const now = Date.now();
     if (now - p.lastMons < 500) return;
     p.lastMons = now;
-    if (Number.isInteger(stage) && stage !== p.stage) return;   // เครื่องอยู่คนละด่านกับห้อง = ให้ใช้ 'enter' ก่อน
+    if (Number.isInteger(stage) && stage !== p.stage) return;
     sendMons(socket, p);
   });
 
-  // เปลี่ยนด่าน (ห้องเดิม) หรือสลับห้อง: d = { stage, ch, rm }
+  // v10: เครื่องผู้เล่นขอรายชื่อคนในห้องซ้ำ (เจอคนใน 'state' ที่ยังไม่รู้จัก เช่น พลาด init/joined ตอนเข้าเมือง)
+  socket.on('getPlayers', () => {
+    const p = players[socket.id];
+    if (!p || !p.room) return;
+    const now = Date.now();
+    if (now - (p.lastSync || 0) < 1000) return;
+    p.lastSync = now;
+    socket.emit('players', playersInRoom(p.room));
+  });
+
   socket.on('enter', (d, cb) => {
     cb = typeof cb === 'function' ? cb : () => {};
     const p = players[socket.id];
@@ -419,11 +391,10 @@ io.on('connection', socket => {
     const stage = d.stage, ch = d.ch, rm = d.rm;
     if (!validStage(stage) || !validCh(ch) || !validRm(rm)) return cb({ ok: false, reason: 'bad' });
     if (p.room === roomKey(stage, ch, rm)) {
-      sendMons(socket, p);                    // อยู่ห้องนี้อยู่แล้ว: ส่งมอนซ้ำให้เครื่องที่เพิ่งโหลดด่านใหม่
+      sendMons(socket, p);
       return cb({ ok: true, stage, ch, rm });
     }
 
-    // เปลี่ยนด่านโดยคงแชนเนล/ห้องเดิม: ไม่ติดดีเลย์ ถ้าเต็มจะย้ายไปห้องที่ว่างให้
     if (p.ch === 0 || (ch === p.ch && rm === p.rm)) {
       const f = pickFree(stage, ch, rm);
       if (!f) { leaveRoom(socket); return cb({ ok: false, reason: 'full', stage }); }
@@ -431,7 +402,6 @@ io.on('connection', socket => {
       return cb({ ok: true, stage, ch: f.ch, rm: f.rm, moved: f.ch !== ch || f.rm !== rm });
     }
 
-    // สลับแชนเนล/ห้องเอง: ติดดีเลย์ 5 นาที
     const left = cdLeft(p, socket, now);
     if (left > 0) return cb({ ok: false, reason: 'cooldown', left });
     if (roomCount(stage, ch, rm) >= ROOM_CAP) return cb({ ok: false, reason: 'full', stage, ch, rm });
@@ -445,11 +415,10 @@ io.on('connection', socket => {
     if (!p || !p.room || !d || typeof d.x !== 'number' || typeof d.y !== 'number') return;
     p.x = clamp(d.x, 0, WORLD_W);
     p.y = clamp(d.y, 0, WORLD_H);
-    const c = validCls(d.cls);          // คลาสเปลี่ยนได้ตามอาวุธที่สวม
+    const c = validCls(d.cls);
     if (c) p.cls = c;
   });
 
-  // ผู้เล่นตีมอน: list = [[id มอน, ดาเมจ], ...] (ฝั่งเกมรวมแล้วส่งทุก ~50ms)
   socket.on('hits', list => {
     const p = players[socket.id];
     if (!p || !p.room || !Array.isArray(list)) return;
@@ -458,7 +427,7 @@ io.on('connection', socket => {
     const now = Date.now();
     if (now - p.hitWin > 1000) { p.hitWin = now; p.hitN = 0; }
     for (const h of list.slice(0, 120)) {
-      if (++p.hitN > 600) break;                       // กันส่งถี่ผิดปกติ
+      if (++p.hitN > 600) break;
       if (!Array.isArray(h)) continue;
       const m = R.mons.get(h[0]);
       if (!m) continue;
@@ -472,7 +441,6 @@ io.on('connection', socket => {
     }
   });
 
-  // ผู้เล่นใส่สถานะให้มอน (สตั้น/แช่แข็ง/ล็อกขา/เดินช้า/ตีเบาลง): d = [id มอน, ชนิด, มิลลิวินาที, { mul | pct }]
   socket.on('mfx', d => {
     const p = players[socket.id];
     if (!p || !p.room || !Array.isArray(d)) return;
@@ -480,7 +448,7 @@ io.on('connection', socket => {
     if (!R) return;
     const now = Date.now();
     if (now - p.fxWin > 1000) { p.fxWin = now; p.fxN = 0; }
-    if (++p.fxN > 200) return;                         // กันส่งถี่ผิดปกติ
+    if (++p.fxN > 200) return;
     const m = R.mons.get(d[0]);
     const type = d[1];
     if (!m || typeof type !== 'string' || !MFX_TYPES[type]) return;
@@ -489,21 +457,20 @@ io.on('connection', socket => {
     if (!ms) return;
     const par = d[3] && typeof d[3] === 'object' ? d[3] : {};
     const f = { until: now + ms };
-    if (type === 'slow') f.mul = clamp(Number(par.mul) || 1, 0.1, 1);       // 0.5 = เดินเหลือครึ่งหนึ่ง
-    if (type === 'weak') f.pct = clamp(Number(par.pct) || 0, 0, 0.9);       // 0.25 = ตีเบาลง 25%
+    if (type === 'slow') f.mul = clamp(Number(par.mul) || 1, 0.1, 1);
+    if (type === 'weak') f.pct = clamp(Number(par.pct) || 0, 0, 0.9);
     m.fx = m.fx || {};
     m.fx[type] = f;
     if (type === 'stun' || type === 'freeze') { m.provoked = true; m.tgt = p.id; m.contrib.add(p.id); }
   });
 
   // ส่งต่อสกิล/ท่าโจมตีให้คนอื่นในห้อง: d = { name, x, y, fx, fy, gx?, gy? }
-  // x,y = ตำแหน่งคนใช้ | fx,fy = ทิศ | gx,gy = จุดตกของสกิลลากเล็ง (ถ้ามี)
   socket.on('skill', d => {
     const p = players[socket.id];
     if (!p || !p.room || !d || !validSkillName(d.name)) return;
     const now = Date.now();
     if (now - p.skWin > 1000) { p.skWin = now; p.skN = 0; }
-    if (++p.skN > 30) return;                          // กันส่งถี่ผิดปกติ
+    if (++p.skN > 30) return;
     const out = {
       id: socket.id, name: d.name,
       x: Number(d.x) || 0, y: Number(d.y) || 0,
@@ -523,8 +490,7 @@ io.on('connection', socket => {
   });
 });
 
-// ส่งตำแหน่งให้คนในแต่ละห้อง 20 ครั้ง/วินาที (เฉพาะห้องที่มีคน)
-// รูปแบบ: [id, x, y, ด่าน, เลเวล, คลาส]
+// ส่งตำแหน่ง 20 ครั้ง/วินาที: [id, x, y, ด่าน, เลเวล, คลาส]
 setInterval(() => {
   for (const key in rooms) {
     const list = [];
@@ -533,7 +499,6 @@ setInterval(() => {
   }
 }, 50);
 
-// ล้างบันทึกดีเลย์ที่หมดอายุแล้ว (กันหน่วยความจำโต)
 setInterval(() => {
   const now = Date.now();
   for (const k in cooldowns) if (now - cooldowns[k] > SWITCH_COOLDOWN_MS) delete cooldowns[k];
