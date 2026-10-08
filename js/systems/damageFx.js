@@ -1,4 +1,4 @@
-// ===== ตัวเลขดาเมจสวย ๆ (v3) =====
+// ===== ตัวเลขดาเมจสวย ๆ (v4 — ลดแลค) =====
 // showDamage(scene, x, y, จำนวน, ชนิด, opts)
 // ชนิด: 'normal' | 'crit' | 'player' (ผู้เล่นโดนตี) | 'heal' | 'regen' | 'skill'
 // opts (ไม่ใส่ก็ได้):
@@ -7,8 +7,18 @@
 //   { crit: true }              -> ดาเมจสกิลที่คริติคอล
 // ทดสอบดูหน้าตาตัวเลขทุกแบบ: เปิดเกมด้วยลิงก์ที่ต่อท้าย ?fxtest=1 แล้วเริ่มเล่น
 //   (จะมีตัวเลขตัวอย่างเด้งขึ้นรอบตัวละครทุก 3 วินาที)
+//
+// v4 แก้จากเดิม: resolution 2 -> 1, ตัดเงา blur, จำกัดจำนวนตัวเลขบนจอ, ลดแรงสั่นจอตอนคริ
 (function () {
   var SCALE = 1.0;   // ตัวคูณขนาดทั้งหมด (ยังเล็กไป -> 1.3 / 1.5)
+
+  // ===== ตั้งค่าประสิทธิภาพ (ปรับตรงนี้) =====
+  var TEXT_RES = 1;          // ความคมของตัวเลข: 1 = เร็วสุด | 1.5 = คมขึ้น หนักขึ้น | 2 = เดิม (หนักมาก)
+  var MAX_ACTIVE = 25;       // ตัวเลขบนจอพร้อมกันสูงสุด (เกินนี้ ตัวเลขธรรมดาจะไม่แสดง แต่คริ/ฮีลยังแสดง)
+  var MAX_ACTIVE_HARD = 40;  // เกินนี้ไม่แสดงเลยทุกชนิด
+  var CRIT_SHAKE = true;     // สั่นจอตอนคริ (ปิดได้ถ้ายังแลค)
+  var CRIT_SHAKE_MS = 50, CRIT_SHAKE_POWER = 0.0015;
+  var active = 0;            // จำนวนตัวเลขที่กำลังแสดง
 
   var STYLE = {
     normal: { size: 40, fill: '#ffffff', stroke: '#5a0e0e', rise: 64 },
@@ -95,6 +105,11 @@
 
     var color = opts.color || skillColor(opts.skill);
     var isCrit = (kind === 'crit') || !!opts.crit;
+
+    // จำกัดจำนวนตัวเลขบนจอ: ตัวเลขธรรมดา/สกิลถูกข้ามก่อน ส่วนคริ/ฮีล/ผู้เล่นโดนตีให้ผ่านต่อ
+    if (active >= MAX_ACTIVE_HARD) return null;
+    if (active >= MAX_ACTIVE && !isCrit && kind !== 'heal' && kind !== 'player') return null;
+
     if (kind === 'normal' && color) kind = 'skill';            // มี skill แนบมา = ดาเมจสกิล
     var s = STYLE[isCrit ? 'crit' : kind] || STYLE.normal;
     var fill = s.fill, stroke = s.stroke, glow = '#000000';
@@ -107,6 +122,8 @@
     if (isCrit) txt = txt + '!';
 
     var cont = scene.add.container(x + Phaser.Math.Between(-14, 14), y).setDepth(99999);
+    active++;
+    cont.once('destroy', function () { active = Math.max(0, active - 1); });
 
     var star = null;
     if (isCrit) {
@@ -123,15 +140,15 @@
       stroke: stroke,
       strokeThickness: Math.max(5, Math.round(size / 4.2))
     }).setOrigin(0.5);
-    t.setShadow(0, 3, glow, color ? 10 : 4, true, true);
-    t.setResolution(2);   // คมชัดบนจอมือถือ
+    t.setShadow(0, 3, glow, 0, true, true);   // blur = 0 (เดิม 10 / 4 ซึ่งหนักบนมือถือ) เหลือแค่เงาเลื่อน
+    t.setResolution(TEXT_RES);
     cont.add(t);
 
     cont.setScale(0.25);
 
     if (isCrit) {
       // คริ: ระเบิดใหญ่ -> ค้างนิดหนึ่ง -> ดาวจางและขยาย -> ตัวเลขลอยขึ้น
-      try { scene.cameras.main.shake(70, 0.0025); } catch (e) {}
+      if (CRIT_SHAKE) { try { scene.cameras.main.shake(CRIT_SHAKE_MS, CRIT_SHAKE_POWER); } catch (e) {} }
       star.setRotation(Phaser.Math.FloatBetween(-0.15, 0.15));
       scene.tweens.add({
         targets: cont, scale: 1.55, duration: 110, ease: 'Back.easeOut',
@@ -200,16 +217,16 @@
             t.setFontStyle('700');
             t.setColor(HEAL_COLOR);
             t.setStroke(HEAL_STROKE, 7);
-            t.setShadow(0, 3, '#000000', 4, true, true);
-            t.setResolution(2);
+            t.setShadow(0, 3, '#000000', 0, true, true);
+            t.setResolution(TEXT_RES);
           } else if (!(style && style._fxOwn) && isOwnName(text)) {
             // ชื่อตัวละครของเรา: ใหญ่ขึ้น ขอบดำหนา เงา คมชัด (คงสีเดิมของเกมไว้)
             t.setFontFamily('Mitr, sans-serif');
             t.setFontSize(PLAYER_NAME_SIZE);
             t.setFontStyle('700');
             t.setStroke('#000000', PLAYER_NAME_STROKE);
-            t.setShadow(0, 2, '#000000', 3, true, true);
-            t.setResolution(2);
+            t.setShadow(0, 2, '#000000', 0, true, true);
+            t.setResolution(TEXT_RES);
           }
         } catch (e) {}
         return t;
