@@ -8,6 +8,8 @@
 // - v12: EXP หารตามจำนวนคนในปาร์ตี้ -- 'mdead' ส่ง exp = { id: สัดส่วน } (เช่น 3 คน = 0.3333 ต่อคน)
 //        โบนัสปาร์ตี้ (+10/20/40%) ยังคูณฝั่งเกมใน social.js เหมือนเดิม -> ต้องใช้คู่กับ roomMonsters.js v5
 // - v13: ยกเลิกการจำกัดระยะของ EXP และของดรอปในปาร์ตี้ (อยู่ห้องเดียวกันก็ได้ ไม่ว่าอยู่ตรงไหนของแผนที่)
+// - v14: แชร์ไอเทมตอน "เก็บเข้าตัว" -- ของดรอปตกที่คนฆ่ามอนเสมอ (บอทเก็บเองได้) พอเก็บ เครื่องส่ง 'lootShare'
+//        เซิร์ฟเวอร์สุ่ม/สลับคนรับตามโหมดปาร์ตี้แล้วส่ง 'lootGet' ให้คนนั้น (ใช้คู่กับ roomMonsters.js v6)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -238,7 +240,7 @@ function tickRoom(key, R, now, dt) {
 //     * ไม่มีปาร์ตี้ / ปาร์ตี้ปิดแชร์ EXP = สัดส่วน 1 (ได้เต็มเหมือนเล่นเดี่ยว)
 //     * ปาร์ตี้เปิดแชร์ EXP = หารเท่ากันทุกคนที่ได้รับ (คนที่ตีมอน + สมาชิกในห้องเดียวกัน ไม่จำกัดระยะ)
 //       เช่น 3 คน = 1/3 ต่อคน แล้วคูณโบนัส +10% -> คนละ 0.3667 ของ EXP มอน (รวมทั้งปาร์ตี้ 1.1 เท่า)
-// - ของ: own = คนที่ตีตัวสุดท้าย | random = สุ่มในปาร์ตี้ | rotate = สลับกันตามลำดับ (ทุกคนในห้องเดียวกัน ไม่จำกัดระยะ)
+// - ของ: ตกที่คนฆ่าเสมอ แล้วแชร์ตอนเก็บเข้าตัวตามโหมดปาร์ตี้ (own = เก็บเอง | random = สุ่ม | rotate = สลับ) ดู 'lootShare'
 function killMonster(key, R, m, byId) {
   R.mons.delete(m.id);
   const here = id => !!(players[id] && players[id].room === key);
@@ -266,24 +268,9 @@ function killMonster(key, R, m, byId) {
     got.forEach(mid => { exp[mid] = share; });
   });
 
-  let lootTo = here(byId) ? byId : null;
-  const killer = here(byId) ? players[byId] : null;
-  const Pt = killer && killer.party ? social.getParty(killer.party) : null;
-  if (Pt && Pt.lootMode && Pt.lootMode !== 'own') {
-    const el = Pt.members.filter(id => here(id));   // ทุกคนในห้องเดียวกัน ไม่จำกัดระยะ
-    if (el.length) {
-      if (Pt.lootMode === 'random') {
-        lootTo = el[rnd(0, el.length - 1)];
-      } else {                                  // rotate: ถัดจากคนที่ได้ล่าสุด
-        const n = Pt.members.length, s = Pt.members.indexOf(Pt.lastLoot);
-        for (let i = 1; i <= n; i++) {
-          const id = Pt.members[(s + i + n) % n];
-          if (el.indexOf(id) >= 0) { lootTo = id; break; }
-        }
-        Pt.lastLoot = lootTo;
-      }
-    }
-  }
+  // ของดรอปตกที่คนฆ่าเสมอ (แชร์ตอนเก็บเข้าตัว ดู 'lootShare') | เครดิตกันโกง: ฆ่า 1 ตัว = ส่งต่อไอเทมได้ไม่เกิน 6 ชิ้น
+  const lootTo = here(byId) ? byId : null;
+  if (lootTo) players[lootTo].lootCredit = Math.min(60, (players[lootTo].lootCredit || 0) + 6);
 
   io.to(key).emit('mdead', { id: m.id, by: byId, who: Object.keys(exp), exp, lootTo });
   const delay = m.kind === 'boss' ? rnd(BOSS_RESPAWN_MIN_MS, BOSS_RESPAWN_MAX_MS) : RESPAWN_DELAY;
@@ -537,6 +524,43 @@ io.on('connection', socket => {
       if (Number.isFinite(gx) && Number.isFinite(gy)) { out.gx = clamp(gx, 0, WORLD_W); out.gy = clamp(gy, 0, WORLD_H); }
     }
     socket.to(p.room).emit('skill', out);
+  });
+
+  // แชร์ไอเทมตอนเก็บเข้าตัว: เครื่องคนฆ่าส่ง { kind:'box'|'skill', level, tier?, sid? } มาตอนเก็บของที่ตกจากมอน
+  // เซิร์ฟเวอร์เลือกคนรับตามโหมดปาร์ตี้ (own = คนเก็บเอง | random = สุ่ม | rotate = สลับ) ทุกคนในห้องเดียวกัน ไม่จำกัดระยะ
+  socket.on('lootShare', d => {
+    const p = players[socket.id];
+    if (!p || !p.room || !d || typeof d !== 'object') return;
+    const kind = d.kind === 'skill' ? 'skill' : (d.kind === 'box' ? 'box' : null);
+    if (!kind) return;
+    if ((p.lootCredit || 0) < 1) return;           // ไม่ได้ฆ่ามอนมา = ส่งต่อไม่ได้ (กันโกง)
+    p.lootCredit--;
+    const sid = String(d.sid || '');
+    if (kind === 'skill' && !/^[\w-]{1,40}$/.test(sid)) return;
+    const item = {
+      kind, level: clamp(Math.floor(Number(d.level)) || 1, 1, 999),
+      tier: d.tier === 'red' ? 'red' : undefined,
+      sid: kind === 'skill' ? sid : undefined,
+    };
+    let to = socket.id;
+    const Pt = p.party ? social.getParty(p.party) : null;
+    if (Pt && Pt.lootMode && Pt.lootMode !== 'own') {
+      const el = Pt.members.filter(id => players[id] && players[id].room === p.room);
+      if (el.length) {
+        if (Pt.lootMode === 'random') {
+          to = el[rnd(0, el.length - 1)];
+        } else {                                    // rotate: ถัดจากคนที่ได้ล่าสุด
+          const n = Pt.members.length, st = Pt.members.indexOf(Pt.lastLoot);
+          for (let i = 1; i <= n; i++) {
+            const id = Pt.members[(st + i + n) % n];
+            if (el.indexOf(id) >= 0) { to = id; break; }
+          }
+          Pt.lastLoot = to;
+        }
+      }
+    }
+    io.to(to).emit('lootGet', Object.assign({}, item, { from: to === socket.id ? undefined : p.name }));
+    if (to !== socket.id && players[to]) io.to(socket.id).emit('pMsg', 'แบ่งไอเทมให้ ' + players[to].name);
   });
 
   socket.on('disconnect', () => {
