@@ -1,11 +1,14 @@
-// social.js (เซิร์ฟเวอร์) -- ระบบเพื่อน + ปาร์ตี้ | ใช้ใน server.js: require('./social')(io, players);
+// social.js (เซิร์ฟเวอร์) -- ระบบเพื่อน + ปาร์ตี้ | ใช้ใน server.js: const social = require('./social')(io, players);
 // v+: เพิ่มอีเวนต์ 'pfx' = สกิลฮีล/บัพหมู่ ส่งถึงเพื่อนในปาร์ตี้ที่อยู่ห้องเดียวกันและอยู่ในระยะ
+// v++: โหมดปาร์ตี้ -- expShare (แชร์ EXP เปิด/ปิด) + lootMode (own = ใครตีตัวสุดท้ายได้ / random = สุ่มแจก / rotate = สลับกันเก็บ)
+//      หัวหน้าตั้งค่าผ่านอีเวนต์ 'pSet' | คืนค่า { getParty } ให้ server.js ใช้ตอนมอนตาย
 module.exports = function (io, players) {
   const parties = {};
   let nextPid = 1;
   const MAX = 5;
   const BONUS = { 3: 10, 4: 20, 5: 40 };   // โบนัสปาร์ตี้ (%) ตามจำนวนคน | 2 คน = ไม่มีโบนัส
   const INVITE_MS = 30000;
+  const LOOT_MODES = { own: 1, random: 1, rotate: 1 };
   const PFX_KINDS = { heal: 1, buff: 1 };  // ชนิดเอฟเฟกต์หมู่ที่ยอมให้ส่ง
   const PFX_MAX_RANGE = 800;               // ระยะสูงสุด (px) ที่เพื่อนจะได้รับผล
   const clean = (v, a, b, d) => { v = Number(v); return isFinite(v) ? Math.max(a, Math.min(b, v)) : d; };
@@ -14,6 +17,7 @@ module.exports = function (io, players) {
   function snapshot(P) {
     return {
       id: P.id, leader: P.leader, bonus: BONUS[P.members.length] || 0,
+      expShare: P.expShare !== false, lootMode: P.lootMode || 'own',
       members: P.members.map(id => {
         const p = players[id] || {};
         return { id, name: p.name || '?', lv: p.lv || 1, hp: p.hp || 0, mhp: p.mhp || 1, stage: p.stage, ch: p.ch, rm: p.rm };
@@ -157,13 +161,24 @@ module.exports = function (io, players) {
         if (P.members.length >= MAX) return cb({ ok: false, msg: 'ปาร์ตี้เต็ม' });
         P.members.push(p.id);
       } else {
-        P = { id: nextPid++, leader: inviter.id, members: [inviter.id, p.id] };
+        P = { id: nextPid++, leader: inviter.id, members: [inviter.id, p.id], expShare: true, lootMode: 'own' };
         parties[P.id] = P;
         inviter.party = P.id;
       }
       p.party = P.id;
       push(P);
       cb({ ok: true });
+    });
+
+    // หัวหน้าปาร์ตี้ตั้งโหมด: { expShare?: boolean, lootMode?: 'own'|'random'|'rotate' }
+    socket.on('pSet', d => {
+      const p = me(); if (!p || !p.party || !d || typeof d !== 'object') return;
+      if (throttle('_tPs', 300)) return;
+      const P = parties[p.party];
+      if (!P || P.leader !== p.id) return;      // เฉพาะหัวหน้า
+      if (typeof d.expShare === 'boolean') P.expShare = d.expShare;
+      if (typeof d.lootMode === 'string' && LOOT_MODES[d.lootMode]) P.lootMode = d.lootMode;
+      push(P);
     });
 
     socket.on('pLeave', () => leave(socket.id));
@@ -180,4 +195,7 @@ module.exports = function (io, players) {
 
   // อัปเดต HP สมาชิกให้ทุกคนในปาร์ตี้ ทุก 1.5 วินาที (ข้ามห้อง/ด่านได้)
   setInterval(() => { for (const k in parties) push(parties[k]); }, 1500);
+
+  // ให้ server.js ดึงข้อมูลปาร์ตี้ไปใช้ตอนมอนตาย
+  return { getParty: pid => parties[pid] || null };
 };
