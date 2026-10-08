@@ -53,11 +53,11 @@ Object.assign(Main.prototype, {
   },
 
   // เลือกด่าน: แบ่งหน้า หน้าละ 9 ด่าน (หน้า 1 = ด่านปกติ, หน้าถัดไป = ด่านจุติ)
-  // page = เลขหน้า (ไม่ใส่ = หน้าที่ด่านปัจจุบันอยู่)
+  // page = เลขหน้า (ไม่ใส่ = หน้า 1 เสมอ)
   openStageSelect(page) {
     this.closePanel();
     const pages = Math.max(1, Math.ceil(ZONES.length / STAGES_PER_PAGE));
-    if (typeof page !== 'number') page = Math.floor((this.stageIdx || 0) / STAGES_PER_PAGE);
+    if (typeof page !== 'number') page = 0;   // แก้: เปิดครั้งแรกเริ่มหน้า 1 เสมอ
     page = Phaser.Math.Clamp(page, 0, pages - 1);
 
     const items = this.panelFrame('เลือกด่าน (ต้องเลเวล/ขั้นจุติถึงเกณฑ์ถึงจะไปได้)');
