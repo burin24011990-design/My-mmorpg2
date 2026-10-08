@@ -17,9 +17,77 @@
 // - v4: แจกของตามโหมดปาร์ตี้: onDead ใช้ d.lootTo แทน d.by (ต้องใช้คู่กับ server.js v11)
 // - v5: EXP หารตามจำนวนคนในปาร์ตี้: onDead ใช้ d.exp[me] (สัดส่วน) คูณ EXP มอน (ต้องใช้คู่กับ server.js v12)
 //       โบนัสปาร์ตี้ +10/20/40% ยังคูณใน gainExp ของ social.js เหมือนเดิม (ไม่ต้องแก้ไฟล์นั้น)
+// - v6: แชร์ไอเทมตอน "เก็บเข้าตัว": ของดรอปตกที่คนฆ่าเสมอ (บอทเก็บเองได้) พอเก็บ ถ้าปาร์ตี้ตั้งโหมดสุ่ม/สลับ
+//       เครื่องจะส่ง 'lootShare' ให้เซิร์ฟเวอร์เลือกคนรับ แล้วของไปเกิดที่ตัวคนรับ (ถูกเก็บเข้ากระเป๋าทันที) | ใช้คู่กับ server.js v14
 
 (function () {
   const P = Main.prototype;
+
+  // ----- แชร์ไอเทมปาร์ตี้ตอนเก็บเข้าตัว -----
+  // ของที่ดรอปจากมอนในห้องจะถูกติดป้าย 'shareable' แล้วดักตอนเก็บ (ถ้าโหมดปาร์ตี้ไม่ใช่ own)
+  const oMakeLoot = P.makeLoot;
+  if (typeof oMakeLoot === 'function') {
+    P.makeLoot = function () {
+      const s = oMakeLoot.apply(this, arguments);
+      if (s && this._rmDropping && typeof s.setData === 'function') s.setData('shareable', true);
+      return s;
+    };
+  }
+
+  function lootOf(a, b) {
+    const xs = [a, b];
+    for (let i = 0; i < xs.length; i++) {
+      const x = xs[i];
+      if (x && typeof x.getData === 'function' && x.getData('shareable')) return x;
+    }
+    return null;
+  }
+
+  // คืน true = ดักไว้แล้ว (ลบของบนพื้น ส่งให้เซิร์ฟเวอร์แจกต่อ) | false = ให้เก็บตามปกติ
+  function interceptLoot(sc, it) {
+    if (!it || !it.active || it.getData('shared')) return false;
+    const pt = sc.party;
+    if (!pt || !pt.members || pt.members.length < 2 || (pt.lootMode || 'own') === 'own') return false;
+    if (!sc.socket || !sc.socket.connected) return false;
+    const kind = it.getData('kind');
+    if (kind !== 'box' && kind !== 'skill') return false;
+    const item = { kind: kind, level: it.getData('level'), tier: it.getData('tier'), sid: it.getData('sid') };
+    if (sc.tweens) sc.tweens.killTweensOf(it);
+    it.destroy();
+    sc.socket.emit('lootShare', item);
+    return true;
+  }
+
+  // ครอบฟังก์ชันเก็บของเดิม (ถ้ามีชื่อตรงกับรายการนี้ใน inventory.js) -- ไม่เจอชื่อก็ไม่เป็นไร ยังมีตัวดักที่ collider ด้านล่าง
+  ['pickup', 'pickUp', 'pickupLoot', 'pickLoot', 'collectLoot', 'collectItem', 'onPickup'].forEach(function (name) {
+    const o = P[name];
+    if (typeof o !== 'function' || o._rmShare) return;
+    const w = function (a, b) {
+      const it = lootOf(a, b);
+      if (it && interceptLoot(this, it)) return;
+      return o.apply(this, arguments);
+    };
+    w._rmShare = true;
+    P[name] = w;
+  });
+
+  // ครอบ overlap ระหว่างผู้เล่นกับกลุ่มของบนพื้น (this.loot) -- เรียกทุกครั้งที่มีของดรอป ผูกซ้ำไม่ได้เพราะมีธง _rmShare
+  function hookColliders(sc) {
+    try {
+      if (!sc.physics || !sc.physics.world || !sc.loot) return;
+      sc.physics.world.colliders.getActive().forEach(function (c) {
+        if (c._rmShare || !(c.object1 === sc.loot || c.object2 === sc.loot)) return;
+        const cb = c.collideCallback, ctx = c.callbackContext;
+        if (typeof cb !== 'function') return;
+        c.collideCallback = function (a, b) {
+          const it = lootOf(a, b);
+          if (it && interceptLoot(sc, it)) return;
+          return cb.apply(ctx, arguments);
+        };
+        c._rmShare = true;
+      });
+    } catch (err) { console.warn('roomMonsters: hook loot', err); }
+  }
 
   // ----- กันมอนในเครื่องเกิดซ้ำตอนอยู่โหมดห้อง (เช่น timer เกิดใหม่ของมอนเก่า) -----
   ['spawnEnemyInZone', 'spawnEpic', 'spawnBoss'].forEach(function (name) {
@@ -210,7 +278,7 @@
   // d.exp    = { id: สัดส่วน EXP } ใครอยู่ในนี้ได้ EXP (1 = เต็ม, ปาร์ตี้แชร์ = 1/จำนวนคนที่ได้รับ)
   // d.who    = รายชื่อ id ที่ได้ EXP (เก็บไว้รองรับเซิร์ฟเวอร์เก่า)
   // d.by     = id คนที่ตีตัวสุดท้าย (นับ kills / ประกาศมินิบอส)
-  // d.lootTo = id คนที่ได้ของดรอป (ตามโหมดปาร์ตี้ ถ้าไม่มีปาร์ตี้ = d.by)
+  // d.lootTo = id คนที่ของดรอปตกให้ = คนฆ่า (แชร์ตอนเก็บเข้าตัว ดู interceptLoot)
   function onDead(sc, d) {
     const e = sc.rmMap[d.id];
     if (!e) return;
@@ -238,8 +306,10 @@
     }
     const lootTo = d.lootTo !== undefined ? d.lootTo : d.by;   // รองรับเซิร์ฟเวอร์เก่าที่ไม่ส่ง lootTo
     if (lootTo === me) {
-      sc.dropLoot(x, y, lv, ZONES[zi].boxLevel, isBoss, isEpic);
-      if (d.by !== me) sc.toastMsg('🎁 ปาร์ตี้แบ่งไอเทมให้คุณ (ดูที่จุดที่มอนตาย)');
+      hookColliders(sc);
+      sc._rmDropping = true;                               // ให้ makeLoot ติดป้าย shareable
+      try { sc.dropLoot(x, y, lv, ZONES[zi].boxLevel, isBoss, isEpic); }
+      finally { sc._rmDropping = false; }
     }
   }
 
@@ -325,6 +395,16 @@
       sc.fireShot(e, d.a, d.sp, d.sc, d.dm);
     });
     s.on('mskill', function (d) { if (sc.rmActive) onSkill(sc, d); });
+    s.on('lootGet', function (d) {                   // ได้ไอเทมจากการแชร์ของปาร์ตี้: เสกที่ตัวเรา แล้วระบบเก็บของเดิมเก็บเข้ากระเป๋าเอง
+      if (!d || (d.kind !== 'box' && d.kind !== 'skill') || !sc.player || typeof sc.makeLoot !== 'function') return;
+      const it = sc.makeLoot(sc.player.x, sc.player.y, d.kind === 'skill' ? 'scroll' : 'box');
+      it.setData('kind', d.kind);
+      if (d.level !== undefined) it.setData('level', d.level);
+      if (d.tier) it.setData('tier', d.tier);
+      if (d.sid) it.setData('sid', d.sid);
+      it.setData('shared', true);                    // กันแชร์ซ้ำ
+      if (d.from && sc.toastMsg) sc.toastMsg('🎁 ได้ไอเทมจากปาร์ตี้ (' + d.from + ')');
+    });
     s.on('disconnect', function () { if (sc.rmActive) sc.rmRestoreLocal(); });
   }
 
