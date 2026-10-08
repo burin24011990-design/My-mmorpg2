@@ -95,6 +95,9 @@ new Phaser.Game({
   backgroundColor: '#1b241b',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   physics: { default: 'arcade' },
+  // ตั้งค่าลดแลคบนมือถือ
+  render: { antialias: false, powerPreference: 'high-performance', batchSize: 4096 },
+  fps: { target: 60 },
   // Town อยู่ก่อน = เริ่มเกมที่เมือง แล้วเดินเข้า "ประตูเมือง" เพื่อไปฉาก Main
   // (ถ้าอยากข้ามเมืองชั่วคราว เปลี่ยนเป็น scene: Main)
   scene: [Main],
