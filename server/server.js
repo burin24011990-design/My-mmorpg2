@@ -14,6 +14,8 @@
 //       skill ส่งต่อพร้อมจุดตกของสกิลลากเล็ง (gx, gy) และคลาสของคนใช้ -> เล่นเอฟเฟกต์สกิลให้ครบที่ฝั่งผู้ชม
 // - v8: แก้มอนไม่ตรงกันระหว่างผู้เล่น: ส่งมอนทั้งห้อง ('mons') ซ้ำให้ผู้เล่นที่ขอ ('getMons')
 //       และส่งซ้ำตอนสั่งเข้าห้องเดิม (เช่น ออกจากเมือง/โหลดด่านใหม่แต่ยังอยู่ห้องเดิม)
+// - v9: รองรับ "เมือง" เป็นด่านที่ 10 (ดัชนี 9): เดิม STAGES = 9 ทำให้เข้าเมืองแล้วเซิร์ฟเวอร์ปฏิเสธ
+//       (validStage ไม่ผ่าน) ผู้เล่นเลยค้างอยู่ห้องด่านเก่า ไม่เห็นกันในเมือง | เมืองไม่มีมอน
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -24,7 +26,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } }); // ภายหลังควรจำกัดเฉพาะเว็บของเรา
 
 const WORLD_W = 3600, WORLD_H = 2250;
-const STAGES = 9;                         // จำนวนด่าน (ตรงกับ ZONES)
+const STAGES = 10;                        // จำนวนด่าน (ตรงกับ ZONES) = 9 ด่านล่ามอน + เมือง (ดัชนี 9 ไม่มีมอน)
 const CHANNELS = 10;                      // แชนเนลต่อด่าน
 const ROOMS = 10;                         // ห้องต่อแชนเนล
 const ROOM_CAP = 20;                      // คนสูงสุดต่อห้อง
@@ -122,6 +124,7 @@ function makeMonster(R, stage, kind) {
 function spawnRoomMonsters(stage) {
   const R = { mons: new Map(), nextId: 1 };
   const z = ZCFG[stage];
+  if (!z) return R;                          // เมือง (ด่านที่ไม่มีมอน) = ห้องว่างไม่มีมอน
   const add = kind => { const m = makeMonster(R, stage, kind); R.mons.set(m.id, m); };
   for (let i = 0; i < z.count; i++) add('normal');
   for (let i = 0; i < z.ranged; i++) add('ranged');
