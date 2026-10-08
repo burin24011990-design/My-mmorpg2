@@ -164,44 +164,37 @@ window.XhMusic = (function () {
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + dur + 0.05);
   }
+  // เสียงกระทบ "จังหวะเดียว" สไตล์ Ragnarok: เสียงแหลมสั้น (นอยส์) + เสียงตุบสั้น ไม่มีโน้ตค้าง ไม่มีก้อง
   var SFX = {
-    hit:      function (t, v) { noiseBurst(t, 0.09, 2600, 700, 0.35 * v, 0.8); tone('sine', 170, 60, t, 0.12, 0.4 * v); },
-    hitSkill: function (t, v) { noiseBurst(t, 0.12, 1800, 500, 0.3 * v, 0.8); tone('sine', 220, 80, t, 0.16, 0.35 * v); tone('triangle', 660, 440, t, 0.1, 0.1 * v); },
-    crit:     function (t, v) {
-      noiseBurst(t, 0.15, 3000, 800, 0.4 * v, 0.8); tone('sine', 120, 45, t, 0.25, 0.5 * v); tone('sine', 900, 1400, t, 0.15, 0.2 * v);
-    },
-    hurt:     function (t, v) { tone('sine', 130, 50, t, 0.18, 0.4 * v); noiseBurst(t, 0.08, 600, 200, 0.25 * v, 0.8); },
-    heal:     function (t, v) { tone('sine', 660, 660, t, 0.25, 0.15 * v); tone('sine', 880, 880, t + 0.08, 0.3, 0.15 * v); tone('sine', 1175, 1175, t + 0.16, 0.4, 0.12 * v); },
-    // โจมตีปกติแต่ละอาชีพ
-    swing_sword:  function (t, v) { noiseBurst(t, 0.18, 1200, 4200, 0.3 * v, 1.2); tone('triangle', 520, 300, t, 0.1, 0.15 * v); },
-    swing_mage:   function (t, v) { tone('sine', 700, 1400, t, 0.18, 0.18 * v); noiseBurst(t, 0.1, 2000, 5000, 0.1 * v, 1); },
-    swing_archer: function (t, v) { tone('triangle', 220, 110, t, 0.12, 0.25 * v); noiseBurst(t + 0.02, 0.12, 3000, 1500, 0.15 * v, 1); },
-    swing_priest: function (t, v) { tone('sine', 880, 880, t, 0.4, 0.15 * v); tone('sine', 1320, 1320, t + 0.05, 0.5, 0.1 * v); },
-    swing_rogue:  function (t, v) { noiseBurst(t, 0.1, 2500, 6000, 0.28 * v, 1.2); tone('triangle', 700, 350, t, 0.07, 0.12 * v); },
-    // สกิลแต่ละอาชีพ
-    sk_sword:  function (t, v) { noiseBurst(t, 0.3, 800, 5000, 0.35 * v, 1); tone('triangle', 400, 200, t, 0.25, 0.2 * v); },
-    sk_mage:   function (t, v) { tone('sine', 300, 900, t, 0.4, 0.2 * v); tone('triangle', 1200, 1200, t + 0.1, 0.4, 0.1 * v); noiseBurst(t, 0.3, 600, 3500, 0.15 * v, 1.2); },
-    sk_archer: function (t, v) { tone('triangle', 260, 90, t, 0.2, 0.25 * v); noiseBurst(t, 0.3, 1000, 4000, 0.2 * v, 1); },
-    sk_rogue:  function (t, v) { noiseBurst(t, 0.2, 1500, 5500, 0.3 * v, 1.2); tone('sine', 300, 150, t, 0.15, 0.15 * v); },
-    sk_holy:   function (t, v) { [523, 659, 784].forEach(function (f, i) { tone('sine', f, f, t + i * 0.08, 0.6, 0.16 * v); }); },
-    ult:       function (t, v) {
-      tone('sine', 80, 40, t, 0.8, 0.5 * v); noiseBurst(t, 0.7, 300, 4000, 0.35 * v, 0.8);
-      tone('triangle', 220, 880, t, 0.6, 0.2 * v); tone('sine', 1320, 1320, t + 0.3, 0.8, 0.15 * v);
-    },
-    dash:  function (t, v) { noiseBurst(t, 0.22, 600, 3000, 0.25 * v, 1); },
-    coin:  function (t, v) { tone('sine', 1318, 1318, t, 0.12, 0.2 * v); tone('sine', 1760, 1760, t + 0.07, 0.3, 0.2 * v); },
-    levelup: function (t, v) {
+    hit_sword:  function (t, v) { noiseBurst(t, 0.07, 3500, 1200, 0.45 * v, 0.7); tone('sine', 200, 90, t, 0.06, 0.35 * v); },
+    hit_priest: function (t, v) { noiseBurst(t, 0.06, 1500, 500, 0.3 * v, 0.7);  tone('sine', 150, 60, t, 0.09, 0.55 * v); },
+    hit_mage:   function (t, v) { tone('sine', 900, 300, t, 0.07, 0.28 * v); noiseBurst(t, 0.05, 4000, 1500, 0.2 * v, 0.8); },
+    hit_archer: function (t, v) { noiseBurst(t, 0.05, 2500, 900, 0.3 * v, 0.8); tone('sine', 260, 110, t, 0.05, 0.38 * v); },
+    hit_rogue:  function (t, v) { noiseBurst(t, 0.05, 5000, 2500, 0.38 * v, 0.9); tone('sine', 320, 160, t, 0.04, 0.22 * v); },
+    crit:       function (t, v) { noiseBurst(t, 0.1, 4000, 800, 0.55 * v, 0.7); tone('sine', 140, 50, t, 0.12, 0.65 * v); },
+    hurt:       function (t, v) { tone('sine', 130, 55, t, 0.1, 0.45 * v); noiseBurst(t, 0.06, 700, 250, 0.2 * v, 0.8); },
+    heal:       function (t, v) { tone('sine', 660, 660, t, 0.18, 0.13 * v); tone('sine', 990, 990, t + 0.07, 0.22, 0.12 * v); },
+    // ตอนร่ายสกิล: เสียงลมสั้นๆ ครั้งเดียว
+    sk_sword:  function (t, v) { noiseBurst(t, 0.12, 1500, 4500, 0.22 * v, 1); },
+    sk_mage:   function (t, v) { tone('sine', 400, 900, t, 0.12, 0.16 * v); },
+    sk_archer: function (t, v) { noiseBurst(t, 0.1, 1200, 3500, 0.18 * v, 1); },
+    sk_rogue:  function (t, v) { noiseBurst(t, 0.1, 2000, 5500, 0.22 * v, 1.2); },
+    sk_holy:   function (t, v) { tone('sine', 700, 900, t, 0.12, 0.14 * v); },
+    ult:       function (t, v) { tone('sine', 90, 40, t, 0.35, 0.5 * v); noiseBurst(t, 0.3, 400, 3000, 0.3 * v, 0.8); },
+    dash:      function (t, v) { noiseBurst(t, 0.15, 800, 3000, 0.22 * v, 1); },
+    coin:      function (t, v) { tone('sine', 1318, 1318, t, 0.1, 0.18 * v); tone('sine', 1760, 1760, t + 0.06, 0.16, 0.18 * v); },
+    levelup:   function (t, v) {
       [392, 494, 587, 784, 988].forEach(function (f, i) { tone('triangle', f, f, t + i * 0.11, 0.7, 0.22 * v); });
     }
   };
   function sfx(name, v) {
     if (muted || !ctx || ctx.state !== 'running' || !SFX[name]) return;
-    var now = ctx.currentTime, gap = (name === 'hit' || name === 'hitSkill') ? 0.06 : 0.1;
+    var now = ctx.currentTime, gap = (name.indexOf('hit_') === 0 || name === 'crit') ? 0.09 : 0.1;
     if (lastSfx[name] && now - lastSfx[name] < gap) return;
     if (active >= 10) return;
     lastSfx[name] = now; active++;
     setTimeout(function () { active = Math.max(0, active - 1); }, 300);
-    tcap = (name === 'levelup' || name === 'ult' || name === 'heal' || name === 'coin') ? 1 : 0.28;
+    tcap = (name === 'levelup' || name === 'heal' || name === 'coin') ? 1 : (name === 'ult' ? 0.4 : 0.12);
     try { SFX[name](now, (v === undefined ? 1 : v) * sfxVol); } catch (e) {}
   }
 
@@ -273,22 +266,6 @@ window.XhMusic = (function () {
           return oSk.apply(this, arguments);
         };
       }
-      // โจมตีปกติ: ดังเฉพาะตอนตีออกจริง (ดูจากคูลดาวน์ที่ถูกตั้งใหม่)
-      if (typeof M.useBasicAttack === 'function') {
-        var oBa = M.useBasicAttack;
-        M.useBasicAttack = function () {
-          var before = (this.cdEnd && this.cdEnd.basic) || 0;
-          var r = oBa.apply(this, arguments);
-          try {
-            var after = (this.cdEnd && this.cdEnd.basic) || 0;
-            if (after > before) {
-              var cls = (typeof this.currentClass === 'function') ? this.currentClass() : 'sword';
-              sfx('swing_' + cls, 0.9);
-            }
-          } catch (e) {}
-          return r;
-        };
-      }
     }
     // เลขดาเมจ -> เสียงโดนตี (ใช้ showDamage ของ damageFx.js)
     if (typeof window.showDamage === 'function') {
@@ -296,11 +273,13 @@ window.XhMusic = (function () {
       window.showDamage = function (scene, x, y, amount, kind, opts) {
         try {
           kind = kind || 'normal';
+          var cls = 'sword';
+          try { if (scene && typeof scene.currentClass === 'function') cls = scene.currentClass() || 'sword'; } catch (e2) {}
           if (kind === 'player') sfx('hurt', 0.9);
-          else if (kind === 'heal' || kind === 'regen') { if (kind === 'heal') sfx('heal', 0.8); }
+          else if (kind === 'heal') sfx('heal', 0.8);
+          else if (kind === 'regen') { /* เงียบ */ }
           else if (kind === 'crit' || (opts && opts.crit)) sfx('crit', 1);
-          else if (kind === 'skill' || (opts && opts.skill)) sfx('hitSkill', 0.9);
-          else sfx('hit', 0.8);
+          else sfx(SFX['hit_' + cls] ? 'hit_' + cls : 'hit_sword', 0.9);
         } catch (e) {}
         return oDmg.apply(this, arguments);
       };
