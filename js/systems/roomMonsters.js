@@ -10,6 +10,10 @@
 //       ตอนนี้โหมดห้องเรียกมันทุกเฟรม (ต้องมีบรรทัด "if (this.rmActive) return;" ที่หัว updateEnemies ใน monsters.js)
 //       + มอนที่ติดสตั้น/แช่แข็ง ไม่โจมตีเรา และยืนอยู่กับที่ | ล็อกขา = ยืนอยู่กับที่
 //       + ส่งสถานะขึ้นเซิร์ฟเวอร์ผ่านอีเวนต์ 'mfx' ([id, ชนิดสถานะ, มิลลิวินาที, พารามิเตอร์]) ให้ server.js ทำ CC จริง
+// - v3: แก้มอนไม่ตรงกันระหว่างผู้เล่น (ต่างคนต่างเห็นมอนของตัวเอง)
+//       สาเหตุ: loadStage ปิดโหมดห้องแล้วสร้างมอนในเครื่อง แต่ถ้าห้องเดิม/ด่านเดิม เซิร์ฟเวอร์ไม่มีเหตุให้ส่งมอนมาใหม่
+//       ตอนนี้ทุกครั้งที่โหลดด่าน เครื่องจะส่ง 'getMons' ขอมอนของห้องซ้ำ (server.js v8) และมีข้อความแจ้งเมื่อซิงก์สำเร็จ
+//       (ต้องใช้คู่กับ server.js v8 ที่รองรับ 'getMons')
 
 (function () {
   const P = Main.prototype;
@@ -24,13 +28,31 @@
     };
   });
 
+  // ----- ขอมอนทั้งห้องจากเซิร์ฟเวอร์ (ใช้ตอนโหลดด่านแต่ยังอยู่ห้องเดิม) -----
+  P.rmRequestMons = function () {
+    if (!this.socket || !this.online || !this.inRoom) return;
+    if (this.rmActive) return;
+    // อยู่คนละด่านกับห้อง = network.js จะส่ง 'enter' ให้เอง แล้วเซิร์ฟเวอร์ส่งมอนมาให้
+    if (this._netStage !== this.stageIdx) return;
+    this.socket.emit('getMons', this.stageIdx);
+  };
+
   // ----- เปลี่ยนด่าน: กลับเป็นมอนในเครื่องก่อน แล้วรอเซิร์ฟเวอร์ส่งมอนของห้องมาแทน -----
   const oLoad = P.loadStage;
   P.loadStage = function () {
     this.rmActive = false;
     this.rmMap = {};
     this._rmHits = {};
-    return oLoad.apply(this, arguments);
+    const r = oLoad.apply(this, arguments);
+    // หลังโหลดด่านเสร็จ ขอมอนห้องซ้ำ (หน่วงเล็กน้อยให้ฉากพร้อม และให้ network.js ส่ง 'enter' ก่อนถ้าเปลี่ยนด่าน)
+    const sc = this;
+    try {
+      if (sc.time && sc.time.delayedCall) {
+        sc.time.delayedCall(300, function () { sc.rmRequestMons(); });
+        sc.time.delayedCall(2500, function () { sc.rmRequestMons(); });   // เผื่อ 'enter' ยังไม่เสร็จตอนแรก
+      }
+    } catch (err) { /* ไม่ให้พังการโหลดด่าน */ }
+    return r;
   };
 
   // ----- ล้างมอนทั้งหมด -----
@@ -245,11 +267,17 @@
     sc.rmMap = sc.rmMap || {};
     sc.rmActive = false;
 
-    s.on('mons', function (d) {                      // เข้าห้อง: เซิร์ฟเวอร์ส่งมอนทั้งห้อง
-      if (!d || d.stage !== sc.stageIdx) return;
+    s.on('mons', function (d) {                      // เข้าห้อง/ขอซ้ำ: เซิร์ฟเวอร์ส่งมอนทั้งห้อง
+      if (!d) return;
+      if (d.stage !== sc.stageIdx) {
+        console.warn('roomMonsters: ได้มอนของด่าน ' + d.stage + ' แต่ตอนนี้อยู่ด่าน ' + sc.stageIdx + ' (ข้าม)');
+        return;
+      }
+      const wasActive = sc.rmActive;
       sc.rmClear();
       sc.rmActive = true;
       d.list.forEach(function (m) { sc.rmCreate(m); });
+      if (!wasActive && sc.toastMsg) sc.toastMsg('ซิงก์มอนกับห้อง CH' + sc.channel + '-' + sc.netRoom + ' แล้ว');
     });
     s.on('mstate', function (list) {                 // ตำแหน่ง/เลือดที่เปลี่ยน
       if (!sc.rmActive) return;
