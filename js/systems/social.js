@@ -1,5 +1,6 @@
 // social.js (ฝั่งเกม) -- ผู้เล่นอื่นเป็นตัวละครจริง + เพิ่มเพื่อน + ปาร์ตี้
 // โหลดหลัง network.js ก่อน main.js | ต้องใช้คู่กับ server/social.js
+// v6: ปุ่มหัวหน้าปาร์ตี้: แชร์ EXP เปิด/ปิด + โหมดไอเทม (own / random / rotate) -- ต้องใช้คู่กับ server.js v11
 (function () {
   const P = Main.prototype;
   const FR_KEY = 'mmo_friends';
@@ -7,6 +8,10 @@
   const saveFr = l => { try { localStorage.setItem(FR_KEY, JSON.stringify(l)); } catch (e) {} };
   const el = (tag, css, text) => { const e = document.createElement(tag); e.style.cssText = css || ''; if (text != null) e.textContent = text; return e; };
   const BTN = 'font-family:Mitr,sans-serif;font-size:14px;padding:7px 12px;border-radius:10px;cursor:pointer;border:2px solid #ffd45c;color:#ffe28a;background:#26090f;margin:3px;touch-action:manipulation';
+
+  // โหมดแจกไอเทมของปาร์ตี้
+  const LOOT_NAMES = { own: 'ใครตีตัวสุดท้ายได้', random: 'สุ่มแจก', rotate: 'สลับกันเก็บ' };
+  const LOOT_ORDER = ['own', 'random', 'rotate'];
 
   function addFriend(cid, name) {
     if (!cid || cid === netClientId()) return false;
@@ -21,6 +26,7 @@
   // ---------- กล่องซ้อนทับ (DOM) ----------
   function closeOverlay(s) {
     if (s._socBox) { s._socBox.remove(); s._socBox = null; }
+    s._socTab = null;
     clearInterval(s._socPoll);
   }
   function overlay(s, title) {
@@ -118,9 +124,17 @@
       s.emit('pAccept', { from: d.from }, r => { if (r && !r.ok) self.toastMsg(r.msg); else self.toastMsg('เข้าร่วมปาร์ตี้แล้ว'); });
     }));
     s.on('party', d => {
-      const before = (self.party && self.party.bonus) || 0, after = (d && d.bonus) || 0;
+      const old = self.party;
+      const before = (old && old.bonus) || 0, after = (d && d.bonus) || 0;
+      // ลายเซ็นของปาร์ตี้ (ไม่รวม HP) ใช้ดูว่าต้องวาดหน้าต่างปาร์ตี้ใหม่ไหม
+      const sig = x => x ? [x.leader, x.expShare, x.lootMode, x.members.map(m => m.id).join(',')].join('|') : '';
+      const changed = sig(old) !== sig(d);
+      if (old && d && (old.expShare !== d.expShare || old.lootMode !== d.lootMode)) {
+        self.toastMsg('หัวหน้าตั้งค่า: EXP ' + (d.expShare !== false ? 'แชร์' : 'ไม่แชร์') + ' | ไอเทม ' + LOOT_NAMES[d.lootMode || 'own']);
+      }
       self.party = d;
       self.socialRenderParty();
+      if (changed && self._socBox && self._socTab === 'party') self.socialPanel('party');
       if (before !== after) {
         self.toastMsg(after ? 'โบนัส EXP ปาร์ตี้ +' + after + '%' : 'โบนัส EXP ปาร์ตี้หมดไป');
       }
@@ -173,6 +187,8 @@
     const k = parseFloat(hud.dataset.k) || 1, me = this.socket.id;
     hud.appendChild(el('div', 'font-size:' + (12 * k) + 'px;color:#ffe28a;margin-bottom:' + (3 * k) + 'px;text-shadow:0 1px 2px #000',
       '👥 ปาร์ตี้ ' + d.members.length + '/5' + (d.bonus ? '  ✨ EXP +' + d.bonus + '%' : '')));
+    hud.appendChild(el('div', 'font-size:' + (10 * k) + 'px;color:#cfe;margin-bottom:' + (3 * k) + 'px;text-shadow:0 1px 2px #000',
+      '⭐EXP ' + (d.expShare !== false ? 'แชร์' : 'ไม่แชร์') + ' · 🎁' + LOOT_NAMES[d.lootMode || 'own']));
     d.members.forEach(m => {
       const row = el('div', 'background:rgba(20,6,10,.75);border:' + Math.max(1, k) + 'px solid #8a6a32;border-radius:' + (6 * k) + 'px;padding:' + (3 * k) + 'px ' + (6 * k) + 'px;margin-bottom:' + (3 * k) + 'px');
       row.appendChild(el('div', 'font-size:' + (13 * k) + 'px;color:' + (m.id === d.leader ? '#ffd45c' : '#fff') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
@@ -206,6 +222,7 @@
   P.socialPanel = function (tab) {
     const self = this;
     const card = overlay(this, '👥 สังคม');
+    this._socTab = tab;                               // จำแท็บที่เปิดอยู่ (ใช้วาดหน้าปาร์ตี้ใหม่เมื่อหัวหน้าเปลี่ยนโหมด)
     const tabs = el('div', 'display:flex;gap:6px;justify-content:center;margin-bottom:8px');
     [['friends', 'เพื่อน'], ['party', 'ปาร์ตี้']].forEach(t => {
       const b = el('button', BTN + (t[0] === tab ? ';background:#ffd45c;color:#26090f' : ''), t[1]);
@@ -258,6 +275,20 @@
     const me = this.socket.id;
     body.appendChild(el('div', 'font-size:13px;margin-bottom:6px;color:' + (d.bonus ? '#9be39b' : '#bbb'),
       d.bonus ? '✨ โบนัส EXP +' + d.bonus + '%' : 'โบนัส EXP: 3 คน +10% | 4 คน +20% | 5 คน +40%'));
+
+    // ----- ตั้งค่าปาร์ตี้: แชร์ EXP / โหมดไอเทม (หัวหน้ากดได้ คนอื่นดูอย่างเดียว) -----
+    const isLeader = d.leader === me;
+    const opt = (label, fn) => {
+      const b = el('button', BTN + ';display:block;width:100%;box-sizing:border-box;margin:3px 0;' + (isLeader ? '' : 'opacity:.7;cursor:default'), label);
+      if (isLeader) b.onclick = fn;
+      return b;
+    };
+    const es = d.expShare !== false, lm = d.lootMode || 'own';
+    body.appendChild(opt('⭐ แชร์ EXP: ' + (es ? 'เปิด' : 'ปิด'), () => self.socket.emit('pSet', { expShare: !es })));
+    body.appendChild(opt('🎁 ไอเทม: ' + LOOT_NAMES[lm] + (isLeader ? ' (แตะเพื่อเปลี่ยน)' : ''),
+      () => self.socket.emit('pSet', { lootMode: LOOT_ORDER[(LOOT_ORDER.indexOf(lm) + 1) % LOOT_ORDER.length] })));
+    if (!isLeader) body.appendChild(el('div', 'font-size:11px;color:#999;margin-bottom:4px', 'เฉพาะหัวหน้าปาร์ตี้เปลี่ยนได้'));
+
     d.members.forEach(m => {
       const row = el('div', 'display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin-bottom:4px;border-radius:8px;background:#3a1620;text-align:left');
       const info = el('div', 'flex:1');
