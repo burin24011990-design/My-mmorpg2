@@ -1,4 +1,9 @@
 // ===== มอนสเตอร์: ธรรมดา / ยิงไกล / Epic / มินิบอส, AI, สกิล, รับดาเมจ, เลือกเป้าหมาย, ดรอป =====
+// (เวอร์ชันลดแลค) แก้จากเดิม:
+//   1) พื้นหลังเปลี่ยนจาก grid (วาดนับพันช่องทุกเฟรม) เป็น tileSprite ภาพเดียว
+//   2) ชื่อมอนซ่อนเมื่ออยู่นอกจอ + ลด resolution + ตัดเงา blur
+//   3) มอนที่อยู่ไกลเกิน 900px ข้าม AI ทุกสถานะ (ยกเว้นตอนกำลังไล่ตี)
+//   4) หาเป้าหมายใกล้สุดทุก 120ms แทนทุกเฟรม
 // ด่าน 1-4: มอนไม่โจมตีก่อน (สู้กลับเมื่อโดนตี) | ด่าน 5 ขึ้นไป: โจมตีก่อนทั้งหมด
 // ผู้เล่นอยู่ในพุ่มหญ้า: มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น (ดู obstacles.js)
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
@@ -12,7 +17,7 @@ const BUSH_REVEAL_AFTER_ATTACK = 1500;
 const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
 // มอนสเตอร์ Epic
-const EPIC_COUNT = 30;             // จำนวนต่อแผนที่
+const EPIC_COUNT = 30;             // จำนวนต่อแผนที่ (ยังแลคอยู่ -> ลดเหลือ 15-20)
 const EPIC_MULT = 8;               // Epic แรงกว่ามอนฐาน (HP / ดาเมจ / EXP / ทอง)
 const EPIC_RED_BOX_CHANCE = 0.02;  // โอกาสดรอปกล่องแดง (2%)
 // มอนธรรมดา + ยิงไกล
@@ -27,10 +32,15 @@ const RANGED_SHOT_SCALE = 2.2;     // ขนาดลูกกระสุนม
 const NAME_SIZE_NORMAL = '15px';   // ขนาดชื่อมอนธรรมดา/ยิงไกล
 const NAME_SIZE_EPIC = '17px';     // ขนาดชื่อ Epic
 const NAME_SIZE_BOSS = '19px';     // ขนาดชื่อมินิบอส
+const NAME_TEXT_RES = 1;           // ความคมของชื่อ (1 = เร็วสุด, 1.5 = คมขึ้นแต่หนักขึ้น)
 const HPBAR_ONLY_WHEN_HURT = false; // true = โชว์หลอดเลือดเฉพาะตอนมอนเสียเลือดแล้ว
 const HPBAR_W_NORMAL = 50, HPBAR_W_EPIC = 66, HPBAR_W_BOSS = 90;   // ความกว้างหลอด (px)
 // ขนาดของที่ดรอปบนพื้น (px) เมื่อใช้รูปใหม่จาก assets/items/
 const LOOT_DISPLAY_SIZE = 30;
+// ระยะที่มอนไกลจากผู้เล่นแล้วข้าม AI (px)
+const AI_SLEEP_DIST = 900;
+// ความถี่การหาเป้าหมายใกล้สุด (ms)
+const TARGET_SCAN_MS = 120;
 
 Object.assign(Main.prototype, {
   // โหลดด่าน: ล้างของเก่า วาดพื้นใหม่ สร้างพุ่ม/หิน เสกมอนของด่านนี้เท่านั้น
@@ -57,10 +67,20 @@ Object.assign(Main.prototype, {
     this.enemies.getChildren().slice().forEach(e => { if (e.levelText) e.levelText.destroy(); e.destroy(); });
     this.loot.getChildren().slice().forEach(it => { this.tweens.killTweensOf(it); it.destroy(); });
     this.projectiles.getChildren().slice().forEach(pr => pr.destroy());
-    this.target = null; this.manualTarget = null;
+    this.target = null; this.manualTarget = null; this._tgtNext = 0;
 
     if (this.stageObjs) this.stageObjs.forEach(o => o.destroy());
-    const bg = this.add.grid(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, 64, 64, z.bg, 1, z.line, 1).setDepth(-10);
+
+    // พื้นหลัง: สร้างลายช่อง 64x64 เป็น texture ครั้งเดียว แล้วใช้ tileSprite (วาดภาพเดียว เบากว่า grid มาก)
+    const bgKey = 'bgtile_' + idx;
+    if (!this.textures.exists(bgKey)) {
+      const tg = this.make.graphics({ x: 0, y: 0, add: false });
+      tg.fillStyle(z.bg, 1).fillRect(0, 0, 64, 64);
+      tg.lineStyle(1, z.line, 1).strokeRect(0, 0, 64, 64);
+      tg.generateTexture(bgKey, 64, 64);
+      tg.destroy();
+    }
+    const bg = this.add.tileSprite(WORLD_W / 2, WORLD_H / 2, WORLD_W, WORLD_H, bgKey).setDepth(-10);
     const gfx = this.add.graphics().setDepth(-9);
     gfx.lineStyle(4, 0x000000, 0.5).strokeRect(0, 0, WORLD_W, WORLD_H);
     this.stageObjs = [bg, gfx];
@@ -181,8 +201,7 @@ Object.assign(Main.prototype, {
       fontFamily: 'Mitr, sans-serif', fontSize, color, fontStyle: e.isBoss ? 'bold' : 'normal',
       stroke: '#000000', strokeThickness: 4
     }).setOrigin(0.5).setDepth(40);
-    e.levelText.setShadow(0, 2, '#000000', 3, true, true);
-    e.levelText.setResolution(2);                        // คมชัดบนมือถือ
+    e.levelText.setResolution(NAME_TEXT_RES);            // ลดจาก 2 -> เบากว่า (ไม่ใช้เงา blur แล้ว)
     e.setInteractive(); e.on('pointerdown', () => { this.manualTarget = e; });
   },
 
@@ -265,8 +284,8 @@ Object.assign(Main.prototype, {
   },
 
   updateEnemies(time) {
-  if (this.rmActive) return;   // โหมดห้อง: ให้ roomMonsters.js คุมมอนแทน
-  const p = this.player;
+    if (this.rmActive) return;   // โหมดห้อง: ให้ roomMonsters.js คุมมอนแทน
+    const p = this.player;
     if (time > (this.nextBossCheck || 0)) { this.nextBossCheck = time + 1000; this.spawnDueBosses(); }
     const hidden = this.updatePlayerHidden ? this.updatePlayerHidden(time) : false;
 
@@ -275,10 +294,24 @@ Object.assign(Main.prototype, {
     const barG = this.enemyBarGfx;
     barG.clear();
 
+    const view = this.cameras.main.worldView;   // คำนวณครั้งเดียวต่อเฟรม ใช้ซ่อนชื่อมอนนอกจอ
+
     this.enemies.getChildren().forEach(e => {
       if (e.isBoss && time > (e.nextTeleport || 0)) this.bossTeleport(e, time);
       const distPlayer = Phaser.Math.Distance.Between(e.x, e.y, p.x, p.y);
-      if (e.state === 'idle' && distPlayer > 900) { e.setVelocity(0, 0); return; }
+
+      // มอนที่อยู่ไกลมาก (และไม่ได้ไล่ตี): ข้าม AI ทั้งหมด + ซ่อนชื่อ
+      if (e.state !== 'chase' && distPlayer > AI_SLEEP_DIST) {
+        if (e.state === 'return') {                      // กลับบ้านทันที ไม่ต้องเดินให้เปลืองเฟรม
+          e.setPosition(e.homeX, e.homeY);
+          e.state = 'idle'; e.provoked = false;
+          if (e.levelText) e.levelText.setPosition(e.x, e.y - e.labelOff);
+        }
+        e.setVelocity(0, 0);
+        if (e.levelText && e.levelText.visible) e.levelText.setVisible(false);
+        return;
+      }
+
       const distHome = Phaser.Math.Distance.Between(e.x, e.y, e.homeX, e.homeY);
       const canSee = !hidden || distPlayer < BUSH_REVEAL_DIST;   // ผู้เล่นซ่อนในพุ่ม = มองไม่เห็นถ้าอยู่ไกล
       const hostile = e.aggressive || e.provoked;                // โดนตีแล้ว หรือเป็นมอนด่าน 5+
@@ -321,7 +354,17 @@ Object.assign(Main.prototype, {
       // สกิลของ epic / บอส (ใช้ตอนไล่ตี)
       if (e.state === 'chase') this.enemySkill(e, time, distPlayer, canSee);
       this.updateEnemyAnim(e, time);
-      if (e.levelText) e.levelText.setPosition(e.x, e.y - e.labelOff);
+
+      // ชื่อมอน: แสดงเฉพาะที่อยู่ในจอ (นอกจอซ่อนไว้ ไม่ต้องอัปเดตตำแหน่ง)
+      if (e.levelText) {
+        const on = e.x > view.x - 80 && e.x < view.right + 80 && e.y > view.y - 80 && e.y < view.bottom + 80;
+        if (on) {
+          if (!e.levelText.visible) e.levelText.setVisible(true);
+          e.levelText.setPosition(e.x, e.y - e.labelOff);
+        } else if (e.levelText.visible) {
+          e.levelText.setVisible(false);
+        }
+      }
       this.drawEnemyBar(barG, e);
     });
   },
@@ -443,9 +486,14 @@ Object.assign(Main.prototype, {
       this.target = this.manualTarget;
     } else {
       this.manualTarget = null;
-      this.target = this.nearestEnemy(TARGET_RANGE);
+      // หาเป้าหมายใกล้สุดทุก TARGET_SCAN_MS (ไม่ต้องวนมอนทุกตัวทุกเฟรม) หรือทันทีถ้าเป้าเดิมหายไป
+      const now = this.time.now;
+      if (!this.target || !this.target.active || now >= (this._tgtNext || 0)) {
+        this._tgtNext = now + TARGET_SCAN_MS;
+        this.target = this.nearestEnemy(TARGET_RANGE);
+      }
     }
-    if (this.target) {
+    if (this.target && this.target.active) {
       const t = this.target;
       const name = t.def ? t.def.name : (t.isBoss ? 'มินิบอส' : (t.ranged ? 'สไลม์ยิงไกล' : 'สไลม์'));
       this.targetRing.setVisible(true).setPosition(t.x, t.y);
@@ -453,6 +501,7 @@ Object.assign(Main.prototype, {
       const dir = new Phaser.Math.Vector2(t.x - this.player.x, t.y - this.player.y);
       if (dir.length() > 1) this.facing.copy(dir).normalize();
     } else {
+      this.target = null;
       this.targetRing.setVisible(false);
       this.targetNameText.setText('');
     }
