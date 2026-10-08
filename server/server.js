@@ -4,6 +4,7 @@
 // - v2 มอนแยกตามห้อง | v3 เพื่อน+ปาร์ตี้ | v4 PvP | v5 สถานะสกิลบนมอน (mfx) | v6 แชต
 // - v7 เก็บ cls ของผู้เล่น | v8 getMons | v9 เมืองเป็นด่านที่ 10 (ดัชนี 9)
 // - v10: เพิ่มอีเวนต์ 'getPlayers' ให้เครื่องผู้เล่นขอรายชื่อคนในห้องซ้ำ (แก้มองไม่เห็นผู้เล่นอื่นในเมือง)
+// - v11: ปาร์ตี้แชร์ EXP + โหมดแจกไอเทม (own / random / rotate) -- killMonster ส่ง who + lootTo ใน 'mdead'
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -56,6 +57,10 @@ const AGGRESSIVE_FROM_STAGE = 5;
 const CONTACT_CD = 600;
 const MON_TICK_MS = 100;
 const HIT_MAX_DIST = 1200;
+
+// ระยะของปาร์ตี้ตอนมอนตาย (px) -- ปรับตรงนี้
+const PARTY_EXP_RANGE = 1500;    // สมาชิกที่อยู่ห่างมอนไม่เกินนี้ได้ EXP (เมื่อเปิดแชร์ EXP)
+const PARTY_LOOT_RANGE = 900;    // สมาชิกที่อยู่ห่างมอนไม่เกินนี้มีสิทธิ์ได้ของ (โหมดสุ่ม/สลับ)
 
 const MFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };
 const MFX_MAX_MS = 8000;
@@ -227,11 +232,46 @@ function tickRoom(key, R, now, dt) {
   if (changed.length) io.to(key).emit('mstate', changed);
 }
 
+// มอนตาย: คิดว่าใครได้ EXP (who) และใครได้ของดรอป (lootTo) ที่เซิร์ฟเวอร์ทั้งหมด (กันโกง)
+// - EXP: คนที่ตีมอน + (ถ้าปาร์ตี้เปิดแชร์ EXP) สมาชิกปาร์ตี้ในห้องเดียวกันที่อยู่ในระยะ PARTY_EXP_RANGE
+// - ของ: own = คนที่ตีตัวสุดท้าย | random = สุ่มในปาร์ตี้ | rotate = สลับกันตามลำดับ (เฉพาะคนที่อยู่ในระยะ PARTY_LOOT_RANGE)
 function killMonster(key, R, m, byId) {
   R.mons.delete(m.id);
-  const who = [];
-  m.contrib.forEach(id => { if (players[id] && players[id].room === key) who.push(id); });
-  io.to(key).emit('mdead', { id: m.id, by: byId, who });
+  const here = id => !!(players[id] && players[id].room === key);
+  const near = (id, r) => Math.hypot(players[id].x - m.x, players[id].y - m.y) <= r;
+
+  const who = new Set();
+  m.contrib.forEach(id => { if (here(id)) who.add(id); });
+  const done = new Set();
+  Array.from(who).forEach(id => {
+    const pid = players[id].party;
+    if (!pid || done.has(pid)) return;
+    done.add(pid);
+    const Pt = social.getParty(pid);
+    if (!Pt || Pt.expShare === false) return;
+    Pt.members.forEach(mid => { if (here(mid) && near(mid, PARTY_EXP_RANGE)) who.add(mid); });
+  });
+
+  let lootTo = here(byId) ? byId : null;
+  const killer = here(byId) ? players[byId] : null;
+  const Pt = killer && killer.party ? social.getParty(killer.party) : null;
+  if (Pt && Pt.lootMode && Pt.lootMode !== 'own') {
+    const el = Pt.members.filter(id => here(id) && near(id, PARTY_LOOT_RANGE));
+    if (el.length) {
+      if (Pt.lootMode === 'random') {
+        lootTo = el[rnd(0, el.length - 1)];
+      } else {                                  // rotate: ถัดจากคนที่ได้ล่าสุด
+        const n = Pt.members.length, s = Pt.members.indexOf(Pt.lastLoot);
+        for (let i = 1; i <= n; i++) {
+          const id = Pt.members[(s + i + n) % n];
+          if (el.indexOf(id) >= 0) { lootTo = id; break; }
+        }
+        Pt.lastLoot = lootTo;
+      }
+    }
+  }
+
+  io.to(key).emit('mdead', { id: m.id, by: byId, who: Array.from(who), lootTo });
   const delay = m.kind === 'boss' ? rnd(BOSS_RESPAWN_MIN_MS, BOSS_RESPAWN_MAX_MS) : RESPAWN_DELAY;
   setTimeout(() => {
     if (roomMons[key] !== R) return;
@@ -321,7 +361,8 @@ function enterRoom(socket, stage, ch, rm) {
   socket.to(key).emit('joined', pub(p));
 }
 
-require('./social')(io, players);
+// social ต้องคืนค่า { getParty } (ดู server/social.js v++) -- ประกาศเป็น const ก่อนที่ killMonster จะถูกเรียกใช้จริง
+const social = require('./social')(io, players);
 require('./pvpServer')(io, players, { leaveRoom });
 require('./chat')(io);
 
