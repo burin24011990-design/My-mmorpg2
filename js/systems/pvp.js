@@ -10,7 +10,9 @@
 // v3: ขยายวงปลอดภัย (ZONE_START_MUL / ZONE_END_MUL / ZONE_END_MIN) + ซุ่มพุ่มไม้ (ศัตรูในพุ่มมองไม่เห็น)
 //     แผนที่ย่อไม่แสดงฝั่งตรงข้าม (แก้ที่ ui.js บรรทัด "if (e.isPvp) return;")
 // v4: แอนิเมชันคู่ต่อสู้: ตัวที่เห็นเป็นสไปรต์แยก (disp) ไม่ถูกระบบมอนยุ่ง + ท่าเดิน/ยืนไม่กระพริบ
-//     EXP/เลเวลไม่ลดจากการแพ้หรือตายใน PvP (เก็บค่าตอนเริ่มแมตช์ แล้วคืนให้ถ้าลดลง)
+// v5: คู่ต่อสู้/เพื่อนร่วมทีมใช้สกินตามอาชีพ (heroSkin) เหมือนตัวเรา
+//     ตายใน PvP ไม่เข้าระบบ "ตายแล้วกลับเมือง/เสีย EXP" ของเกมเดิมอีก (ล็อกไม่ให้ HP ต่ำกว่า 1 ระหว่างแมตช์
+//     แล้วจับสัญญาณตายเอง) + ยังเก็บ EXP/เลเวลตอนเริ่มแมตช์ไว้คืนเป็นชั้นสำรอง
 // โหลดหลังไฟล์อื่นทั้งหมด (หลัง town.js, roomMonsters.js, rockGuard.js, heroPatch.js ฯลฯ) และก่อน main.js
 (function () {
   const P = Main.prototype;
@@ -52,9 +54,15 @@
     const dx = (x - b.x) / b.rx, dy = (y - b.y) / b.ry;
     return dx * dx + dy * dy <= 1;
   });
+  // สกินตัวละครตามอาชีพ (hero_sword / hero_priest ฯลฯ) ใช้ตัวเดียวกับที่ heroAnims.js ให้ตัวเราใช้
+  const skinOfCls = (m, cls) => {
+    let sk = 'hero';
+    try { sk = HeroAnims.skinOf(cls) || 'hero'; } catch (e) { /* ignore */ }
+    return (m.textures && m.textures.exists(sk)) ? sk : 'hero';
+  };
   let lobbyRef = null;
 
-  // ----- EXP/เลเวลไม่ลดจากการแพ้หรือตายใน PvP -----
+  // ----- EXP/เลเวลไม่ลดจากการแพ้หรือตายใน PvP (ชั้นสำรอง) -----
   const snapExp = m => ({ level: m.stats.level, exp: m.stats.exp, expNext: m.stats.expNext });
   function restoreExp(m, sn) {
     const st = m && m.stats;
@@ -62,6 +70,41 @@
     if (st.level < sn.level || (st.level === sn.level && st.exp < sn.exp)) {
       st.level = sn.level; st.exp = sn.exp; st.expNext = sn.expNext;
     }
+  }
+
+  // ----- ล็อก HP ไม่ให้ต่ำกว่า 1 ระหว่างแมตช์ -----
+  // ระบบตายเดิมของเกม (ตายแล้วกลับเมือง/หัก EXP) ทำงานเมื่อ HP <= 0 | ล็อกไว้แล้วจับสัญญาณตายเอง (pv.hpZero)
+  function guardHp(m, pv) {
+    const st = m.stats;
+    if (!st || pv._hpGuard) return;
+    const d = Object.getOwnPropertyDescriptor(st, 'hp');
+    if (d && !d.configurable) return;
+    let hp = Number(st.hp) || 1;
+    try {
+      Object.defineProperty(st, 'hp', {
+        configurable: true, enumerable: true,
+        get: () => hp,
+        set: v => {
+          v = Number(v);
+          if (isNaN(v)) return;
+          if (v > 0) hp = v;
+          else { hp = 1; if (!pv.dead && !pv.over) pv.hpZero = true; }
+        },
+      });
+      pv._hpGuard = true;
+    } catch (e) { /* ignore */ }
+  }
+  function unguardHp(m, pv) {
+    const st = m.stats;
+    if (!st || !pv._hpGuard) return;
+    pv._hpGuard = false;
+    const v = st.hp;
+    try { delete st.hp; } catch (e) { /* ignore */ }
+    st.hp = v;
+  }
+  function checkDeath(m, pv) {
+    if (pv.dead || pv.over) { pv.hpZero = false; return; }
+    if (pv.hpZero || m.stats.hp <= 0) { pv.hpZero = false; onMyDeath(m, pv); }
   }
 
   // ทำลายยูนิต (ตัวจริง + สไปรต์แสดงผล + ชื่อ)
@@ -341,6 +384,7 @@
       lastSend: 0, lastHit: 0, lastHud: 0, lastZone: 0, endAt: 0, startAt: Date.now() + d.countdown,
       zone: null, liveAt: 0, total: 0, protUntil: 0, respawnMs: 3000,
       expSnap: snapExp(m),                              // เก็บ EXP/เลเวลก่อนแมตช์ไว้คืนถ้าลดลง
+      hpZero: false, _hpGuard: false,
     };
     d.teams.forEach((list, t) => list.forEach(u => { pv.info[u.id] = u; pv.teamOf[u.id] = t; }));
     // เลิกเชื่อมห้องล่ามอน (เซิร์ฟเวอร์พาออกแล้ว) กันระบบเครือข่ายพาเข้าห้องซ้ำ
@@ -353,6 +397,7 @@
     pv.allowLoad = false;
     m.enemies.getChildren().slice().forEach(e => { if (e.levelText) e.levelText.destroy(); e.destroy(); });
     fullHeal(m); resetCooldowns(m);
+    guardHp(m, pv);                                   // เริ่มล็อก HP ไม่ให้ระบบตายเดิมทำงาน
 
     // ตำแหน่งเกิดของเรา + สร้างยูนิตของทุกคน
     d.teams.forEach((list, t) => list.forEach((u, idx) => {
@@ -374,8 +419,10 @@
   // ศัตรู: ตัวจริงเป็นเป้าหมายในกลุ่ม enemies (ให้สกิลตีโดน) แต่ถ้ามี hero.png จะซ่อนไว้ (alpha 0)
   //        แล้วแสดงด้วยสไปรต์แยก (disp) ที่เล่นอนิเมชันเอง ไม่ถูกระบบมอนยุ่ง
   // เพื่อนร่วมทีม: สไปรต์ธรรมดา | ไม่มี hero.png: ใช้วงกลมสำรอง
+  // ตัวที่แสดงใช้สกินตามอาชีพ (sprite.heroSkin) ให้ HeroAnims.play เลือกท่าถูกชีต
   function makeUnit(m, pv, u, team, sp) {
     const foe = team !== pv.team, hero = heroOn(m);
+    const skin = hero ? skinOfCls(m, u.cls) : 'hero';
     let spr, disp = null;
     if (foe) {
       spr = hero ? m.enemies.create(sp.x, sp.y, 'hero', 18) : m.enemies.create(sp.x, sp.y, 'player');
@@ -391,18 +438,24 @@
       const pick = () => { if (!pv.dead && !pv.frozen) m.manualTarget = spr; };
       if (hero) {
         spr.setAlpha(0);                                // ซ่อนตัวเป้าหมาย (ยังตีโดนตามปกติ)
-        disp = m.add.sprite(sp.x, sp.y, 'hero', 18).setScale(HERO_SCALE).setDepth(30);
+        disp = m.add.sprite(sp.x, sp.y, skin, 0).setScale(HERO_SCALE).setDepth(30);
+        disp.heroSkin = skin;
         disp.setTint(TINT_HERO[team]);
         disp.setInteractive();
         disp.on('pointerdown', pick);
+        try { HeroAnims.play(disp, 'idle', team === 0 ? 'right' : 'left', skin); } catch (e) { /* ignore */ }
       } else {
         spr.setTint(TINT[team]);
         spr.setInteractive();
         spr.on('pointerdown', pick);
       }
     } else {
-      spr = hero ? m.add.sprite(sp.x, sp.y, 'hero', 18) : m.add.sprite(sp.x, sp.y, 'player');
-      if (hero) spr.setScale(HERO_SCALE);
+      spr = hero ? m.add.sprite(sp.x, sp.y, skin, 0) : m.add.sprite(sp.x, sp.y, 'player');
+      if (hero) {
+        spr.setScale(HERO_SCALE);
+        spr.heroSkin = skin;
+        try { HeroAnims.play(spr, 'idle', team === 0 ? 'right' : 'left', skin); } catch (e) { /* ignore */ }
+      }
       spr.setTint(hero ? TINT_HERO[team] : TINT[team]);
     }
     spr.setDepth(disp ? 29 : 30);
@@ -411,7 +464,7 @@
       fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: LABEL_COL[team], stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(40);
     pv.units[u.id] = {
-      id: u.id, name: u.name, cls: u.cls || 'sword', foe, hero, nameY, team, sprite: spr, disp, label, alive: true,
+      id: u.id, name: u.name, cls: u.cls || 'sword', skin, foe, hero, nameY, team, sprite: spr, disp, label, alive: true,
       tx: sp.x, ty: sp.y, hp: u.maxHp, maxHp: u.maxHp,
       dir: team === 0 ? 'right' : 'left', atkUntil: 0, moveUntil: 0, protUntil: 0, revealUntil: 0,
     };
@@ -422,7 +475,7 @@
     if (!u.hero || now < u.atkUntil) return;
     const body = u.disp || u.sprite;
     if (Math.hypot(dx, dy) > 3) { u.moveUntil = now + 220; u.dir = dirFromVec(dx, dy); }
-    try { HeroAnims.play(body, now < u.moveUntil ? 'walk' : 'idle', u.dir); } catch (e) { /* ignore */ }
+    try { HeroAnims.play(body, now < u.moveUntil ? 'walk' : 'idle', u.dir, u.skin); } catch (e) { /* ignore */ }
   }
 
   // เล่นท่าโจมตี (ตอนได้รับอีเวนต์สกิลจากเซิร์ฟเวอร์)
@@ -437,7 +490,7 @@
     }
     if (tx !== null) u.dir = tx < sp.x ? 'left' : 'right';
     u.atkUntil = Date.now() + ATTACK_MS;
-    try { HeroAnims.play(sp, ATTACK_BY_CLASS[u.cls] || 'sword', u.dir); } catch (e) { /* ignore */ }
+    try { HeroAnims.play(sp, ATTACK_BY_CLASS[u.cls] || 'sword', u.dir, u.skin); } catch (e) { /* ignore */ }
   }
 
   // ---------- HUD ด้านบน ----------
@@ -486,6 +539,7 @@
   function onMyDeath(m, pv) {
     if (pv.dead || pv.over) return;
     pv.dead = true;
+    pv.hpZero = false;
     pv.cc = {};                                         // ตายแล้วล้างสถานะที่ติดอยู่
     m.stats.hp = 1;
     restoreExp(m, pv.expSnap);                          // กันระบบตายเดิมหัก EXP
@@ -502,13 +556,14 @@
       pv.warned = true; m.toastMsg('⚠ คุณอยู่นอกวง! รีบเข้าไปในวงสีฟ้า');
       setTimeout(() => { pv.warned = false; }, 3000);
     }
-    if (m.stats.hp <= 0) onMyDeath(m, pv);
+    checkDeath(m, pv);
   }
 
   // ---------- อัปเดตทุกเฟรมในสนาม ----------
   function pvpUpdate(m, time) {
     const pv = window._pvp, now = Date.now();
     restoreExp(m, pv.expSnap);                          // EXP/เลเวลต้องไม่ต่ำกว่าตอนเริ่มแมตช์
+    checkDeath(m, pv);                                  // จับสัญญาณ HP หมดจากการล็อก HP
     if (!m._pvpGfx) m._pvpGfx = m.add.graphics().setDepth(41);
     const g = m._pvpGfx; g.clear();
     Object.values(pv.units).forEach(u => {
@@ -633,12 +688,12 @@
     if (pv.frozen || pv.dead || pv.over) return;          // ช่วงนับถอยหลัง/ตายแล้ว/จบแล้ว = ไม่โดน
     if (Date.now() < pv.protUntil) return;                // อมตะหลังเกิดใหม่
     const r = _hurt.apply(this, arguments);
-    restoreExp(this, pv.expSnap);                         // ถ้าระบบเดิมหัก EXP ตอนเลือดหมด ให้คืน
-    if (this.stats.hp <= 0) onMyDeath(this, pv);
+    restoreExp(this, pv.expSnap);                         // ถ้าระบบเดิมหัก EXP ให้คืน
+    checkDeath(this, pv);
     return r;
   };
 
-  // กันระบบ "ตายแล้วกลับเมือง" ของ town.js ทำงานกลางสนาม
+  // กันระบบ "ตายแล้วกลับเมือง" ของ town.js ทำงานกลางสนาม (ชั้นสำรอง นอกเหนือจากการล็อก HP)
   ['playerDie', 'playerDied', 'onPlayerDeath', 'playerDeath', 'killPlayer', 'respawnPlayer', 'gameOver'].forEach(name => {
     const o = P[name];
     if (typeof o !== 'function') return;
@@ -708,6 +763,7 @@
     const pv = window._pvp;
     if (!pv) return;
     const prev = pv.prevStage, sn = pv.expSnap;
+    unguardHp(m, pv);                                   // คืนการทำงานปกติของ HP
     Object.values(pv.units).forEach(killUnit);
     if (m._pvpGfx) { m._pvpGfx.destroy(); m._pvpGfx = null; }
     removeHud();
@@ -833,7 +889,7 @@
       const zi = zoneInfo(pv);
       if (d.id === pv.me) {
         const p = freePoint(m, d.x, d.y, zi);
-        pv.dead = false; pv.cc = {}; pv.protUntil = Date.now() + (d.prot || 0); pv._wasProt = true;
+        pv.dead = false; pv.hpZero = false; pv.cc = {}; pv.protUntil = Date.now() + (d.prot || 0); pv._wasProt = true;
         m.player.setPosition(p.x, p.y); m.player.setVelocity(0, 0); m.player.setAlpha(1);
         m.cameras.main.centerOn(p.x, p.y);
         fullHeal(m); resetCooldowns(m);
