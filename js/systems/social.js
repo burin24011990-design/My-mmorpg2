@@ -1,6 +1,5 @@
 // social.js (ฝั่งเกม) -- ผู้เล่นอื่นเป็นตัวละครจริง + เพิ่มเพื่อน + ปาร์ตี้
 // โหลดหลัง network.js ก่อน main.js | ต้องใช้คู่กับ server/social.js
-// v+: เพิ่มข้อความตรวจสอบมุมซ้ายล่าง (สีเขียว) เพื่อหาสาเหตุมองไม่เห็นผู้เล่นอื่น -- ลบได้ที่บล็อก "ข้อความตรวจสอบ" ใน updateNetwork
 (function () {
   const P = Main.prototype;
   const FR_KEY = 'mmo_friends';
@@ -88,29 +87,6 @@
     });
     const mine = !!this.party;
     if (this.myLabel && this._myP !== mine) { this._myP = mine; this.myLabel.setColor(mine ? '#7dff9a' : '#ffffff'); }
-
-    // ===== ข้อความตรวจสอบ (ลบได้ทีหลัง) =====
-    if (!this._dbgText) this._dbgText = this.add.text(W / 2, 150, '', { fontSize: '15px', color: '#00ff99', backgroundColor: '#000000cc', align: 'center' })
-      .setOrigin(0.5, 0).setScrollFactor(0).setDepth(9999);
-    if (!this._dbgT || time - this._dbgT > 400) {
-      this._dbgT = time;
-      const ids = Object.keys(this.others || {});
-      const vis = ids.filter(i => this.others[i].s && this.others[i].s.visible).length;
-      const f = ids.length ? this.others[ids[0]] : null;
-      let l2 = 'ไม่มีผู้เล่นอื่นในลิสต์';
-      if (f && f.s) {
-        const s = f.s, wv = this.cameras.main.worldView;
-        l2 = 'อีกคน stage:' + f.stage + ' vis:' + s.visible + ' active:' + s.active + ' alpha:' + s.alpha +
-          ' depth:' + (Math.round(s.depth * 100) / 100) + ' scale:' + (Math.round(s.scaleX * 100) / 100) +
-          '\nframe:' + (s.frame && s.frame.name) + ' tex:' + (s.texture && s.texture.key) +
-          ' ในกล้อง:' + wv.contains(s.x, s.y);
-      }
-      this._dbgText.setText(
-        'stage เรา:' + this.stageIdx + ' (server ' + this._netStage + ') CH' + this.channel + '-' + this.netRoom +
-        ' online:' + (this.online ? 1 : 0) + ' in:' + (this.inRoom ? 1 : 0) + '\n' +
-        'others:' + ids.length + ' มองเห็น:' + vis + '\n' + l2
-      );
-    }
   };
 
   // ---------- โบนัส EXP ปาร์ตี้ (3 คน +10% / 4 คน +20% / 5 คน +40%) ----------
