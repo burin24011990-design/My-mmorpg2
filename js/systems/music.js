@@ -142,7 +142,7 @@ window.XhMusic = (function () {
   }
 
   // ---------- เสียงเอฟเฟกต์ ----------
-  var lastSfx = {}, active = 0;
+  var lastSfx = {}, active = 0, tcap = 0.28;   // tcap = เพดานความยาวโน้ตเอฟเฟกต์ (วินาที)
   function noiseBurst(t, dur, f0, f1, v, q) {
     var n = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
     n.buffer = noiseBuf; bp.type = 'bandpass'; bp.Q.value = q || 1;
@@ -154,6 +154,7 @@ window.XhMusic = (function () {
     n.start(t); n.stop(t + dur + 0.05);
   }
   function tone(type, f0, f1, t, dur, v) {
+    dur = Math.min(dur, tcap);
     var o = ctx.createOscillator(), g = ctx.createGain();
     o.type = type;
     o.frequency.setValueAtTime(f0, t);
@@ -200,6 +201,7 @@ window.XhMusic = (function () {
     if (active >= 10) return;
     lastSfx[name] = now; active++;
     setTimeout(function () { active = Math.max(0, active - 1); }, 300);
+    tcap = (name === 'levelup' || name === 'ult' || name === 'heal' || name === 'coin') ? 1 : 0.28;
     try { SFX[name](now, (v === undefined ? 1 : v) * sfxVol); } catch (e) {}
   }
 
@@ -324,26 +326,6 @@ window.XhMusic = (function () {
 
   // ---------- ปุ่มเสียงในแถบเมนูของเกม + หน้าต่างปรับเสียง ----------
   var SOUND_BTN_SHIFT_X = 0;   // เลื่อนปุ่มซ้าย(-)/ขวา(+) ถ้าทับปุ่มอื่น (เช่น ปุ่มสังคม)
-  function makeSoundIcons(sc) {
-    if (sc.textures.exists('tb_sound')) return;
-    var g = sc.make.graphics({ x: 0, y: 0, add: false });
-    function spk(key, mute) {
-      g.clear();
-      g.fillStyle(0xdfe6ee); g.fillRect(7, 15, 7, 10);
-      g.fillTriangle(14, 15, 25, 7, 25, 33); g.fillTriangle(14, 15, 25, 33, 14, 25);
-      g.fillRect(14, 15, 11, 10);
-      if (mute) {
-        g.lineStyle(4, 0xe04040); g.lineBetween(29, 14, 38, 26); g.lineBetween(38, 14, 29, 26);
-      } else {
-        g.lineStyle(3, 0x7fdcff); g.beginPath(); g.arc(25, 20, 7, -0.9, 0.9, false); g.strokePath();
-        g.beginPath(); g.arc(25, 20, 12, -0.9, 0.9, false); g.strokePath();
-      }
-      g.generateTexture(key, 40, 40);
-    }
-    spk('tb_sound', false); spk('tb_mute', true);
-    g.destroy();
-  }
-
   function openSoundPanel(m) {
     var card = (typeof m.domCard === 'function') ? m.domCard('🔊 ตั้งค่าเสียง') : null;
     if (!card) return;
@@ -377,28 +359,49 @@ window.XhMusic = (function () {
     if (typeof m.domCloseBtn === 'function') m.domCloseBtn(card);
   }
 
-  (function () {
-    var M = (typeof Main === 'function') ? Main.prototype : null;
-    if (!M || typeof M.setupTopBar !== 'function' || typeof M.makeTopBtn !== 'function') {
-      console.warn('XhMusic: ไม่พบ setupTopBar/makeTopBtn (ตรวจว่าโหลด music.js หลัง topbar.js)');
-      return;
-    }
-    var oTop = M.setupTopBar;
-    M.setupTopBar = function () {
-      var r = oTop.apply(this, arguments);
-      try {
-        makeSoundIcons(this);
-        var left = this.bagBtn.c.x - this.bagBtn.c.displayWidth / 2;
-        var x = left - TB.gap - TB.w + SOUND_BTN_SHIFT_X;
-        var sc = this;
-        this.soundBtn = this.makeTopBtn(x, TB.top, TB.w, TB.h, muted ? 'tb_mute' : 'tb_sound', 'เสียง', 0x3a2a4a, function () { openSoundPanel(sc); });
-        api.onChange(function () {
-          if (sc.soundBtn && sc.soundBtn.icon && sc.soundBtn.icon.active) sc.soundBtn.icon.setTexture(muted ? 'tb_mute' : 'tb_sound');
-        });
-      } catch (e) { console.warn('XhMusic: สร้างปุ่มเสียงไม่สำเร็จ', e); }
-      return r;
-    };
-  })();
+  // ปุ่มเสียง (DOM) วางใต้ปุ่ม "สังคม" | หน่วยเป็นพิกัดเกม (กว้าง W) ปรับเลขตรงนี้ถ้าอยากย้าย
+  var SOUND_BTN = { x: 252, y: 112, w: 47, h: 43 };
+  var sBtn = null;
+  function sIcon() { var i = sBtn && sBtn.querySelector('.hb-i'); if (i) i.textContent = muted ? '🔇' : '🔊'; }
+  function sLayout() {
+    var cv = document.querySelector('canvas');
+    if (!cv || !sBtn || typeof W === 'undefined') return;
+    var r = cv.getBoundingClientRect();
+    if (r.width < 50) return;
+    var k = r.width / W, B = SOUND_BTN;
+    sBtn.style.cssText =
+      'position:fixed;z-index:9000;box-sizing:border-box;padding:0;margin:0;cursor:pointer;touch-action:manipulation;' +
+      '-webkit-tap-highlight-color:transparent;font-family:Mitr,sans-serif;color:#fff;overflow:hidden;' +
+      'left:' + (r.left + B.x * k) + 'px;top:' + (r.top + B.y * k) + 'px;width:' + (B.w * k) + 'px;height:' + (B.h * k) + 'px;' +
+      'border:' + Math.max(1, 2 * k) + 'px solid #8a6a32;border-radius:' + (8 * k) + 'px;' +
+      'background:linear-gradient(180deg,rgba(255,255,255,.16) 0,rgba(255,255,255,0) 45%),#3a2a4a;' +
+      'box-shadow:0 ' + (2 * k) + 'px ' + (4 * k) + 'px rgba(0,0,0,.45);';
+    var ic = sBtn.querySelector('.hb-i'), tx = sBtn.querySelector('.hb-t');
+    if (ic) ic.style.cssText = 'font-size:' + (20 * k) + 'px;margin-top:' + (-2 * k) + 'px';
+    if (tx) tx.style.cssText = 'font-size:' + (9 * k) + 'px;margin-top:' + (1 * k) + 'px;' +
+      'text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000;white-space:nowrap';
+  }
+  function sMake() {
+    if (sBtn || !document.body) return;
+    sBtn = document.createElement('button');
+    sBtn.id = 'btn-sound';
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;line-height:1.1';
+    var i = document.createElement('div'); i.className = 'hb-i';
+    var t = document.createElement('div'); t.className = 'hb-t'; t.textContent = 'เสียง';
+    wrap.appendChild(i); wrap.appendChild(t); sBtn.appendChild(wrap);
+    sBtn.addEventListener('click', function () {
+      var m = window.__mainScene || window._townMain;
+      if (m && !m.townModal) openSoundPanel(m);
+    });
+    document.body.appendChild(sBtn);
+    sIcon(); sLayout();
+  }
+  api.onChange(sIcon);
+  window.addEventListener('resize', sLayout);
+  window.addEventListener('orientationchange', function () { setTimeout(sLayout, 300); });
+  document.addEventListener('fullscreenchange', function () { setTimeout(sLayout, 300); });
+  setInterval(function () { sMake(); sLayout(); }, 500);
 
   return api;
 })();
