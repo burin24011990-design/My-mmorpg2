@@ -7,6 +7,8 @@
 //     - คนใช้สกิล: ส่ง 'pvpFx' ขึ้นเซิร์ฟเวอร์ (ดักที่ Classes.status) | คนโดน: รับ 'pvpFx' แล้วล็อกตัวเอง (ดู ccOn/ccStunned)
 //     - ไฟช็อต (ดาเมจต่อเนื่อง) ทำงานผ่านตัวอัปเดตสถานะของ classes/* ซึ่งโหมดสนามเรียกต่อให้แล้ว
 //       (ต้องมีบรรทัด "if (this.rmActive || (window._pvp && window._pvp.active)) return;" ที่หัว updateEnemies ใน monsters.js)
+// v3: ขยายวงปลอดภัย (ZONE_START_MUL / ZONE_END_MUL / ZONE_END_MIN) + ซุ่มพุ่มไม้ (ศัตรูในพุ่มมองไม่เห็น)
+//     แผนที่ย่อไม่แสดงฝั่งตรงข้าม (แก้ที่ ui.js บรรทัด "if (e.isPvp) return;")
 // โหลดหลังไฟล์อื่นทั้งหมด (หลัง town.js, roomMonsters.js, rockGuard.js, heroPatch.js ฯลฯ) และก่อน main.js
 (function () {
   const P = Main.prototype;
@@ -23,10 +25,31 @@
   const HERO_SCALE = 0.75;                     // ต้องตรงกับ heroPatch.js
   const ATTACK_MS = 420;
   const ATTACK_BY_CLASS = { sword: 'sword', rogue: 'sword', mage: 'staff', priest: 'staff', archer: 'bow' };
+
+  // ----- ขยายวงปลอดภัย (ปรับเลขได้) -----
+  const ZONE_START_MUL = 1.5;   // วงเริ่มต้น ใหญ่ขึ้นกี่เท่า
+  const ZONE_END_MUL = 2.2;     // วงสุดท้าย ใหญ่ขึ้นกี่เท่า
+  const ZONE_END_MIN = 450;     // รัศมีวงสุดท้ายขั้นต่ำ
+  function scaleZone(z) {
+    if (!z) return null;
+    const r0 = z.r0 * ZONE_START_MUL;
+    const r1 = Math.min(r0, Math.max(z.r1 * ZONE_END_MUL, ZONE_END_MIN));
+    return Object.assign({}, z, { r0: r0, r1: r1 });
+  }
+
+  // ----- พุ่มไม้ซุ่ม: ศัตรูที่อยู่ในพุ่มจะมองไม่เห็น (เห็นเมื่อเข้าใกล้ หรือเพิ่งโจมตี) -----
+  const BUSH_SEE = 140;             // เข้าใกล้เท่านี้จะเห็นศัตรูในพุ่ม
+  const BUSH_REVEAL_MS = 1500;      // ศัตรูโจมตีแล้วโผล่กี่ ms
+
   const fmtTime = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const pvOn = () => !!(window._pvp && window._pvp.active);
   const heroOn = m => !!(window.HeroAnims && m.textures && m.textures.exists('hero'));
   const dirFromVec = (x, y) => (Math.abs(x) >= Math.abs(y) ? (x < 0 ? 'left' : 'right') : (y < 0 ? 'up' : 'down'));
+  // จุดนี้อยู่ในพุ่มไม้ไหม (พุ่มของเกมเป็นรูปไข่ x,y,rx,ry)
+  const inBush = (m, x, y) => (m.bushes || []).some(b => {
+    const dx = (x - b.x) / b.rx, dy = (y - b.y) / b.ry;
+    return dx * dx + dy * dy <= 1;
+  });
   let lobbyRef = null;
 
   // ในสนาม PvP ไม่ให้เกราะของคนที่ถูกตีลดดาเมจฝั่งคนตี (ไปคิดฝั่งคนโดนแทน กันหักซ้ำ)
@@ -359,7 +382,7 @@
     pv.units[u.id] = {
       id: u.id, name: u.name, cls: u.cls || 'sword', foe, hero, nameY, team, sprite: spr, label, alive: true,
       tx: sp.x, ty: sp.y, hp: u.maxHp, maxHp: u.maxHp,
-      dir: team === 0 ? 'right' : 'left', atkUntil: 0, protUntil: 0,
+      dir: team === 0 ? 'right' : 'left', atkUntil: 0, protUntil: 0, revealUntil: 0,
     };
   }
 
@@ -473,6 +496,20 @@
         else { u.protUntil = 0; sp.setAlpha(1); }
       }
       u.label.setPosition(sp.x, sp.y - u.nameY);
+
+      // ซุ่มพุ่มไม้: ศัตรูที่อยู่ในพุ่ม (และไม่ได้เพิ่งโจมตี / เราไม่ได้อยู่ใกล้) จะมองไม่เห็น
+      if (u.foe) {
+        const hid = inBush(m, sp.x, sp.y) && now >= (u.revealUntil || 0) &&
+          Math.hypot(m.player.x - sp.x, m.player.y - sp.y) > BUSH_SEE;
+        sp.setVisible(!hid); u.label.setVisible(!hid);
+        if (sp.input) sp.input.enabled = !hid;
+        if (hid) {
+          if (m.manualTarget === sp) m.manualTarget = null;
+          if (m.target === sp) m.target = null;
+          return;                                         // ไม่วาดหลอดเลือด
+        }
+      }
+
       const w = 54, r = Math.max(0, Math.min(1, u.hp / Math.max(1, u.maxHp))), x = Math.round(sp.x - w / 2), y = Math.round(sp.y - u.nameY + 12);
       g.fillStyle(0x000000, 0.8).fillRect(x - 1, y - 1, w + 2, 9);
       g.fillStyle(0x3a0d0d, 1).fillRect(x, y, w, 7);
@@ -700,7 +737,7 @@
     s.on('pvpGo', d => {
       const pv = window._pvp; if (!pv) return;
       pv.frozen = false; pv.total = d.ms; pv.liveAt = Date.now(); pv.endAt = pv.liveAt + d.ms;
-      pv.zone = d.zone || null; pv.respawnMs = d.respawn || 3000;
+      pv.zone = scaleZone(d.zone); pv.respawnMs = d.respawn || 3000;
       m.toastMsg('⚔️ เริ่ม! ใครฆ่าได้มากกว่าชนะ');
     });
     s.on('pvpState', list => {
@@ -765,11 +802,12 @@
       makeUnit(m, pv, info, team, { x: d.x, y: d.y });
       pv.units[d.id].protUntil = Date.now() + (d.prot || 0);
     });
-    // ศัตรู/เพื่อนใช้สกิล -> เล่นท่าโจมตี
+    // ศัตรู/เพื่อนใช้สกิล -> เล่นท่าโจมตี (ศัตรูที่ซุ่มในพุ่มจะโผล่ให้เห็นชั่วคราว)
     s.on('skill', d => {
       const pv = window._pvp; if (!pv || !d) return;
       const u = pv.units[d.id];
       if (u && u.alive) playUnitAttack(m, pv, u);
+      if (u && u.foe) u.revealUntil = Date.now() + BUSH_REVEAL_MS;
     });
     s.on('pvpEnd', d => {
       const pv = window._pvp; if (!pv) return;
