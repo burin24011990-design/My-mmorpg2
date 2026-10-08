@@ -3,8 +3,9 @@
 //   <script src="js/systems/music.js?v=8"></script>
 //
 // วางไฟล์เสียงที่โฟลเดอร์ assets/audio/ ตามนี้ (ไฟล์ไหนไม่มี เกมจะเงียบเฉพาะเสียงนั้น ไม่พัง):
-//   assets/audio/bgm/town.mp3          เพลงในเมือง
-//   assets/audio/bgm/field.mp3         เพลงนอกเมือง
+//   assets/audio/bgm/town.mp3          เพลงในเมือง (วนซ้ำเพลงเดียว)
+//   assets/audio/bgm/field_01.mp3 ... field_10.mp3   เพลงนอกเมือง (สุ่มเล่นวนไม่ซ้ำจนครบทุกเพลง)
+//   อยากเพิ่ม/ลดเพลงนอกเมือง: แก้เลข FIELD_COUNT ด้านล่าง
 //   assets/audio/sfx/hit.mp3           โจมตีปกติ (ทุกอาชีพใช้ร่วมกัน)
 //   assets/audio/sfx/crit.mp3          คริติคอล
 //   assets/audio/sfx/skill.mp3         ใช้สกิล (รวมอัลติเมต)
@@ -14,13 +15,16 @@
 
 window.XhMusic = (function () {
   var BASE = 'assets/audio/';
-  var AUDIO_VER = '2';
-  var BGM = { town: 'bgm/town.mp3', field: 'bgm/field.mp3' };
+  var AUDIO_VER = '3';
+  var FIELD_COUNT = 10;          // จำนวนเพลงนอกเมือง (field_01 ... field_NN)
+  var XFADE = 2;                 // วินาทีที่ครอสเฟดระหว่างเพลง
+  var BGM = { town: ['bgm/town.mp3'], field: [] };
+  for (var fi = 1; fi <= FIELD_COUNT; fi++) BGM.field.push('bgm/field_' + (fi < 10 ? '0' : '') + fi + '.mp3');
   var SFX_NAMES = ['hit', 'crit', 'skill', 'hurt', 'heal', 'dash', 'coin', 'levelup'];
 
   var ctx = null, master = null, bgmGain = null, sfxGain = null;
   var muted = false, vol = 0.5, sfxVol = 0.8;
-  var buffers = {}, want = null, cur = null, lastSfx = {}, active = 0, listeners = [];
+  var buffers = {}, want = null, cur = null, queues = {}, lastFile = {}, failStreak = 0, lastSfx = {}, active = 0, listeners = [];
   try {
     var st = JSON.parse(localStorage.getItem('xh_music'));
     if (st) {
@@ -85,25 +89,67 @@ window.XhMusic = (function () {
     src.start(now);
   }
 
-  // ---------- เพลงประกอบ (ครอสเฟดเมื่อเปลี่ยนฉาก) ----------
+  // ---------- เพลงประกอบ (ครอสเฟดเมื่อเปลี่ยนฉาก / เปลี่ยนเพลง) ----------
+  // เพลงนอกเมือง: สุ่มลำดับให้ครบทุกเพลงก่อนจึงสุ่มรอบใหม่ (ไม่ซ้ำเพลงเดิมติดกัน)
+  function nextFile(key) {
+    var list = BGM[key];
+    if (list.length === 1) return list[0];
+    var q = queues[key];
+    if (!q || !q.length) {
+      q = list.slice();
+      for (var i = q.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1)), t = q[i]; q[i] = q[j]; q[j] = t;
+      }
+      if (q[q.length - 1] === lastFile[key]) { var t2 = q[0]; q[0] = q[q.length - 1]; q[q.length - 1] = t2; }
+      queues[key] = q;
+    }
+    lastFile[key] = q.pop();
+    return lastFile[key];
+  }
+
+  function fadeOut(tr, sec) {
+    tr.g.gain.cancelScheduledValues(ctx.currentTime);
+    tr.g.gain.setValueAtTime(tr.g.gain.value, ctx.currentTime);
+    tr.g.gain.linearRampToValueAtTime(0, ctx.currentTime + sec);
+    setTimeout(function () { try { tr.el.pause(); tr.el.src = ''; } catch (e) {} }, sec * 1000 + 200);
+  }
+
+  function startTrack(key, file, fade) {
+    var old = cur;
+    var el = new Audio(BASE + file + '?v=' + AUDIO_VER);
+    el.loop = BGM[key].length === 1; el.preload = 'auto';
+    var g = ctx.createGain(); g.gain.value = 0;
+    try { ctx.createMediaElementSource(el).connect(g); g.connect(bgmGain); } catch (e) { return; }
+    var tr = { key: key, el: el, g: g, file: file, advancing: false };
+    var p = el.play(); if (p && p.catch) p.catch(function () {});
+    g.gain.linearRampToValueAtTime(1, ctx.currentTime + fade);
+    cur = tr;
+    if (old) fadeOut(old, fade);
+    if (!el.loop) {
+      el.addEventListener('timeupdate', function () {
+        if (cur === tr && !tr.advancing && el.duration && el.duration - el.currentTime <= XFADE + 0.3) advance(tr);
+      });
+      el.addEventListener('ended', function () { if (cur === tr) advance(tr); });
+    }
+    el.addEventListener('playing', function () { failStreak = 0; });
+    el.addEventListener('error', function () {                 // ไฟล์หาย/เสีย -> ข้ามไปเพลงถัดไป
+      if (cur !== tr || failStreak >= BGM[key].length) return;
+      failStreak++; advance(tr, 0.2);
+    });
+  }
+
+  function advance(tr, fade) {
+    if (cur !== tr || tr.advancing) return;
+    tr.advancing = true;
+    startTrack(tr.key, nextFile(tr.key), fade || XFADE);
+  }
+
   function playBgm(key) {
     if (!init() || !BGM[key]) return;
     if (ctx.state === 'suspended') ctx.resume();
     if (cur && cur.key === key) return;
-    var old = cur;
-    var el = new Audio(BASE + BGM[key] + '?v=' + AUDIO_VER);
-    el.loop = true; el.preload = 'auto';
-    var g = ctx.createGain(); g.gain.value = 0;
-    try { ctx.createMediaElementSource(el).connect(g); g.connect(bgmGain); } catch (e) { return; }
-    var p = el.play(); if (p && p.catch) p.catch(function () {});
-    g.gain.linearRampToValueAtTime(1, ctx.currentTime + 1.5);
-    cur = { key: key, el: el, g: g };
-    if (old) {
-      old.g.gain.cancelScheduledValues(ctx.currentTime);
-      old.g.gain.setValueAtTime(old.g.gain.value, ctx.currentTime);
-      old.g.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.5);
-      setTimeout(function () { try { old.el.pause(); old.el.src = ''; } catch (e) {} }, 1700);
-    }
+    failStreak = 0;
+    startTrack(key, nextFile(key), 1.5);
   }
 
   // ---------- ปลดล็อกเสียงมือถือ (ต้องแตะจอก่อน) ----------
