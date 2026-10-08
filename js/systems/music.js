@@ -1,22 +1,22 @@
-// ===== ระบบเสียงแบบใช้ไฟล์ mp3 (v9) =====
+// ===== ระบบเสียงแบบใช้ไฟล์ mp3 (v10) =====
 // ไฟล์: js/systems/music.js | วาง "หลัง" town.js และ "ก่อน" main.js
-//   <script src="js/systems/music.js?v=9"></script>
+//   <script src="js/systems/music.js?v=8"></script>
 //
 // วางไฟล์เสียงที่โฟลเดอร์ assets/audio/ ตามนี้ (ไฟล์ไหนไม่มี เกมจะเงียบเฉพาะเสียงนั้น ไม่พัง):
 //   assets/audio/bgm/town.mp3          เพลงในเมือง
 //   assets/audio/bgm/field.mp3         เพลงนอกเมือง
-//   assets/audio/sfx/hit_sword.mp3  hit_priest.mp3  hit_mage.mp3  hit_archer.mp3  hit_rogue.mp3   (ตีโดน แยกอาชีพ)
-//   assets/audio/sfx/crit.mp3  hurt.mp3  heal.mp3  dash.mp3  coin.mp3  levelup.mp3  ult.mp3
-//   assets/audio/sfx/sk_sword.mp3  sk_mage.mp3  sk_archer.mp3  sk_rogue.mp3  sk_holy.mp3        (ตอนร่ายสกิล)
-// พรอมต์สำหรับเจนเสียงด้วย AI อยู่ในไฟล์ audio_prompts.md
+//   assets/audio/sfx/hit.mp3           โจมตีปกติ (ทุกอาชีพใช้ร่วมกัน)
+//   assets/audio/sfx/crit.mp3          คริติคอล
+//   assets/audio/sfx/skill.mp3         ใช้สกิล (รวมอัลติเมต)
+//   assets/audio/sfx/hurt.mp3          ผู้เล่นโดนโจมตี
+//   (ไม่บังคับ) heal.mp3  dash.mp3  coin.mp3  levelup.mp3
 // ถ้าเปลี่ยนไฟล์เสียงแล้วมือถือยังได้ของเก่า ให้เพิ่มเลข AUDIO_VER ด้านล่าง
 
 window.XhMusic = (function () {
   var BASE = 'assets/audio/';
-  var AUDIO_VER = '1';
+  var AUDIO_VER = '2';
   var BGM = { town: 'bgm/town.mp3', field: 'bgm/field.mp3' };
-  var SFX_NAMES = ['hit_sword', 'hit_priest', 'hit_mage', 'hit_archer', 'hit_rogue', 'crit', 'hurt', 'heal',
-    'dash', 'coin', 'levelup', 'ult', 'sk_sword', 'sk_mage', 'sk_archer', 'sk_rogue', 'sk_holy'];
+  var SFX_NAMES = ['hit', 'crit', 'skill', 'hurt', 'heal', 'dash', 'coin', 'levelup'];
 
   var ctx = null, master = null, bgmGain = null, sfxGain = null;
   var muted = false, vol = 0.5, sfxVol = 0.8;
@@ -72,7 +72,7 @@ window.XhMusic = (function () {
     var buf = buffers[name];
     if (!buf) return;
     var now = ctx.currentTime;
-    var gap = (name.indexOf('hit_') === 0 || name === 'crit') ? 0.08 : 0.1;
+    var gap = (name === 'hit' || name === 'crit') ? 0.08 : 0.1;
     if (lastSfx[name] && now - lastSfx[name] < gap) return;
     if (active >= 8) return;
     lastSfx[name] = now; active++;
@@ -147,19 +147,8 @@ window.XhMusic = (function () {
   })();
 
   // ---------- ผูกเสียงกับฟังก์ชันจริงของเกม ----------
-  var ULTI_NAMES = { 'ดาบสังหาร': 1, 'ระเบิดมหาเวท': 1, 'ธนูทลวงฟ้า': 1, 'พายุใบมีด': 1 };
-  function skillSoundName(def) {
-    if (!def) return null;
-    if (def.name && ULTI_NAMES[def.name]) return 'ult';
-    var id = String(def.id || '');
-    if (id.indexOf('sw_') === 0) return 'sk_sword';
-    if (id.indexOf('mg_') === 0) return 'sk_mage';
-    if (id.indexOf('ar_') === 0) return 'sk_archer';
-    if (id.indexOf('rg_') === 0) return 'sk_rogue';
-    if (id.indexOf('pr_') === 0 || def.type === 'holy' || def.type === 'heal1' || def.type === 'healaoe') return 'sk_holy';
-    if (def.type === 'pulti') return 'ult';
-    return 'sk_sword';
-  }
+  // ทุกสกิล (รวมอัลติเมต) ใช้เสียงเดียวกัน
+  function skillSoundName(def) { return def ? 'skill' : null; }
   (function () {
     var M = (typeof Main === 'function') ? Main.prototype : null;
     if (M && typeof M.applySkillEffect === 'function') {
@@ -174,13 +163,11 @@ window.XhMusic = (function () {
       window.showDamage = function (scene, x, y, amount, kind, opts) {
         try {
           kind = kind || 'normal';
-          var cls = 'sword';
-          try { if (scene && typeof scene.currentClass === 'function') cls = scene.currentClass() || 'sword'; } catch (e2) {}
           if (kind === 'player') sfx('hurt', 0.9);
           else if (kind === 'heal') sfx('heal', 0.8);
           else if (kind === 'regen') { /* เงียบ */ }
           else if (kind === 'crit' || (opts && opts.crit)) sfx('crit', 1);
-          else sfx('hit_' + cls, 0.9);
+          else sfx('hit', 0.9);
         } catch (e) {}
         return oDmg.apply(this, arguments);
       };
@@ -224,7 +211,7 @@ window.XhMusic = (function () {
       card.appendChild(wrap);
     }
     row('🎵 เสียงเพลง', function () { return vol; }, function (v) { api.setVolume(v); });
-    row('⚔️ เสียงเอฟเฟกต์', function () { return sfxVol; }, function (v) { api.setSfxVolume(v); }, function () { sfx('hit_sword', 1); });
+    row('⚔️ เสียงเอฟเฟกต์', function () { return sfxVol; }, function (v) { api.setSfxVolume(v); }, function () { sfx('hit', 1); });
 
     var mb = document.createElement('button');
     function paint() { mb.textContent = muted ? '🔇 ปิดเสียงอยู่ (แตะเพื่อเปิด)' : '🔊 แตะเพื่อปิดเสียงทั้งหมด'; }
