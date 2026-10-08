@@ -1,5 +1,5 @@
 // ===== หน้าเริ่มเกม + ล็อกอิน Google + เซฟคลาวด์ (Firebase) =====
-// ต้องล็อกอิน Google เท่านั้น (ไม่มีโหมดผู้เยี่ยม)
+// ล็อกอิน Google (เซฟคลาวด์) หรือเล่นแบบ "ผู้เยี่ยมชม" (ทดสอบ: เซฟในเครื่องเท่านั้น ชื่อมี G- นำหน้า)
 // ทำงานก่อนเกมโหลด: ล็อกอิน -> ดึงเซฟจากคลาวด์ลง localStorage -> ค่อยโหลดสคริปต์เกม
 // หลังเริ่มเกมจะอัปโหลดเซฟขึ้นคลาวด์อัตโนมัติ (ทุก 15 วิ / ตอนซ่อนแอป / เมื่อเกมเรียก CloudSave.soon())
 (function () {
@@ -7,6 +7,8 @@
   var $ = function (id) { return document.getElementById(id); };
   var LS = window.localStorage;
   var SKIP = /^(mmo_cloud_|firebase)/;     // คีย์ที่ไม่นับเป็นเซฟเกม
+  var GUEST_NAME_MAX = 9;                  // ชื่อผู้เยี่ยมชมยาวสุด (รวม "G-" แล้วไม่เกิน 12 ตามที่เซิร์ฟเวอร์ตัด)
+  var guestMode = false;
 
   // ---------- หน่วงการสร้างเกม: main.js เรียก new Phaser.Game ตอนโหลด แต่เราจะสร้างจริงหลังกดเริ่มเล่น ----------
   var RealGame = window.Phaser && Phaser.Game, pendingCfg = null;
@@ -95,7 +97,7 @@
   if (!fbOK) {
     $('btn-google').classList.add('off');
     $('login-note').className = 'ls-note err';
-    $('login-note').textContent = 'ระบบล็อกอินยังไม่พร้อม (ยังไม่ได้ใส่ค่า Firebase ใน js/firebaseConfig.js) ตอนนี้ยังเข้าเล่นไม่ได้';
+    $('login-note').textContent = 'ระบบล็อกอินยังไม่พร้อม (ยังไม่ได้ใส่ค่า Firebase ใน js/firebaseConfig.js) ตอนนี้เล่นได้เฉพาะแบบผู้เยี่ยมชม';
   }
 
   // ---------- อัปโหลดเซฟขึ้นคลาวด์ ----------
@@ -113,7 +115,7 @@
   }
 
   function pushNow(force, quiet) {
-    try { if (window.GameSaveNow) window.GameSaveNow(); } catch (e) {}   // เซฟลงเครื่องก่อนเสมอ
+    try { if (window.GameSaveNow) window.GameSaveNow(); } catch (e) {}   // เซฟลงเครื่องก่อนเสมอ (ผู้เยี่ยมชมได้แค่ขั้นตอนนี้)
     if (!db || !user || !canPush) return Promise.resolve();
     if (pushing) { pushAgain = true; return Promise.resolve(); }
     var s = snapshot(), h = hash(s);
@@ -140,8 +142,14 @@
     return db.collection('saves').doc(u.uid).get().then(function (snap) {
       var local = snapshot(), localEmpty = (local === '{}');
       var lastUid = LS.getItem('mmo_cloud_uid'), lastHash = LS.getItem('mmo_cloud_hash');
+      // ข้อมูลในเครื่องเป็นของผู้เยี่ยมชม -> ไม่ย้ายขึ้นบัญชีจริง: เก็บสำรองไว้แล้วเริ่มจากคลาวด์ของบัญชีนี้
+      if (lastUid === 'guest') {
+        backupLocal(); clearGame(); LS.removeItem('mmo_cloud_hash');
+        local = snapshot(); localEmpty = true; lastUid = null; lastHash = null;
+      }
       // ชื่อที่จำไว้เป็นของบัญชีอื่น -> ทิ้ง (กันชื่อข้ามบัญชี)
       if (lastUid && lastUid !== u.uid) LS.removeItem('mmo_cloud_lastname');
+      if (localEmpty) LS.removeItem('mmo_cloud_lastname');
       function done() {
         LS.setItem('mmo_cloud_uid', u.uid); LS.setItem('mmo_cloud_hash', hash(snapshot())); canPush = true;
       }
@@ -181,12 +189,13 @@
   }
   function unlockName() {
     var i = $('in-name');
-    i.readOnly = false; i.disabled = false; i.placeholder = 'ไม่เกิน 15 ตัวอักษร';
+    i.readOnly = false; i.disabled = false; i.placeholder = 'ไม่เกิน 15 ตัวอักษร'; i.maxLength = 15;
     var lb = document.querySelector('label[for="in-name"]');
     if (lb) lb.textContent = 'ชื่อตัวละคร (ตั้งได้ครั้งเดียว เปลี่ยนไม่ได้)';
   }
 
   function showReady(u) {
+    guestMode = false;
     $('u-name').textContent = u.displayName || 'ผู้เล่น';
     $('u-mail').textContent = u.email || '';
     $('u-photo').src = u.photoURL || '';
@@ -201,6 +210,39 @@
     cs.className = 'ls-cloud'; cs.textContent = 'กำลังซิงก์ข้อมูลกับคลาวด์...';
     setView('ready');
   }
+
+  // หน้าเตรียมเริ่มเล่นแบบผู้เยี่ยมชม (ใช้หน้าจอเดียวกับ v-ready)
+  function showGuest() {
+    guestMode = true; user = null; canPush = false;
+    $('u-name').textContent = 'ผู้เยี่ยมชม (ทดสอบ)';
+    $('u-mail').textContent = 'เซฟในเครื่องนี้เท่านั้น';
+    $('u-photo').removeAttribute('src');
+    $('u-photo').style.visibility = 'hidden';
+    unlockName();
+    var i = $('in-name');
+    i.maxLength = GUEST_NAME_MAX;
+    i.placeholder = 'ไม่เกิน ' + GUEST_NAME_MAX + ' ตัวอักษร';
+    var prev = LS.getItem('mmo_cloud_uid') === 'guest' ? (LS.getItem('mmo_cloud_lastname') || '') : '';
+    i.value = Array.from(prev.replace(/^G-/, '')).slice(0, GUEST_NAME_MAX).join('');
+    var lb = document.querySelector('label[for="in-name"]');
+    if (lb) lb.textContent = 'ชื่อตัวละคร (ผู้เยี่ยมชมจะมี G- นำหน้า)';
+    $('lnk-out').textContent = '← กลับไปเข้าสู่ระบบด้วย Google';
+    var cs = $('cloud-state');
+    cs.className = 'ls-cloud warn';
+    cs.textContent = 'โหมดผู้เยี่ยมชม: เซฟในเครื่องนี้เท่านั้น ล้างเบราว์เซอร์แล้วหาย และไม่ได้กล่อง/ทองฝั่งเซิร์ฟเวอร์';
+    cs.onclick = null;
+    $('btn-start').disabled = false;
+    setView('ready');
+  }
+
+  // เตรียมข้อมูลในเครื่องก่อนเริ่มเล่นแบบผู้เยี่ยมชม
+  function prepGuestLocal() {
+    var lastUid = LS.getItem('mmo_cloud_uid');
+    if (lastUid && lastUid !== 'guest') { backupLocal(); clearGame(); }   // เครื่องนี้เคยเล่นด้วยบัญชีจริง -> เก็บสำรองแล้วเริ่มสะอาด (บัญชีจริงยังมีเซฟบนคลาวด์)
+    LS.setItem('mmo_cloud_uid', 'guest');
+    LS.removeItem('mmo_cloud_hash');
+  }
+
   function runSync(u) {
     var btn = $('btn-start'), cs = $('cloud-state');
     btn.disabled = true; syncing = true; canPush = false;
@@ -235,9 +277,13 @@
       var m = authError(e); if (m) { note.className = 'ls-note err'; note.textContent = m; }
     });
   };
+
+  var guestBtn = $('btn-guest');
+  if (guestBtn) guestBtn.onclick = function () { showGuest(); };
+
   $('lnk-out').onclick = function () {
     if (user && auth) { canPush = false; cloudName = ''; auth.signOut(); }   // onAuthStateChanged จะพากลับหน้าล็อกอิน
-    else setView('login');
+    else { guestMode = false; setView('login'); }
   };
 
   if (fbOK) {
@@ -245,8 +291,8 @@
     var guard = setTimeout(function () { if (!$('v-loading').hidden) setView('login'); }, 7000);
     auth.onAuthStateChanged(function (u) {
       clearTimeout(guard); user = u;
-      if (u) { showReady(u); runSync(u); }
-      else setView('login');
+      if (u) { guestMode = false; showReady(u); runSync(u); }
+      else if (!guestMode) setView('login');
     });
     auth.getRedirectResult().catch(function () {});
   } else {
@@ -256,8 +302,9 @@
   // ---------- เริ่มเกม ----------
   var autosaveOn = false;
   function startAutosave() {
-    if (!user || autosaveOn) return;
+    if (autosaveOn) return;
     autosaveOn = true;
+    // ผู้เยี่ยมชม: pushNow เซฟลงเครื่องอย่างเดียว (ไม่อัปโหลดคลาวด์เพราะไม่มี user)
     setInterval(function () { pushNow(false, true); }, 15000);                                   // ทุก 15 วิ (ถ้าข้อมูลเปลี่ยน)
     document.addEventListener('visibilitychange', function () { if (document.hidden) pushNow(false, true); });
     window.addEventListener('pagehide', function () { pushNow(false, true); });
@@ -288,6 +335,16 @@
   $('btn-start').onclick = function () {
     if (syncing || checking) return;
     var cs = $('cloud-state'), btn = $('btn-start');
+
+    // ----- ผู้เยี่ยมชม: ไม่ต้องล็อกอิน/ไม่ตรวจชื่อผ่านเซิร์ฟเวอร์ -----
+    if (guestMode) {
+      var gn = Array.from(cleanName($('in-name').value)).slice(0, GUEST_NAME_MAX).join('').trim();
+      if (Array.from(gn).length < 2) { toast('ชื่อต้องยาวอย่างน้อย 2 ตัวอักษร'); return; }
+      prepGuestLocal();
+      begin('G-' + gn);
+      return;
+    }
+
     if (!user) { toast('กรุณาเข้าสู่ระบบก่อน'); setView('login'); return; }
     if (!fns) {                                  // ต้องตรวจชื่อผ่านเซิร์ฟเวอร์เสมอ
       cs.className = 'ls-cloud warn'; cs.textContent = '⚠ ระบบตรวจชื่อยังไม่พร้อม ลองใหม่อีกครั้ง';
