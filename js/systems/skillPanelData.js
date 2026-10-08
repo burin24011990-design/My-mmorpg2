@@ -6,6 +6,13 @@
   var IMG_DIR = 'assets/skills/';
   var IMG_VER = '1';   // ถ้าเปลี่ยนรูปแล้วมือถือยังโชว์รูปเก่า ให้เพิ่มเลขนี้
 
+  // รหัสสกิลที่ "ยังไม่มีรูป" ในรีโป -> ไม่พยายามโหลด ใช้ไอคอนเดิม
+  // พออัปโหลดรูปแล้ว ให้ลบชื่อนั้นออกจากรายการนี้
+  var NO_IMG = {
+    basic_sword: 1, basic_rogue: 1, basic_mage: 1, basic_archer: 1, basic_priest: 1,
+    dash: 1
+  };
+
   var CLS = {
     sword:  { label: 'ดาบ',  color: '#ffb347' },
     mage:   { label: 'คทา',  color: '#5db0ff' },
@@ -14,7 +21,6 @@
     rogue:  { label: 'โจร',  color: '#b98cff' }
   };
 
-  // หารหัสสกิลจากแถวข้อมูล: sid > id ที่ขึ้นต้น ulti_ > ชื่อตรงกับชื่ออัลติของอาชีพใด
   function sidOf(s) {
     var sid = s.sid;
     if (!sid && s.id && String(s.id).indexOf('ulti_') === 0) sid = String(s.id);
@@ -33,15 +39,20 @@
     return null;
   }
 
+  function hasNoImg(sid) {
+    sid = String(sid);
+    return !!NO_IMG[sid] || sid.indexOf('basic_') === 0;
+  }
+
   function decorate(s) {
     var sid = sidOf(s);
     if (!sid) return s;
     var def = defOf(sid);
     var cls = def && def.class && CLS[def.class];
-    var out = Object.assign({}, s, { img: IMG_DIR + sid + '.png?v=' + IMG_VER });
+    var out = Object.assign({}, s);
+    if (!hasNoImg(sid)) out.img = IMG_DIR + sid + '.png?v=' + IMG_VER;
     if (cls) { out.accent = cls.color; out.clsLabel = cls.label; }
 
-    // ข้อความเลเวลถัดไป: ดาเมจฐานเพิ่มขึ้นเท่าไหร่
     if (def && def.dmg > 0 && !s.maxed && typeof s.lv === 'number' && s.maxLv && typeof skillLvMul === 'function') {
       var now = Math.round(def.dmg * skillLvMul(s.lv));
       var nxt = Math.round(def.dmg * skillLvMul(s.lv + 1));
