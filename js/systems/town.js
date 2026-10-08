@@ -1,17 +1,15 @@
-// ===== เมือง v8 — เมืองเป็น "ด่านหนึ่ง" ในฉาก Main (เห็นผู้เล่นอื่น / แชนเนล / ห้อง ใช้ร่วมกับข้างนอก) =====
-// ไฟล์: js/systems/town.js  (แทนไฟล์เดิมทั้งไฟล์)  | โหลดก่อน js/main.js
-// - ไม่มีฉาก Town แยกแล้ว: main.js ใช้ scene: [Main] อย่างเดียว
-// - ต้องมีด่าน { town:true } ต่อท้าย ZONES ใน js/data/zones.js (ดูไฟล์ zones ที่แก้)
-// - เข้าเมือง = Main.loadStage(ดัชนีด่านเมือง) -> network.js ย้ายห้องให้เองตามด่าน
-// - ฟังก์ชันชื่อเดิม (townGoToTown / townLeave / townMain / townRevive / TownHooks / window._townBusy)
-//   ยังอยู่ครบ ไฟล์อื่น (fixes.js, pvp.js, market.js ...) เรียกต่อได้
+// ===== เมือง v9 — เมืองเป็น "ด่านหนึ่ง" ในฉาก Main (เห็นผู้เล่นอื่น / แชนเนล / ห้อง ใช้ร่วมกับข้างนอก) =====
+// ไฟล์: js/systems/town.js (แทนไฟล์เดิมทั้งไฟล์) | โหลดก่อน js/main.js
+// v9: townClearMonsters เก็บ GameObject ทุกชิ้นของผู้เล่นอื่นไว้ (เดิมเก็บแค่ o.s / o.t ทำให้ป้ายชื่อ/เลเวลถูกลบตอนเข้าเมือง)
+// - ต้องมีด่าน { town:true } ต่อท้าย ZONES ใน js/data/zones.js
+// - ฟังก์ชันชื่อเดิม (townGoToTown / townLeave / townMain / townRevive / TownHooks / window._townBusy) ยังอยู่ครบ
 
 const TOWN = {
   w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190, feet: 20,
-  atlas: 'assets/town/', ver: 2,          // เปลี่ยน ver เมื่ออัปเดตไฟล์ภาพ
+  atlas: 'assets/town/', ver: 2,
 };
 
-// ---------- ปุ่มเมือง + ปุ่มแชนเนล (DOM) — เหมือนเดิม ----------
+// ---------- ปุ่มเมือง + ปุ่มแชนเนล (DOM) ----------
 const HUD_BTN = { x0: 250, top: 8, w: 50, h: 46, gap: 5 };
 const HUD_BTN_IDS = [
   { id: 'btn-to-town', color: '#4a3a2a' },
@@ -63,7 +61,7 @@ window.addEventListener('orientationchange', function () { setTimeout(hudBtnLayo
 document.addEventListener('fullscreenchange', function () { setTimeout(hudBtnLayout, 300); });
 setInterval(hudBtnLayout, 500);
 
-// ---------- NPC (ข้อมูลเดิมทั้งหมด) | x,y = จุดเท้า (พิกัดในผังเมือง 2400x1900) ----------
+// ---------- NPC | x,y = จุดเท้า (พิกัดในผังเมือง 2400x1900) ----------
 const TOWN_NPCS = [
   { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 1700, y: 1400, sprite: 'npc_pvp',    color: 0xe05555, icon: '⚔️' },
   { id: 'market', name: 'พ่อค้าตลาดกลาง',   title: 'ตลาดกลาง',          x: 860,  y: 1120, sprite: 'npc_market', color: 0xf0c040, icon: '🏪' },
@@ -78,7 +76,7 @@ const TOWN_TEXT = {
   boss:   'บอสโลกกำลังจะมาเร็วๆ นี้! ต้องใช้กุญแจเปิดประตู และรวมปาร์ตี้ 10 คนขึ้นไป โปรดรอการอัปเดต',
 };
 
-// ---------- ผังเมือง (เหมือนเดิม) ----------
+// ---------- ผังเมือง ----------
 const TOWN_ROADS = [
   { x: 1125, y: 640,  w: 150,  h: 1260 },
   { x: 330,  y: 665,  w: 1740, h: 110 },
@@ -118,7 +116,6 @@ const TOWN_PROPS = [
   { k: 'rock1', x: 980,  y: 1130 }, { k: 'rock2', x: 1420, y: 1160 },
 ];
 
-// ผูกระบบจริงทีหลัง เช่น TownHooks.market = function (scene, npc) { ... };  (scene = Main แล้ว)
 window.TownHooks = window.TownHooks || {};
 
 const TOWN_DEAD_MSG = '💀 คุณตายแล้ว ฟื้นคืนชีพที่เมือง';
@@ -133,10 +130,8 @@ function inTown(m) {
   const z = m && (typeof ZONES !== 'undefined') && ZONES[m.stageIdx];
   return !!(z && z.town);
 }
-// depth ของของในเมือง: บีบให้อยู่ช่วง 2-36 เพื่อไม่ทับ HUD ของ Main (HUD ใช้ depth 100+)
 function townDepth(y) { return 2 + y * 0.015; }
 
-// เข้ากันได้กับไฟล์เก่าที่เช็ก window._townBusy (= ตอนนี้อยู่ในเมืองไหม)
 Object.defineProperty(window, '_townBusy', {
   configurable: true,
   get: function () { const m = window.__mainScene; return !!(m && inTown(m)); },
@@ -154,7 +149,6 @@ function townInPvp(m) {
   return false;
 }
 
-// ชุบชีวิตหลังตาย: หัก EXP 1% (ยกเว้น PvP), ฟื้น HP/MP, ล้างมอนที่ไล่, เซฟ (ตำแหน่งจะถูกตั้งตอนเข้าเมือง)
 function townRevive(m) {
   try {
     let lost = 0;
@@ -280,7 +274,7 @@ function townMakeGroundTextures(m) {
   ct.refresh();
 }
 
-// ---------- NPC (ย้ายมาจากฉาก Town เดิม) ----------
+// ---------- NPC ----------
 function townMakeNpc(m, n, ox, oy, atlas, objs) {
   const nx = ox + n.x, ny = oy + n.y;
   const npcH = Phaser.Math.Clamp((m.player && m.player.displayHeight) ? m.player.displayHeight * 1.15 : 96, 80, 150);
@@ -318,7 +312,6 @@ function townMakeNpc(m, n, ox, oy, atlas, objs) {
     box = { cx: 0, cy: 0, w: 130, h: 140 };
   }
 
-  // ปุ่ม "💬 คุย" ลอยเหนือชื่อ
   const BW = 112, BH = 42, btnY = nameY - 42;
   const bg = m.add.graphics();
   bg.fillStyle(0x000000, 0.35).fillRoundedRect(-BW / 2 + 2, -BH / 2 + 4, BW, BH, 14);
@@ -332,7 +325,6 @@ function townMakeNpc(m, n, ox, oy, atlas, objs) {
   const tw2 = m.tweens.add({ targets: btn, y: btnY - 6, yoyo: true, repeat: -1, duration: 700, ease: 'Sine.easeInOut' });
   objs.push({ destroy: function () { tw2.remove(); } });
 
-  // พื้นที่กด (Zone) — depth 60 = เหนือของในเมือง แต่ต่ำกว่า HUD ของ Main (ถ้าปุ่ม HUD ถูกบัง ให้ลดเลขนี้)
   const onTap = function () { townApproach(m, n, nx, ny); };
   const zBody = m.add.zone(nx + box.cx, ny + box.cy, box.w, box.h).setDepth(60).setInteractive({ useHandCursor: true });
   zBody.on('pointerdown', onTap);
@@ -347,7 +339,6 @@ function townTalk(m, n) {
   townDialog(m, n.icon + ' ' + n.name, TOWN_TEXT[n.id] || '...', [{ label: 'ตกลง', primary: true }]);
 }
 
-// กด NPC: ใกล้พอ = คุยเลย | ไกล = เดินไปหาแล้วคุยให้เอง (townTick เช็กระยะ 110)
 function townApproach(m, n, nx, ny) {
   if (m.townModal || m.panel || !m.player) return;
   const p = m.player;
@@ -364,7 +355,6 @@ function townApproach(m, n, nx, ny) {
 // ---------- สร้าง/ล้างเมืองในฉาก Main ----------
 function townBuild(m) {
   const wb = m.physics.world.bounds;
-  // วางผังเมืองไว้กลางโลกของ Main
   const ox = Math.round(wb.x + (wb.width - TOWN.w) / 2);
   const oy = Math.round(wb.y + (wb.height - TOWN.h) / 2);
   const objs = [], blockers = [];
@@ -430,13 +420,20 @@ function townBlocked(T, x, y) {
   return false;
 }
 
-// มอนของด่านก่อนหน้าต้องไม่เหลือในเมือง (กันกรณี loadStage ยังเสกมอน/บอสมาให้)
+// มอนของด่านก่อนหน้าต้องไม่เหลือในเมือง
 function townClearMonsters(m) {
   const GO = (typeof Phaser !== 'undefined') ? Phaser.GameObjects : null;
   const keep = new Set();
   if (m.player) keep.add(m.player);
   if (m.myLabel) keep.add(m.myLabel);
-  Object.values(m.others || {}).forEach(function (o) { if (o) { keep.add(o.s); keep.add(o.t); } });
+  // v9: เก็บ GameObject ทุกชิ้นของผู้เล่นอื่น (สไปรต์ ป้ายชื่อ ป้ายเลเวล ฯลฯ) ไม่ใช่แค่ o.s / o.t
+  Object.values(m.others || {}).forEach(function (o) {
+    if (!o) return;
+    Object.keys(o).forEach(function (k) {
+      const v = o[k];
+      if (v && typeof v === 'object' && v.scene) keep.add(v);
+    });
+  });
   const kill = function (o) { if (o && !keep.has(o) && o.scrollFactorX !== 0) { try { o.destroy(); } catch (e) {} } };
   const isVisual = function (o) {
     return !!(GO && o && (o instanceof GO.Text || o instanceof GO.Image || o instanceof GO.Graphics || o instanceof GO.Container));
@@ -460,7 +457,7 @@ function townClearMonsters(m) {
     if (g && typeof g.clear === 'function') { try { g.clear(true, true); } catch (e) {} }
   });
 
-  // 2) กวาดป้ายชื่อมอนที่ไม่ได้ผูกกับตัวมอน + ของตกแต่งด่านเก่า (หญ้า/หิน/บ่อ) ที่ loadStage วางไว้
+  // 2) กวาดป้ายชื่อมอนที่ไม่ได้ผูกกับตัวมอน + ของตกแต่งด่านเก่า
   const deco = (typeof MAP_IMAGES !== 'undefined') ? MAP_IMAGES : {};
   m.children.list.slice().forEach(function (o) {
     if (keep.has(o) || o.scrollFactorX === 0) return;
@@ -488,20 +485,20 @@ function townEnter(m) {
   try { m.invulnUntil = m.time.now + 3000; } catch (e) {}
   const b = document.getElementById('btn-to-town');
   if (b) b.style.display = 'none';
+  if (typeof m.netSyncPlayers === 'function') { try { m._syncNext = 0; m.netSyncPlayers(); } catch (e) {} }   // v9: เข้าเมืองแล้วขอรายชื่อผู้เล่นในห้องใหม่
   if (window.TOWN_NOTICE) {
     townDialog(m, '🏰 เมือง', window.TOWN_NOTICE, [{ label: 'ตกลง', primary: true }]);
     window.TOWN_NOTICE = null;
   }
 }
 
-// ทำงานทุกเฟรมตอนอยู่ในเมือง: เดินไปหา NPC, ชนอาคาร, กันออกนอกเมือง, เรียง depth
+// ทำงานทุกเฟรมตอนอยู่ในเมือง
 function townTick(m) {
   const T = m._town, p = m.player;
   if (!T || !p || !p.active) return;
-  m.autoMode = false;                       // ในเมืองไม่ออโต้
+  m.autoMode = false;
   const body = p.body, F = TOWN.feet;
 
-  // เดินอัตโนมัติไปหา NPC (ผู้เล่นขยับเองเมื่อไหร่ก็ยกเลิก)
   if (m.townGoal && body) {
     const v = body.velocity, mine = m._townMine;
     const userMoved = v.length() > 5 && (!mine || Math.abs(v.x - mine.x) > 5 || Math.abs(v.y - mine.y) > 5);
@@ -516,7 +513,6 @@ function townTick(m) {
     }
   }
 
-  // กันออกนอกเมือง + ชนอาคาร/พรอพ (แยกแกน = ไถลตามขอบได้)
   const B = T.bounds;
   let x = Phaser.Math.Clamp(p.x, B.x0 + 20, B.x1 - 20);
   let y = Phaser.Math.Clamp(p.y, B.y0 + 20, B.y1 - 24);
@@ -528,7 +524,6 @@ function townTick(m) {
   if (x !== p.x || y !== p.y) p.setPosition(x, y);
   T.lx = x; T.ly = y;
 
-  // เรียงลำดับซ้อน: ผู้เล่นเรา + คนอื่นที่เห็นในห้อง
   const dp = townDepth(y + F);
   p.setDepth(dp);
   if (m.myLabel && m.myLabel.setDepth) m.myLabel.setDepth(dp + 0.01);
@@ -539,7 +534,6 @@ function townTick(m) {
     if (o.t && o.t.setDepth) o.t.setDepth(d2 + 0.01);
   });
 
-  // ถึงตัว NPC แล้ว = เปิดบทสนทนา
   if (m.townPending) {
     const q = m.townPending;
     if (Math.hypot(q.x - x, q.y - (y + F)) < 110) {
@@ -550,7 +544,7 @@ function townTick(m) {
   }
 }
 
-// ---------- เข้า/ออกเมือง (ชื่อเดิม — ไฟล์อื่นเรียกได้เหมือนเดิม) ----------
+// ---------- เข้า/ออกเมือง ----------
 function townGoToTown(scene, notice, died) {
   if (inTown(scene) || scene._goingTown) return;
   const idx = townIdx();
@@ -559,7 +553,7 @@ function townGoToTown(scene, notice, died) {
   window.TOWN_NOTICE = notice || null;
   if (died) townRevive(scene);
   try { if (scene.closePanel) scene.closePanel(); } catch (e) {}
-  scene.time.delayedCall(30, function () { scene.loadStage(idx); });   // เลื่อนไปเฟรมถัดไป กันทำลายของกลางลูป update
+  scene.time.delayedCall(30, function () { scene.loadStage(idx); });
 }
 
 function townLeave(m) {
@@ -572,13 +566,11 @@ function townLeave(m) {
 (function patchMainForTown() {
   const target = (typeof Main === 'function') ? Main.prototype : Main;
 
-  // ฟังก์ชันกล่องข้อความ (เผื่อ TownHooks เดิมเรียก scene.dialog / domCard / domCloseBtn / closeDialog)
   if (!target.dialog)       target.dialog = function (t, x, b) { townDialog(this, t, x, b); };
   if (!target.domCard)      target.domCard = function (t) { return townDomCard(this, t); };
   if (!target.domCloseBtn)  target.domCloseBtn = function (c) { townCloseBtn(this, c); };
   if (!target.closeDialog)  target.closeDialog = function () { townCloseDialog(this); };
 
-  // โหลดอะตลาสภาพเมือง
   const origPreload = target.preload;
   target.preload = function () {
     if (origPreload) origPreload.apply(this, arguments);
@@ -588,7 +580,6 @@ function townLeave(m) {
     }
   };
 
-  // สร้างเสร็จ: ใส่ปุ่มกลับเมือง และเข้าเมืองทันที (เริ่มเกมที่เมือง)
   const origCreate = target.create;
   target.create = function () {
     if (origCreate) origCreate.apply(this, arguments);
@@ -608,7 +599,6 @@ function townLeave(m) {
     } catch (e) { console.warn('town patch failed', e); }
   };
 
-  // ทุกครั้งที่เปลี่ยนด่าน: ล้างของเมืองเก่า -> โหลดด่าน -> ถ้าเป็นเมืองให้สร้างเมือง
   const origLoad = target.loadStage;
   if (typeof origLoad === 'function') {
     target.loadStage = function () {
@@ -625,7 +615,6 @@ function townLeave(m) {
     };
   }
 
-  // HP หมด = กลับเมือง | อยู่ในเมืองทำงานของเมือง
   const origUpdate = target.update;
   target.update = function () {
     if (origUpdate) origUpdate.apply(this, arguments);
