@@ -1,34 +1,31 @@
-// ===== อาชีพคทา (mage) — แก้ความสามารถสกิลของคทาที่ไฟล์นี้ =====
-// สกิล 1 สายฟ้า     (mg_bolt) | ยิงสายฟ้าไปข้างหน้าเป็นแนวใหญ่ ติดไฟช็อต + บัพคริติคอลให้ตัวเอง 40% นาน 3 วิ | ลากเลือกทิศได้
-// สกิล 2 เวทวาป     (mg_nova) | วาปไปทางที่กำหนด + เพิ่มเกราะชั่วขณะ + รีเจนมานาเพิ่มขึ้นชั่วขณะ | ลากเลือกทิศได้
-// สกิล 3 ลูกไฟ      (mg_fire) | วางระเบิดลูกไฟวงกว้างลงพื้น 2 ครั้ง ติดสตั้น | ลากเล็งวางได้
-// สกิล 4 ธารน้ำแข็ง (mg_ice)  | วางวงน้ำแข็งลงพื้น ดาเมจ 3 ครั้ง มีโอกาสแช่แข็ง | ลากเล็งวางได้
-// อัลติ  ระเบิดมหาเวท         | ชาจพลัง 1 วิ แล้วระเบิดรอบตัววงกว้างมาก รุนแรง ติดแช่แข็ง + ไฟช็อต + เติมมานาเต็ม | คูลดาวน์ 60 วิ
-// dmg = ค่าฐาน | range = ระยะ/รัศมี | cd = คูลดาวน์ (มิลลิวินาที) | mp = มานา
-// scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส (ap = พลังเวท)
-// ** ตัวคูณดาเมจเวท (% ของพลังเวท) แก้ที่ AP_PCT ด้านล่างที่เดียว (1.2 = +120%) **
+// ===== อาชีพคทา (mage) — รวม สกิล + VFX + SFX ไว้ไฟล์เดียว =====
+// สกิล 1 สายฟ้า (mg_bolt) | สกิล 2 เวทวาป (mg_nova) | สกิล 3 ลูกไฟ (mg_fire) | สกิล 4 ธารน้ำแข็ง (mg_ice) | อัลติ ระเบิดมหาเวท
+// dmg = ค่าฐาน | range = ระยะ/รัศมี | cd = คูลดาวน์ (ms) | mp = มานา
+// ดาเมจ = dmg x เลเวลสกิล + AP_PCT x พลังเวท  (แก้ AP_PCT ที่เดียว: 1.2 = +120%)
+// *** ไฟล์นี้แทน MageVFX.js และ MageSFX.js แล้ว ลบ 2 ไฟล์นั้นออกจาก index.html ได้เลย ***
 (function () {
   const Classes = window.Classes;
-  if (!Classes) throw new Error('mage.js: ไม่พบ window.Classes -> _shared.js ไม่ทำงาน/โหลดไม่ขึ้น (ดู error ก่อนหน้า)');
+  if (!Classes) throw new Error('mage.js: ไม่พบ window.Classes -> shared.js ไม่ทำงาน/โหลดไม่ขึ้น');
 
   const P = Main.prototype;
   const clamp = Phaser.Math.Clamp;
-  const TEST_UNLOCK = true;     // true = ปลดล็อกสกิลเวททันทีเพื่อทดสอบ (ทดสอบเสร็จเปลี่ยนเป็น false ให้ได้จากหนังสือสกิล)
-  const MG_IDS = ['mg_fire', 'mg_ice', 'mg_bolt', 'mg_nova'];
-  const SHOCK_TICK = 500;       // ไฟช็อตลงดาเมจทุกกี่มิลลิวินาที (dps ต่อวินาทีถูกหารตามนี้)
-  const BOSS_CC_MUL = 0.5;      // บอสโดนสตั้น/แช่แข็งสั้นลงครึ่งหนึ่ง (ตั้ง 1 = เท่ามอนทั่วไป)
-  const ARMOR_STAT = null;      // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติจาก pdef/def/armor/defense)
-  const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
-  const MANA_TICK = 500;        // บัพรีเจนมานาเติมทุกกี่มิลลิวินาที
-  const CRIT_MUL = 1.5;         // ตัวคูณดาเมจเมื่อคริ (ใช้เฉพาะกรณี addStatBuff ใช้ไม่ได้ แล้วใช้ระบบคริสำรองในไฟล์นี้)
-  const CRIT_STAT = 'crit';     // ชื่อสเตตัสคริใน stats.js (ธนูตรึงขาใช้ 'crit' ค่าเป็น % ตรงๆ เช่น 40 = +40%)
-  const CRIT_KEYS = ['crit', 'critRate', 'critChance', 'cri', 'cr'];   // (ไม่ได้ใช้แล้ว เก็บไว้เผื่ออ้างอิง)
+  const TAU = Math.PI * 2;
 
-  // ตัวคูณดาเมจเวทเป็น % ของพลังเวท (ap) ของแต่ละสกิล: 1.2 = ดาเมจฐาน + 120% ของพลังเวท
-  // ธารน้ำแข็งโดน 3 ครั้ง จึงตั้งต่อครั้งต่ำกว่า | เวทวาปไม่มีดาเมจ
+  // ---------- ตั้งค่า ----------
+  const TEST_UNLOCK = true;     // true = ปลดล็อกสกิลเวททันทีเพื่อทดสอบ (เสร็จแล้วเปลี่ยนเป็น false)
+  const MG_IDS = ['mg_fire', 'mg_ice', 'mg_bolt', 'mg_nova'];
+  const SHOCK_TICK = 500;       // ไฟช็อตลงดาเมจทุกกี่ ms
+  const BOSS_CC_MUL = 0.5;      // บอสโดนสตั้น/แช่แข็งสั้นลงครึ่งหนึ่ง
+  const ARMOR_STAT = null;      // ชื่อสเตตัสเกราะใน stats.js (null = เดาอัตโนมัติ)
+  const ARMOR_KEYS = ['pdef', 'def', 'armor', 'defense', 'pdf'];
+  const MANA_TICK = 500;        // บัพรีเจนมานาเติมทุกกี่ ms
+  const CRIT_MUL = 1.5;         // ตัวคูณคริ (ใช้เฉพาะระบบสำรอง)
+  const CRIT_STAT = 'crit';     // ชื่อสเตตัสคริใน stats.js (ค่าเป็น % ตรงๆ)
+  const FX_QUALITY = 0.6;       // 0.3-1 | ปรับจำนวนอนุภาคเอฟเฟกต์ (มือถือแรงต่ำให้ลดลง)
+  const SHAKE = true;           // false = ปิดจอสั่น
+
   const AP_PCT = { mg_bolt: 1.2, mg_fire: 1.5, mg_ice: 0.8, ulti: 3.0 };
 
-  // ตัวช่วยเขียนข้อความอธิบายสกิล (แต่ละท่อนที่คั่นด้วย ' • ' = 1 บรรทัดในหน้าต่างสกิล)
   const pct = v => Math.round((v || 0) * 100);
   const secs = ms => (Math.round((ms || 0) / 100) / 10) + ' วิ';
   const pw = (def, lv, S) => {
@@ -37,11 +34,210 @@
     return isFinite(v) ? v : def.dmg;
   };
 
-  // ---------- ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้) ----------
+  // ============================================================
+  // SFX — ยังไม่มีไฟล์เสียง = ข้ามอัตโนมัติ (โหลดไฟล์เสียงด้วย key ด้านล่างเมื่อพร้อม)
+  // ============================================================
+  const SFX_KEYS = {
+    bolt: 'mage_bolt', teleport: 'mage_teleport', fire: 'mage_fire', ice: 'mage_ice',
+    iceHit: 'mage_ice_hit', ultimateCharge: 'mage_ultimate_charge', ultimate: 'mage_ultimate',
+  };
+  function sfx(scene, name, vol) {
+    try {
+      const key = SFX_KEYS[name];
+      if (!key || !scene.sound || !scene.cache.audio.exists(key)) return;
+      scene.sound.play(key, { volume: vol != null ? vol : 0.7 });
+    } catch (e) { /* ไม่มีเสียงก็ไม่เป็นไร */ }
+  }
+
+  // ============================================================
+  // VFX — วาดอย่างเดียว ไม่ยุ่งดาเมจ
+  // ============================================================
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const alive = s => !!(s && s.sys && s.sys.isActive());
+  const shake = (s, ms, i) => { if (SHAKE && s.cameras && s.cameras.main) s.cameras.main.shake(ms, i); };
+  const cnt = n => Math.max(2, Math.round(n * FX_QUALITY));
+
+  function spark(scene, x, y, color, count, speed, life, depth) {
+    for (let i = 0; i < cnt(count); i++) {
+      const a = Math.random() * TAU, s = rnd(speed * 0.35, speed);
+      const g = scene.add.circle(x, y, rnd(1, 3), color, rnd(0.55, 1)).setDepth(depth || 80);
+      scene.tweens.add({
+        targets: g, x: x + Math.cos(a) * s, y: y + Math.sin(a) * s, alpha: 0, scale: 0.1,
+        duration: rnd(life * 0.55, life), ease: 'Cubic.easeOut', onComplete: () => g.destroy(),
+      });
+    }
+  }
+
+  function ring(scene, x, y, radius, color, duration, depth) {
+    const g = scene.add.circle(x, y, radius, color, 0).setStrokeStyle(3, color, 0.85)
+      .setDepth(depth || 70).setScale(0.05);
+    scene.tweens.add({
+      targets: g, scale: 1, alpha: 0, duration: duration || 400, ease: 'Cubic.easeOut',
+      onComplete: () => g.destroy(),
+    });
+  }
+
+  // วงเวท (วาดที่ 0,0 แล้วย้ายตำแหน่ง เพื่อให้หมุนรอบจุดกึ่งกลางจริง)
+  function magicCircle(scene, x, y, radius, color, duration) {
+    const g = scene.add.graphics({ x: x, y: y }).setDepth(55);
+    g.lineStyle(2, color, 0.8); g.strokeCircle(0, 0, radius);
+    g.strokeCircle(0, 0, radius * 0.62);
+    g.lineStyle(1, color, 0.45);
+    for (let i = 0; i < 8; i++) {
+      const a = i * TAU / 8;
+      g.beginPath();
+      g.moveTo(Math.cos(a) * radius * 0.62, Math.sin(a) * radius * 0.62);
+      g.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
+      g.strokePath();
+    }
+    scene.tweens.add({
+      targets: g, angle: 180, alpha: 0, duration: duration || 900, ease: 'Cubic.easeOut',
+      onComplete: () => g.destroy(),
+    });
+  }
+
+  // เส้นสายฟ้าซิกแซก 1 เส้น (กราฟิกเดียว วาด 3 ชั้น)
+  function lightning(scene, x, y, ux, uy, length, width, depth) {
+    const nx = -uy, ny = ux, N = 10, pts = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, off = (i === 0 || i === N) ? 0 : rnd(-width, width);
+      pts.push({ x: x + ux * length * t + nx * off, y: y + uy * length * t + ny * off });
+    }
+    const g = scene.add.graphics().setDepth(depth || 80);
+    [[12, 0x7c5cff, 0.25], [6, 0x9d8cff, 0.65], [3, 0xffffff, 1]].forEach(s => {
+      g.lineStyle(s[0], s[1], s[2]);
+      g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.strokePath();
+    });
+    scene.tweens.add({ targets: g, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => g.destroy() });
+  }
+
+  const VFX = {};
+
+  // สกิล 1: สายฟ้า
+  VFX.bolt = function (scene, x, y, ux, uy, range, hw) {
+    const beam = scene.add.rectangle(x + ux * range / 2, y + uy * range / 2, range, hw * 2, 0x806cff, 0.13)
+      .setRotation(Math.atan2(uy, ux)).setDepth(57);
+    scene.tweens.add({ targets: beam, alpha: 0, scaleY: 1.4, duration: 300, onComplete: () => beam.destroy() });
+
+    for (let i = 0; i < 2; i++) {
+      scene.time.delayedCall(i * 40, () => {
+        if (alive(scene)) lightning(scene, x, y, ux, uy, range, hw * (i ? 0.25 : 0.45), 75 + i);
+      });
+    }
+    for (let i = 0; i < cnt(5); i++) {
+      const t = rnd(0.15, 0.9), side = Math.random() < 0.5 ? -1 : 1;
+      const bx = x + ux * range * t, by = y + uy * range * t;
+      const bd = unit(ux * 0.3 - uy * side, uy * 0.3 + ux * side);
+      scene.time.delayedCall(rnd(0, 100), () => {
+        if (alive(scene)) lightning(scene, bx, by, bd.x, bd.y, rnd(25, 65), 10, 73);
+      });
+    }
+    ring(scene, x, y, 45, 0xb59cff, 280, 76);
+    spark(scene, x, y, 0xffffff, 10, 55, 350, 82);
+    const ex = x + ux * range, ey = y + uy * range;
+    ring(scene, ex, ey, 70, 0x8e7cff, 360, 76);
+    spark(scene, ex, ey, 0xb8adff, 14, 100, 500, 82);
+    shake(scene, 100, 0.002);
+  };
+
+  // สกิล 2: วาป (ก่อน + หลัง)
+  VFX.blink = function (scene, x, y, ex, ey, ux, uy) {
+    magicCircle(scene, x, y, 42, 0xb68cff, 450);
+    ring(scene, x, y, 55, 0xa879ff, 350);
+    spark(scene, x, y, 0xe4d5ff, 14, 75, 350, 82);
+    const dist = Math.hypot(ex - x, ey - y);
+    for (let i = 0; i < 6; i++) {
+      const d = dist * i / 6, px = x + ux * d, py = y + uy * d;
+      const s = scene.add.circle(px, py, rnd(2, 5), 0xb99aff, 0.7).setDepth(76);
+      scene.tweens.add({
+        targets: s, x: px + ux * 30, y: py + uy * 30, alpha: 0, scale: 0.1,
+        duration: 250 + i * 20, onComplete: () => s.destroy(),
+      });
+    }
+    scene.time.delayedCall(70, () => {
+      if (!alive(scene)) return;
+      magicCircle(scene, ex, ey, 45, 0xe0c8ff, 550);
+      ring(scene, ex, ey, 65, 0xc39aff, 420);
+      spark(scene, ex, ey, 0xffffff, 14, 90, 450, 82);
+    });
+  };
+
+  // สกิล 3: ลูกไฟตก (ก่อนระเบิดครั้งแรก) + ระเบิดแต่ละครั้ง
+  VFX.fireMeteor = function (scene, x, y, radius, delay) {
+    magicCircle(scene, x, y, radius, 0xff6a28, 700);
+    const m = scene.add.circle(x - 30, y - radius - 100, 13, 0xffd05a, 1).setDepth(90);
+    scene.tweens.add({
+      targets: m, x: x, y: y, scale: 2, duration: delay || 400, ease: 'Quad.easeIn',
+      onComplete: () => m.destroy(),
+    });
+  };
+  VFX.fireBlast = function (scene, x, y, radius) {
+    const core = scene.add.circle(x, y, radius * 0.2, 0xfff4b0, 0.95).setDepth(78);
+    scene.tweens.add({ targets: core, scale: 2.5, alpha: 0, duration: 220, ease: 'Cubic.easeOut', onComplete: () => core.destroy() });
+    ring(scene, x, y, radius, 0xff7628, 330, 76);
+    ring(scene, x, y, radius * 0.7, 0xffc04a, 250, 77);
+    spark(scene, x, y, 0xffb52e, 22, radius * 0.9, 550, 83);
+    spark(scene, x, y, 0xfff1a0, 8, radius * 0.65, 400, 84);
+    shake(scene, 160, 0.003);
+  };
+
+  // สกิล 4: น้ำแข็งแตก (ต่อ 1 tick)
+  function iceShard(scene, cx, cy, big) {
+    const g = scene.add.graphics().setDepth(82);
+    g.fillStyle(Math.random() < 0.5 ? 0x9fe8ff : 0xd9f8ff, 0.85);
+    g.beginPath();
+    g.moveTo(cx, cy - rnd(8, big ? 18 : 12)); g.lineTo(cx + rnd(4, 7), cy);
+    g.lineTo(cx, cy + rnd(10, big ? 22 : 16)); g.lineTo(cx - rnd(4, 7), cy);
+    g.closePath(); g.fillPath();
+    scene.tweens.add({
+      targets: g, y: -rnd(15, 40), alpha: 0, duration: rnd(450, 750), ease: 'Cubic.easeOut',
+      onComplete: () => g.destroy(),
+    });
+  }
+  VFX.iceBurst = function (scene, x, y, radius) {
+    ring(scene, x, y, radius, 0x9deaff, 400, 76);
+    ring(scene, x, y, radius * 0.65, 0xd9f8ff, 330, 77);
+    for (let i = 0; i < cnt(10); i++) {
+      const a = Math.random() * TAU, r = rnd(radius * 0.25, radius * 0.9);
+      iceShard(scene, x + Math.cos(a) * r, y + Math.sin(a) * r, false);
+    }
+    spark(scene, x, y, 0xe8fbff, 16, radius * 0.75, 500, 84);
+  };
+
+  // อัลติ: ระเบิด (ส่วนชาจทำใน handler เพราะต้องตามตัวผู้เล่น)
+  VFX.ultBlast = function (scene, x, y, radius) {
+    const blast = scene.add.circle(x, y, 30, 0xffffff, 0.95).setDepth(90);
+    scene.tweens.add({ targets: blast, scale: radius / 30, alpha: 0, duration: 420, ease: 'Cubic.easeOut', onComplete: () => blast.destroy() });
+    ring(scene, x, y, radius, 0xb8f4ff, 520, 86);
+    ring(scene, x, y, radius * 0.78, 0xd3a4ff, 440, 87);
+    ring(scene, x, y, radius * 0.5, 0xffe98a, 350, 88);
+    const n = cnt(10);
+    for (let i = 0; i < n; i++) {
+      const a = i * TAU / n + rnd(-0.15, 0.15);
+      scene.time.delayedCall(rnd(0, 120), () => {
+        if (alive(scene)) lightning(scene, x, y, Math.cos(a), Math.sin(a), radius * rnd(0.65, 1), 30, 89);
+      });
+    }
+    for (let i = 0; i < cnt(16); i++) {
+      const a = Math.random() * TAU, r = rnd(radius * 0.45, radius);
+      iceShard(scene, x + Math.cos(a) * r, y + Math.sin(a) * r, true);
+    }
+    spark(scene, x, y, 0xffffff, 40, radius, 750, 92);
+    spark(scene, x, y, 0x9fe8ff, 24, radius * 0.8, 650, 93);
+    spark(scene, x, y, 0xd0a2ff, 24, radius * 0.65, 600, 94);
+    shake(scene, 400, 0.008);
+  };
+
+  window.MageVFX = VFX;   // เผื่อไฟล์อื่นเรียกใช้
+  window.MageSFX = { play: (scene, name, cfg) => sfx(scene, name, cfg && cfg.volume) };
+
+  // ============================================================
+  // ข้อมูลสกิล (ปรับตัวเลขได้ตรงนี้)
+  // ============================================================
   Classes.basic('mage', { name: 'โจมตี', dmg: 8, range: 380, cd: 700, type: 'proj', class: 'mage' });
 
-  // สกิล 1: สายฟ้าแนวใหญ่ ยาว range กว้าง halfW*2 | ไฟช็อต: ดาเมจ shockMul ของดาเมจสกิล ต่อวินาที นาน shockMs
-  // critBuff = บัพโอกาสคริติคอลให้ตัวเองตอนใช้สกิล (0.4 = 40%) นาน critMs มิลลิวินาที
   Classes.skill('mg_bolt', {
     name: 'สายฟ้า', class: 'mage', type: 'mbolt', noInfo: true,
     dmg: 39, range: 380, halfW: 60, cd: 3500, mp: 20, shockMul: 0.25, shockMs: 4000, critBuff: 0.4, critMs: 3000,
@@ -55,8 +251,6 @@
       'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
-  // สกิล 2: เวทวาป — วาประยะ range ไปทางที่เลือก | เพิ่มเกราะ armor นาน armorMs มิลลิวินาที
-  // รีเจนมานา: mpRegen = ฟื้นมานาเพิ่มต่อวินาที เป็น % ของมานาสูงสุด (0.05 = 5%/วิ) นาน mpRegenMs มิลลิวินาที
   Classes.skill('mg_nova', {
     name: 'เวทวาป', class: 'mage', type: 'mblink', noInfo: true,
     dmg: 0, range: 220, cd: 8000, mp: 16, armor: 25, armorMs: 4000, mpRegen: 0.05, mpRegenMs: 6000,
@@ -69,7 +263,6 @@
       'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
-  // สกิล 3: ลูกไฟวงกว้าง — วางลงพื้นรัศมี range ระเบิด hits ครั้ง (ครั้งแรกหลังเตือน delay มิลลิวินาที ครั้งต่อไปห่างกัน hitMs) | สตั้น stunMs
   Classes.skill('mg_fire', {
     name: 'ลูกไฟ', class: 'mage', type: 'mfire', noInfo: true,
     dmg: 45, range: 200, cd: 7000, mp: 24, delay: 400, hits: 2, hitMs: 450, stunMs: 1500,
@@ -82,7 +275,6 @@
       'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
-  // สกิล 4: ธารน้ำแข็ง — วางวงรัศมี range ดาเมจ ticks ครั้ง ห่างกัน tickMs | ทุกครั้งมีโอกาส freezeChance (0-1) แช่แข็ง freezeMs
   Classes.skill('mg_ice', {
     name: 'ธารน้ำแข็ง', class: 'mage', type: 'mice', noInfo: true,
     dmg: 20, range: 170, cd: 6000, mp: 20,
@@ -96,8 +288,6 @@
       'คูลดาวน์ ' + Classes.cdText(def, S)].join(' • '),
   });
 
-  // อัลติ ระเบิดมหาเวท — ชาจพลัง chargeMs มิลลิวินาที แล้วระเบิดรอบตัวรัศมี range | แช่แข็ง freezeMs + ไฟช็อต shockMs | คูลดาวน์ 60 วิ
-  // mpFull: true = เติมมานาเต็มทันทีหลังระเบิด (ตั้ง false ถ้าไม่ต้องการ)
   Classes.ulti('mage', {
     name: 'ระเบิดมหาเวท', dmg: 220, range: 420, cd: 60000, mp: 60, type: 'mult',
     chargeMs: 1000, freezeMs: 2500, shockMul: 0.3, shockMs: 5000, mpFull: true, noInfo: true,
@@ -119,17 +309,19 @@
       window.DIR_CFG.mg_bolt = { len: SKILL_DEFS.mg_bolt.range, w: SKILL_DEFS.mg_bolt.halfW };
       window.DIR_CFG.mg_nova = { len: SKILL_DEFS.mg_nova.range, w: 18 };
     }
-    if (window.GROUND_CFG) delete window.GROUND_CFG.mg_nova;     // เวทวาปเป็นแบบเลือกทิศ ไม่ใช่วางพื้นที่แล้ว
-    if (window.GROUND_ULTI) delete window.GROUND_ULTI.mage;      // อัลติใหม่ระเบิดรอบตัว ไม่ต้องลากเล็ง
+    if (window.GROUND_CFG) delete window.GROUND_CFG.mg_nova;
+    if (window.GROUND_ULTI) delete window.GROUND_ULTI.mage;
   })();
 
-  // ---------- ตัวช่วย ----------
+  // ============================================================
+  // ตัวช่วย
+  // ============================================================
   function unit(fx, fy) {
     const l = Math.hypot(fx, fy);
     return l < 0.001 ? { x: 1, y: 0 } : { x: fx / l, y: fy / l };
   }
 
-  // ทิศยิงสายฟ้า: ลากเลือก > หันหามอนที่ล็อก > ทิศที่หันอยู่
+  // ทิศสายฟ้า: ลากเลือก > หันหามอนที่ล็อก > ทิศที่หันอยู่
   function aimDir(scene, gp) {
     if (gp && gp.dir) return unit(gp.x, gp.y);
     const p = scene.player, t = scene.target && scene.target.active ? scene.target : null;
@@ -137,7 +329,7 @@
     return unit(scene.facing.x, scene.facing.y);
   }
 
-  // ทิศวาป: ลากเลือก > ทิศที่กำลังเดิน (จอย/คีย์บอร์ด) > ทิศที่หันอยู่ (ไม่หันหามอน เพราะไม่ต้องการวาปเข้าหามอนโดยไม่ตั้งใจ)
+  // ทิศวาป: ลากเลือก > ทิศที่กำลังเดิน > ทิศที่หันอยู่
   function moveDir(scene, gp) {
     if (gp && gp.dir) return unit(gp.x, gp.y);
     let vx = scene.joy ? scene.joy.dx : 0, vy = scene.joy ? scene.joy.dy : 0;
@@ -151,7 +343,7 @@
     return unit(scene.facing.x, scene.facing.y);
   }
 
-  // จุดตกของสกิลวางพื้นที่ (ที่ลากเล็งไว้จาก aimDash.js) ถ้าไม่มี ใช้ตำแหน่งที่ได้รับ
+  // จุดตกของสกิลวางพื้นที่ (ที่ลากเล็งไว้จาก aimDash.js)
   function takeGround(scene, def, x, y) {
     const q = scene._groundQ;
     if (q && q.length) {
@@ -162,11 +354,16 @@
   }
 
   const ccMs = (e, ms) => (e.isBoss ? ms * BOSS_CC_MUL : ms);
-
-  // ติดไฟช็อต: dps ต่อวินาที นาน ms
   function shock(scene, e, dps, ms) { Classes.status(scene, e, 'shock', { dps: dps }, ms); }
+  const warnOnce = (scene, msg, toast) => {
+    if (scene.time.now > (scene._mgWarnAt || 0)) {
+      scene._mgWarnAt = scene.time.now + 4000;
+      console.warn('mage.js: ' + msg);
+      if (toast) scene.toastMsg(toast);
+    }
+  };
 
-  // บัพสเตตัสตัวเอง (ผ่านระบบบัพของ stats.js) คืน true ถ้าสำเร็จ
+  // บัพสเตตัสตัวเองผ่าน addStatBuff
   function statBuff(scene, id, key, value, ms) {
     try {
       if (key && scene.addStatBuff) {
@@ -185,30 +382,22 @@
     } catch (e) { console.error('armorBuff', e); }
     if (statBuff(scene, 'mg_armor', key, def.armor, def.armorMs)) {
       scene.toastMsg('🛡 เกราะ +' + def.armor + ' นาน ' + (def.armorMs / 1000) + ' วิ');
-    } else if (scene.time.now > (scene._mgWarnAt || 0)) {
-      scene._mgWarnAt = scene.time.now + 4000;
-      console.warn('mage.js: เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ใส่ชื่อที่ ARMOR_STAT');
-      scene.toastMsg('⚠ เพิ่มเกราะไม่ได้ (ดู console)');
+    } else {
+      warnOnce(scene, 'เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ใส่ชื่อที่ ARMOR_STAT', '⚠ เพิ่มเกราะไม่ได้ (ดู console)');
     }
   }
 
-  // บัพคริติคอลให้ตัวเอง (จากสายฟ้า) | ร่ายซ้ำ = รีเฟรชเวลา ไม่ซ้อนกัน
-  // ใช้วิธีเดียวกับธนูตรึงขา: addStatBuff({ crit: เปอร์เซ็นต์ตรงๆ }) เช่น 40 = +40%
-  // ถ้า addStatBuff ใช้ไม่ได้ จะใช้ระบบสำรอง: ระหว่างบัพ ดาเมจจากสกิลเมจมีโอกาสคริ x CRIT_MUL
+  // บัพคริ (ร่ายซ้ำ = รีเฟรชเวลา) ถ้า addStatBuff ใช้ไม่ได้ ใช้ระบบสำรอง
   function critBuff(scene, def) {
-    const pct = Math.round(def.critBuff * 100);   // 0.4 -> 40
-    if (statBuff(scene, 'mg_crit', CRIT_STAT, pct, def.critMs)) {
+    const c = Math.round(def.critBuff * 100);
+    if (statBuff(scene, 'mg_crit', CRIT_STAT, c, def.critMs)) {
       scene._mgCrit = null;
     } else {
       scene._mgCrit = { until: scene.time.now + def.critMs, chance: def.critBuff };
-      if (scene.time.now > (scene._mgWarnAt || 0)) {
-        scene._mgWarnAt = scene.time.now + 4000;
-        console.warn('mage.js: addStatBuff ใช้ไม่ได้ -> ใช้ระบบคริสำรอง');
-      }
+      warnOnce(scene, 'addStatBuff ใช้ไม่ได้ -> ใช้ระบบคริสำรอง');
     }
-    scene.toastMsg('💥 คริติคอล +' + pct + '% นาน ' + (def.critMs / 1000) + ' วิ');
+    scene.toastMsg('💥 คริติคอล +' + c + '% นาน ' + (def.critMs / 1000) + ' วิ');
   }
-  // ระบบคริสำรอง (ทำงานเฉพาะเมื่อ critBuff ใช้สเตตัสจริงไม่ได้)
   function critDmg(scene, e, dmg) {
     const c = scene._mgCrit;
     if (c && scene.time.now < c.until && Math.random() < c.chance) {
@@ -219,7 +408,6 @@
   }
 
   // ---------- มานา ----------
-  // หามานาสูงสุด (รองรับหลายชื่อ เผื่อระบบสเตตัสตั้งชื่อต่างกัน) คืน 0 ถ้าหาไม่เจอ
   function maxMpOf(scene) {
     try {
       if (typeof scene.maxMp === 'function') return scene.maxMp() || 0;
@@ -228,16 +416,12 @@
     } catch (e) { console.error('maxMpOf', e); }
     return 0;
   }
-
-  // บัพรีเจนมานาเพิ่ม (จากเวทวาป) | ร่ายซ้ำ = รีเฟรชเวลา ไม่ซ้อนกัน
   function manaRegenBuff(scene, def) {
     if (!def.mpRegen || !def.mpRegenMs) return;
     const now = scene.time.now;
     scene._mgMana = { until: now + def.mpRegenMs, rate: def.mpRegen, next: now + MANA_TICK };
-    scene.toastMsg('💧 รีเจนมานา +' + Math.round(def.mpRegen * 100) + '%/วิ นาน ' + (def.mpRegenMs / 1000) + ' วิ');
+    scene.toastMsg('💧 รีเจนมานา +' + pct(def.mpRegen) + '%/วิ นาน ' + (def.mpRegenMs / 1000) + ' วิ');
   }
-
-  // เรียกทุกเฟรม: เติมมานาเพิ่มตามบัพ
   function tickMana(scene) {
     const b = scene._mgMana;
     if (!b) return;
@@ -250,30 +434,13 @@
     st.mp = Math.min(max, st.mp + max * b.rate * (MANA_TICK / 1000));
   }
 
-  // วาดสายฟ้าซิกแซกตามทิศ
-  function drawBolt(scene, p, u, len, hw) {
-    const nx = -u.y, ny = u.x, N = 10, pts = [];
-    for (let i = 0; i <= N; i++) {
-      const t = i / N, off = (i === 0 || i === N) ? 0 : (Math.random() - 0.5) * 36;
-      pts.push({ x: p.x + u.x * len * t + nx * off, y: p.y + u.y * len * t + ny * off });
-    }
-    const area = scene.add.rectangle(p.x + u.x * len / 2, p.y + u.y * len / 2, len, hw * 2, 0xffe14a, 0.18)
-      .setRotation(Math.atan2(u.y, u.x)).setDepth(58);
-    const g = scene.add.graphics().setDepth(62);
-    [[14, 0xffe14a, 0.55], [4, 0xffffff, 1]].forEach(s => {
-      g.lineStyle(s[0], s[1], s[2]);
-      g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-      g.strokePath();
-    });
-    scene.tweens.add({ targets: [g, area], alpha: 0, duration: 320, onComplete: () => { g.destroy(); area.destroy(); } });
-  }
-
-  // ---------- เอฟเฟกต์สกิล (this = scene) ----------
-  // สกิล 1: สายฟ้าแนวใหญ่ + ไฟช็อต + บัพคริ
+  // ============================================================
+  // เอฟเฟกต์สกิล (this = scene)
+  // ============================================================
   Classes.handlers.mbolt = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player, u = unit(fx, fy), len = def.range, hw = def.halfW;
-    drawBolt(scene, p, u, len, hw);
+    VFX.bolt(scene, p.x, p.y, u.x, u.y, len, hw);
+    sfx(scene, 'bolt');
     const dps = Math.round(dmg * def.shockMul);
     critBuff(scene, def);
     scene.enemies.getChildren().slice().forEach(e => {
@@ -286,7 +453,6 @@
     });
   };
 
-  // สกิล 2: วาป + เกราะ + รีเจนมานา
   Classes.handlers.mblink = function (def, x, y, dmg, fx, fy) {
     const scene = this, p = scene.player, u = unit(fx, fy);
     let d = def.range;
@@ -294,24 +460,26 @@
       while (d > 0 && scene.segmentBlocked(p.x, p.y, p.x + u.x * d, p.y + u.y * d, 14)) d -= 15;
     }
     d = Math.max(0, d);
-    const nx = clamp(p.x + u.x * d, 20, WORLD_W - 20), ny = clamp(p.y + u.y * d, 20, WORLD_H - 20);
-    scene.flash(p.x, p.y, 38, 0xb98cff);
+    const sx = p.x, sy = p.y;
+    const nx = clamp(sx + u.x * d, 20, WORLD_W - 20), ny = clamp(sy + u.y * d, 20, WORLD_H - 20);
+    VFX.blink(scene, sx, sy, nx, ny, u.x, u.y);
+    sfx(scene, 'teleport');
     if (p.body) p.body.reset(nx, ny); else p.setPosition(nx, ny);
-    scene.flash(nx, ny, 48, 0xe0c8ff);
     armorBuff(scene, def);
     manaRegenBuff(scene, def);
   };
 
-  // สกิล 3: ลูกไฟวงกว้างวางพื้น (เตือนสั้นๆ แล้วระเบิด hits ครั้ง) + สตั้น
   Classes.handlers.mfire = function (def, x, y, dmg) {
     const scene = this, pt = takeGround(scene, def, x, y);
     const hits = def.hits || 1, gap = def.hitMs || 400;
     const warn = scene.add.circle(pt.x, pt.y, def.range, 0xff6a2a, 0.12).setStrokeStyle(3, 0xff6a2a, 0.8).setDepth(40);
     const tw = scene.tweens.add({ targets: warn, alpha: 0.5, yoyo: true, repeat: -1, duration: 120 });
+    VFX.fireMeteor(scene, pt.x, pt.y, def.range, def.delay);
+    sfx(scene, 'fire');
     for (let h = 0; h < hits; h++) {
       scene.time.delayedCall(def.delay + h * gap, () => {
-        scene.flash(pt.x, pt.y, def.range, 0xff7a2a);
-        scene.time.delayedCall(90, () => scene.flash(pt.x, pt.y, def.range * 0.6, 0xffffff));
+        if (!alive(scene)) return;
+        VFX.fireBlast(scene, pt.x, pt.y, def.range);
         const list = Classes.enemiesIn(scene, pt.x, pt.y, def.range);
         list.forEach(e => {
           Classes.status(scene, e, 'stun', {}, ccMs(e, def.stunMs));
@@ -323,13 +491,16 @@
     }
   };
 
-  // สกิล 4: วงน้ำแข็งวางพื้น ดาเมจ ticks ครั้ง มีโอกาสแช่แข็ง
   Classes.handlers.mice = function (def, x, y, dmg) {
     const scene = this, pt = takeGround(scene, def, x, y);
+    magicCircle(scene, pt.x, pt.y, def.range, 0x79dfff, 950);
+    sfx(scene, 'ice');
     const zone = scene.add.circle(pt.x, pt.y, def.range, 0x9fe8ff, 0.18).setStrokeStyle(2, 0xffffff, 0.7).setDepth(40);
     for (let i = 0; i < def.ticks; i++) {
       scene.time.delayedCall(i * def.tickMs + 150, () => {
-        scene.flash(pt.x, pt.y, def.range, 0x9fe8ff);
+        if (!alive(scene)) return;
+        VFX.iceBurst(scene, pt.x, pt.y, def.range);
+        sfx(scene, 'iceHit', 0.5);
         Classes.enemiesIn(scene, pt.x, pt.y, def.range).forEach(e => {
           if (Math.random() < def.freezeChance) {
             Classes.status(scene, e, 'freeze', {}, ccMs(e, def.freezeMs));
@@ -342,29 +513,27 @@
     scene.time.delayedCall((def.ticks - 1) * def.tickMs + 500, () => zone.destroy());
   };
 
-  // อัลติ: ชาจพลัง 1 วิ (chargeMs) แล้วระเบิดรอบตัว + แช่แข็ง + ไฟช็อต + เติมมานาเต็มทันที
+  // อัลติ: ชาจพลัง (ตามตัวผู้เล่น) -> ระเบิดรอบตัว + แช่แข็ง + ไฟช็อต + เติมมานาเต็ม
   Classes.handlers.mult = function (def, x, y, dmg) {
     const scene = this, p = scene.player;
     const charge = def.chargeMs || 0;
 
-    // วงเตือนขอบเขตระเบิด + วงพลังที่ค่อยๆ ขยายเข้าหาขอบ
     const edge = scene.add.circle(p.x, p.y, def.range, 0x9fe8ff, 0.06).setStrokeStyle(3, 0xffffff, 0.7).setDepth(59);
     const core = scene.add.circle(p.x, p.y, def.range, 0xffe14a, 0.25).setStrokeStyle(3, 0xffe14a, 0.9).setDepth(60).setScale(0.05);
     scene.tweens.add({ targets: core, scale: 1, duration: Math.max(1, charge), ease: 'Quad.easeIn' });
     const follow = scene.time.addEvent({
       delay: 16, loop: true,
-      callback: () => { if (p && p.active) { edge.setPosition(p.x, p.y); core.setPosition(p.x, p.y); } }
+      callback: () => { if (p && p.active) { edge.setPosition(p.x, p.y); core.setPosition(p.x, p.y); } },
     });
+    sfx(scene, 'ultimateCharge');
     if (charge > 0) scene.popText(p.x, p.y - 60, '⚡ ชาจพลัง...', '#ffe28a');
 
     scene.time.delayedCall(charge, () => {
       follow.remove(false); edge.destroy(); core.destroy();
-      if (!p || !p.active || (scene.stats && scene.stats.hp <= 0)) return;
+      if (!alive(scene) || !p || !p.active || (scene.stats && scene.stats.hp <= 0)) return;
 
-      const ring = scene.add.circle(p.x, p.y, def.range, 0x9fe8ff, 0.25).setStrokeStyle(4, 0xffffff, 0.9).setDepth(60).setScale(0.1);
-      scene.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 450, onComplete: () => ring.destroy() });
-      scene.flash(p.x, p.y, def.range * 0.5, 0xffe14a);
-      scene.cameras.main.shake(260, 0.006);
+      VFX.ultBlast(scene, p.x, p.y, def.range);
+      sfx(scene, 'ultimate');
       const dps = Math.round(dmg * def.shockMul);
       const list = Classes.enemiesIn(scene, p.x, p.y, def.range);
       list.forEach(e => {
@@ -374,17 +543,14 @@
       });
       if (list.length) scene.popText(p.x, p.y - 50, '❄ แช่แข็ง + ⚡ ไฟช็อต!', '#d9f4ff');
 
-      // เติมมานาเต็มทันที (หลังหักมานาที่ใช้ร่ายแล้ว)
       if (def.mpFull && scene.stats) {
         const max = maxMpOf(scene);
         if (max > 0) {
           scene.stats.mp = max;
-          scene.flash(p.x, p.y, 44, 0x4aa8ff);
+          ring(scene, p.x, p.y, 60, 0x4aa8ff, 400, 95);
           scene.popText(p.x, p.y - 72, '💧 มานาเต็ม!', '#7cc4ff');
-        } else if (scene.time.now > (scene._mgWarnAt || 0)) {
-          scene._mgWarnAt = scene.time.now + 4000;
-          console.warn('mage.js: เติมมานาไม่ได้ (ไม่พบ maxMp() หรือ stats.maxMp)');
-          scene.toastMsg('⚠ เติมมานาไม่ได้ (ดู console)');
+        } else {
+          warnOnce(scene, 'เติมมานาไม่ได้ (ไม่พบ maxMp() หรือ stats.maxMp)', '⚠ เติมมานาไม่ได้ (ดู console)');
         }
       }
     });
@@ -395,7 +561,7 @@
   P.useSkill = function (idx, gp) {
     const sid = this.slots && this.slots[idx];
     const def = sid && SKILL_DEFS[sid];
-    if (def && def.type === 'mblink' && this.autoMode) return;   // บอทอย่าวาปมั่ว
+    if (def && def.type === 'mblink' && this.autoMode) return;
     if (def && (def.type === 'mbolt' || def.type === 'mblink') && !this.panel &&
         this.time.now >= (this.cdEnd['slot' + idx] || 0) && this.stats.mp >= def.mp) {
       const d = def.type === 'mbolt' ? aimDir(this, gp) : moveDir(this, gp);
@@ -404,8 +570,7 @@
     return _useSkill.call(this, idx, gp);
   };
 
-  // ---------- สถานะบนมอน: แช่แข็ง (freeze) / ไฟช็อต (shock) + บัพรีเจนมานาของตัวเรา ----------
-  // แช่แข็ง: มอนหยุดเดิน (สีฟ้า) | ไฟช็อต: ลดเลือดทุก SHOCK_TICK มิลลิวินาที (สีเหลือง)
+  // ---------- สถานะบนมอน: แช่แข็ง / ไฟช็อต + บัพรีเจนมานา ----------
   const _ue = P.updateEnemies;
   P.updateEnemies = function (time) {
     _ue.call(this, time);
@@ -415,7 +580,6 @@
       const fx = e._fx;
       if (!fx || !e.active) return;
 
-      // กันกรณีสตั้น (id 'stun') ยังไม่ถูกจัดการจากไฟล์อื่น: หยุดเดินไว้เสมอ
       if (fx.stun && time < fx.stun.until && e.body) e.setVelocity(0, 0);
 
       const fr = fx.freeze;
