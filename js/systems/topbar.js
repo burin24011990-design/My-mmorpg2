@@ -1,6 +1,7 @@
 // ===== แถบเมนูด้านบน (ไอคอนวาดเอง) =====
 // ปรับขนาดปุ่มที่นี่: w = กว้าง, h = สูง, gap = ระยะห่าง, top = ระยะจากขอบบน
-const TB = { w: 62, h: 58, gap: 6, top: 8 };
+// bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (อยู่กลางจอ)
+const TB = { w: 62, h: 58, gap: 6, top: 8, bigW: 88, bigH: 76 };
 
 Main.prototype.makeTopIcons = function () {
   if (this.textures.exists('tb_bag')) return;
@@ -67,20 +68,44 @@ Main.prototype.makeTopIcons = function () {
   g.destroy();
 };
 
-Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick) {
+// ตำแหน่งช่องของแต่ละปุ่ม
+// - เลือกด่าน: กึ่งกลางจอด้านบน ใหญ่กว่าปุ่มอื่น
+// - ปุ่มอื่น: เรียง 2 แถว x 4 คอลัมน์ ชิดขวา (shopBtn / cashBtn เตรียมช่องไว้ให้ไฟล์ร้านค้า/ร้านแคชมาใช้)
+Main.prototype.topSlot = function (key) {
+  if (key === 'stageBtn') {
+    return { x: Math.round(W / 2 - TB.bigW / 2), y: TB.top, w: TB.bigW, h: TB.bigH, big: true };
+  }
+  const rows = [
+    ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn'],
+    ['equipBtn', 'statusBtn', 'shopBtn', 'cashBtn'],
+  ];
+  const cols = 4;
+  for (let r = 0; r < rows.length; r++) {
+    const c = rows[r].indexOf(key);
+    if (c >= 0) {
+      const x0 = W - 12 - (cols * TB.w + (cols - 1) * TB.gap);
+      return { x: x0 + c * (TB.w + TB.gap), y: TB.top + r * (TB.h + TB.gap), w: TB.w, h: TB.h, big: false };
+    }
+  }
+  return null;
+};
+
+Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick, big) {
   const cx = x + w / 2, cy = y + h / 2;
   const bg = this.add.graphics().setScrollFactor(0).setDepth(98);
   const draw = (down) => {
     bg.clear();
     bg.fillStyle(color, down ? 1 : 0.92); bg.fillRoundedRect(x, y, w, h, 9);
     bg.fillStyle(0xffffff, down ? 0.05 : 0.14); bg.fillRoundedRect(x + 2, y + 2, w - 4, h * 0.4, 7);
-    bg.lineStyle(2, down ? 0xffe28a : 0x8a6a32, 1); bg.strokeRoundedRect(x, y, w, h, 9);
+    bg.lineStyle(big ? 3 : 2, down ? 0xffe28a : (big ? 0xffd45c : 0x8a6a32), 1); bg.strokeRoundedRect(x, y, w, h, 9);
   };
   draw(false);
   const c = this.add.rectangle(cx, cy, w, h, color, 0.01).setScrollFactor(0).setDepth(99).setInteractive();
-  const icon = this.add.image(cx, cy - 8, iconKey).setDisplaySize(34, 34).setScrollFactor(0).setDepth(101);
-  const t = this.add.text(cx, y + h - 10, label, { fontFamily: 'Mitr, sans-serif', fontSize: '11px', color: '#fff', stroke: '#000', strokeThickness: 3 })
-    .setOrigin(0.5).setScrollFactor(0).setDepth(101);
+  const isz = big ? 48 : 34;
+  const icon = this.add.image(cx, cy - (big ? 11 : 8), iconKey).setDisplaySize(isz, isz).setScrollFactor(0).setDepth(101);
+  const t = this.add.text(cx, y + h - (big ? 12 : 10), label, {
+    fontFamily: 'Mitr, sans-serif', fontSize: big ? '15px' : '11px', color: '#fff', stroke: '#000', strokeThickness: 3
+  }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
   c.on('pointerdown', () => { draw(true); onClick(); });
   c.on('pointerup', () => draw(false));
   c.on('pointerout', () => draw(false));
@@ -98,9 +123,8 @@ Main.prototype.setupTopBar = function () {
     ['tb_map',    'เลือกด่าน',  0x2a4a5a, () => this.openStageSelect(),      'stageBtn'],
     ['tb_chart',  'สเตตัส',     0x3a2a4a, () => this.openStatusPanel(),      'statusBtn'],
   ];
-  let x = W - 12 - (items.length * TB.w + (items.length - 1) * TB.gap);
   items.forEach(it => {
-    this[it[4]] = this.makeTopBtn(x, TB.top, TB.w, TB.h, it[0], it[1], it[2], it[3]);
-    x += TB.w + TB.gap;
+    const s = this.topSlot(it[4]);
+    this[it[4]] = this.makeTopBtn(s.x, s.y, s.w, s.h, it[0], it[1], it[2], it[3], s.big);
   });
 };
