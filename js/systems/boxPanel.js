@@ -1,5 +1,5 @@
 // js/systems/boxPanel.js — ปุ่ม 📦 + หน้าต่างเปิดกล่องเงิน (ใช้ ServerBoxes)
-// + จัดตำแหน่ง: กล่องอยู่ข้างปุ่ม "จุติ" / ปุ่มยา ATK DEF HP+ เรียงมุมซ้ายล่าง
+// + จัดตำแหน่ง: กล่องอยู่ข้างปุ่ม "จุติ" / ปุ่มยา ATK DEF HP+ เรียงมุมซ้ายล่าง / ปุ่มยา HP % มุมขวาล่าง
 // แนวตั้ง: ปุ่มกล่องอยู่ใต้ปุ่ม "เลือกด่าน" / แผงอยู่กลางจอ กว้างไม่เกินจอ
 (function () {
   const SB = window.ServerBoxes;
@@ -14,6 +14,11 @@
   const POTION_GAP = 8;       // ระยะห่างระหว่างปุ่มยา (px)
   const POTION_EDGE = 8;      // ระยะจากขอบซ้าย/ล่าง (px)
   const BOX_GAP = 8;          // ระยะห่างปุ่มกล่องกับปุ่มจุติ (px)
+
+  // ----- ปุ่มยาเพิ่มเลือดอัตโนมัติ "HP xx%" (ปรับได้) -----
+  const HP_POT_SCALE = 0.6;   // ขนาดปุ่ม (1 = เดิม, ยิ่งน้อยยิ่งเล็ก)
+  const HP_POT_RIGHT = 8;     // ระยะจากขอบขวา (px) เพิ่ม = ขยับเข้ากลางจอ
+  const HP_POT_BOTTOM = 8;    // ระยะจากขอบล่าง (px) เพิ่ม = ขยับขึ้น
 
   // ----- ค่าสำหรับจอแนวตั้ง (ปรับได้) -----
   const BOX_SIZE_PORTRAIT = 40;   // ขนาดปุ่มกล่อง (px)
@@ -223,7 +228,39 @@
     });
   }
 
-  function place() { placeBox(); placePotions(); }
+  // ---------- ปุ่มยาเพิ่มเลือด "HP 20%" : ย่อและย้ายไปมุมขวาล่าง ----------
+  const HP_POT_RE = /^HP\s*\d+\s*%$/;
+  let hpPotEl = null;
+
+  function locateHpPotion() {
+    const leaves = findLeaves(HP_POT_RE);
+    if (!leaves.length) return null;
+    let n = leaves[0];
+    while (n.parentElement && n.parentElement !== document.body) {
+      const p = n.parentElement;
+      if (p.offsetWidth > 200 || p.offsetHeight > 200) break;
+      n = p;
+    }
+    return n;
+  }
+
+  function placeHpPotion() {
+    if (!hpPotEl || !hpPotEl.isConnected) {
+      hpPotEl = locateHpPotion();
+      if (!hpPotEl) return;
+    }
+    const el = hpPotEl;
+    setImp(el, 'position', 'fixed');
+    setImp(el, 'right', 'calc(env(safe-area-inset-right, 0px) + ' + HP_POT_RIGHT + 'px)');
+    setImp(el, 'bottom', 'calc(env(safe-area-inset-bottom, 0px) + ' + HP_POT_BOTTOM + 'px)');
+    setImp(el, 'left', 'auto');
+    setImp(el, 'top', 'auto');
+    setImp(el, 'margin', '0');
+    setImp(el, 'transform', 'scale(' + HP_POT_SCALE + ')');
+    setImp(el, 'transform-origin', 'right bottom');
+  }
+
+  function place() { placeBox(); placePotions(); placeHpPotion(); }
 
   // โชว์ปุ่มเฉพาะตอนเข้าเกมแล้ว
   setInterval(function () {
