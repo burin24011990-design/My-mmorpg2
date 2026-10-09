@@ -14,8 +14,8 @@ const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
 // ===== ปรับความแรงมอนสเตอร์ทั้งหมด (ปรับตรงนี้) =====
-const MONSTER_DMG_SCALE = 0.6;         // ตัวคูณพลังโจมตีมอนทุกชนิด (1 = เดิม, 0.6 = เหลือ 60%)
-const MONSTER_ATK_INTERVAL_MUL = 1.7;  // ตัวคูณช่วงเวลาระหว่างโจมตี (1 = เดิม, 1.6 = ช้าลง 1.6 เท่า)
+const MONSTER_DMG_SCALE = 0.1;         // ตัวคูณพลังโจมตีมอนทุกชนิด (1 = เดิม, 0.6 = เหลือ 60%)
+const MONSTER_ATK_INTERVAL_MUL = 2.7;  // ตัวคูณช่วงเวลาระหว่างโจมตี (1 = เดิม, 1.6 = ช้าลง 1.6 เท่า)
 // โอกาสดรอปหนังสือสกิล (ปรับตรงนี้)
 const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
@@ -24,7 +24,7 @@ const EPIC_COUNT = 15;             // จำนวนต่อแผนที่
 const EPIC_MULT = 2;               // Epic แรงกว่ามอนฐาน (HP / ดาเมจ / EXP / ทอง)
 const EPIC_RED_BOX_CHANCE = 0.02;  // โอกาสดรอปกล่องแดง (2%)
 // มอนธรรมดา + ยิงไกล
-const NORMAL_HP_MULT = 4;          // เลือดเพิ่ม 1 เท่า (x2)
+const NORMAL_HP_MULT = 1;          // เลือดเพิ่ม 1 เท่า (x2)
 const NORMAL_DMG_MULT = 0.5;       // พลังโจมตีเพิ่ม 50%
 // มินิบอส
 const BOSS_SPEED = 130;            // ความเร็วบอส (มอนธรรมดา 70)
