@@ -94,7 +94,9 @@ new Phaser.Game({
   width: W, height: H,
   backgroundColor: '#1b241b',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  physics: { default: 'arcade' },
+  // fixedStep:false = ฟิสิกส์อัปเดตตามเวลาจริงของแต่ละเฟรม (เดิมอัปเดตคงที่ 60 ครั้ง/วิ ซึ่งบนมือถือจอ 90/120Hz ทำให้ตัวละครเดินสะดุดเป็นจังหวะ)
+  // ถ้าเดินแล้วทะลุหิน/กำแพงบ่อย ให้ลบ arcade: {...} ออกกลับเป็นแบบเดิม
+  physics: { default: 'arcade', arcade: { fixedStep: false } },
   // ตั้งค่าลดแลคบนมือถือ
   // (เอา antialias:false ออกแล้ว: ทำให้ภาพที่ย่อ/ขยายกระพริบและดูกระตุกตอนเดิน)
   render: { powerPreference: 'high-performance', batchSize: 4096 },
