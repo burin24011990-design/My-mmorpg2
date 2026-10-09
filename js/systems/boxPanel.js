@@ -15,6 +15,7 @@
 
   // ===== ตำแหน่งปุ่มยา แยกตามแนวจอ (ปรับเลขตรงนี้ได้เลย) =====
   // left/right/bottom = ระยะจากขอบ (px) | scale = ขนาด (1 = เดิม) | gap = ระยะห่างระหว่างปุ่ม
+  // vertical: true = เรียงซ้อนแนวตั้งชิดซ้าย (เริ่มที่ bottom แล้วซ้อนขึ้นไป) | ไม่ใส่ = เรียงแนวนอนเหมือนเดิม
   const POT_CFG = {
     landscape: {
       hp:   { cx: 0.931, bottomY: 0.435, scale: 0.6 },        // ปุ่ม HP 20% อยู่เหนือสกิลอัลติ
@@ -22,7 +23,7 @@
     },
     portrait: {
       hp:   { cx: 0.926, bottomY: 0.695, scale: 0.6 },
-      pots: { left: 8,  bottom: 160, gap: 8, scale: 0.6 }
+      pots: { left: 8,  bottom: 92, gap: 8, scale: 0.6, vertical: true }   // ซ้อนขึ้นจากเหนือปุ่มแชท (เพิ่ม bottom = ขึ้นบน)
     }
   };
   function orient() { return window.innerHeight > window.innerWidth ? 'portrait' : 'landscape'; }
@@ -211,7 +212,28 @@
       if (!potionEls) return '';
     }
     const c = POT_CFG[orient()].pots;
-    let x = c.left, css = '';
+    let css = '';
+
+    if (c.vertical) {
+      // แนวตั้ง: เรียงซ้อนขึ้นข้างบน ชิดซ้าย (HP+ ล่างสุด -> DEF -> ATK บนสุด)
+      let y = c.bottom;
+      for (let i = potionEls.length - 1; i >= 0; i--) {
+        const el = potionEls[i];
+        el.setAttribute('data-pot', String(i));
+        const h = el.offsetHeight || 60;
+        css += '[data-pot="' + i + '"]{' +
+          'position:fixed!important;' +
+          'left:calc(env(safe-area-inset-left,0px) + ' + Math.round(c.left) + 'px)!important;' +
+          'bottom:calc(env(safe-area-inset-bottom,0px) + ' + Math.round(y) + 'px)!important;' +
+          'top:auto!important;right:auto!important;margin:0!important;' +
+          'transform:scale(' + c.scale + ')!important;transform-origin:left bottom!important}';
+        y += h * c.scale + c.gap;
+      }
+      return css;
+    }
+
+    // แนวนอน: เรียงเป็นแถวเหมือนเดิม
+    let x = c.left;
     potionEls.forEach(function (el, i) {
       el.setAttribute('data-pot', String(i));
       const w = el.offsetWidth || 100;
