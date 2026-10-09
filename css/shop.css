@@ -3,7 +3,8 @@
 #shop-panel, #potion-quick, #potion-quick-r, .qs, #shop-panel button {
   font-family: 'Mitr', sans-serif; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
 }
-#potion-quick-r { --qs: 46px; position: fixed; right: 14px; top: 27%; z-index: 900; }
+/* ตำแหน่งปุ่ม HP ขวา จัดโดย boxPanel.js (POT_CFG) -- ห้ามใส่ right/top/bottom ตรงนี้ */
+#potion-quick-r { --qs: 46px; position: fixed; z-index: 900; }
 
 /* ช่องยาด่วนแนวตั้ง (ตำแหน่ง/ขนาดถูกตั้งจาก shop.js ให้ตรงกับกรอบเกม) */
 #potion-quick {
