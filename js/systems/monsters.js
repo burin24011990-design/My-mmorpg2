@@ -21,7 +21,7 @@ const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
 // มอนสเตอร์ Epic
 const EPIC_COUNT = 30;             // จำนวนต่อแผนที่ (ยังแลคอยู่ -> ลดเหลือ 15-20)
-const EPIC_MULT = 8;               // Epic แรงกว่ามอนฐาน (HP / ดาเมจ / EXP / ทอง)
+const EPIC_MULT = 2;               // Epic แรงกว่ามอนฐาน (HP / ดาเมจ / EXP / ทอง)
 const EPIC_RED_BOX_CHANCE = 0.02;  // โอกาสดรอปกล่องแดง (2%)
 // มอนธรรมดา + ยิงไกล
 const NORMAL_HP_MULT = 2;          // เลือดเพิ่ม 1 เท่า (x2)
