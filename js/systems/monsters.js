@@ -4,6 +4,7 @@
 //   2) ชื่อมอนซ่อนเมื่ออยู่นอกจอ + ลด resolution + ตัดเงา blur
 //   3) มอนที่อยู่ไกลเกิน 900px ข้าม AI ทุกสถานะ (ยกเว้นตอนกำลังไล่ตี)
 //   4) หาเป้าหมายใกล้สุดทุก 120ms แทนทุกเฟรม
+//   5) หลอดเลือดของมอนที่ซ่อนในพุ่มไม่โชว์ (drawEnemyBar เช็ก hiddenInBush)
 // ด่าน 1-4: มอนไม่โจมตีก่อน (สู้กลับเมื่อโดนตี) | ด่าน 5 ขึ้นไป: โจมตีก่อนทั้งหมด
 // ผู้เล่นอยู่ในพุ่มหญ้า: มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น (ดู obstacles.js)
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
@@ -378,6 +379,7 @@ Object.assign(Main.prototype, {
   // หลอดเลือดมอน: อยู่ใต้ชื่อ เขียว > เหลือง > แดง ตามเลือดที่เหลือ (วาดเฉพาะมอนที่อยู่ในจอ)
   drawEnemyBar(g, e) {
     if (!e.active || !e.maxHp) return;
+    if (e.hiddenInBush) return;                          // ซ่อนในพุ่ม = ไม่โชว์หลอดเลือดลอยๆ
     if (HPBAR_ONLY_WHEN_HURT && e.hp >= e.maxHp) return;
     const v = this.cameras.main.worldView;
     if (e.x < v.x - 80 || e.x > v.right + 80 || e.y < v.y - 80 || e.y > v.bottom + 80) return;
