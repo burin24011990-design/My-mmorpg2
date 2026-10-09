@@ -3,6 +3,8 @@
 // - พื้นหญ้าใหม่ (ทำให้ต่อกันไร้รอยต่อด้วยการสะท้อนภาพ)
 // - ของใหญ่ที่ชนได้ (ต้นไม้ หิน ไผ่ ซากเสา ซุ้มประตู ศาลา ค่าย) + ตัวละครเดินอ้อมหลังได้
 // - ของแปะพื้น (ทางหิน กอหญ้า) เดินผ่านได้
+// (ลดแลค) 1) setDepth เรียกเฉพาะตอนค่าเปลี่ยนจริง (เดิมเรียกทุกเฟรมกับของทุกชิ้น ทำให้ Phaser เรียงลำดับวัตถุทั้งฉากใหม่ทุกเฟรม)
+//         2) ภาพพื้นที่สร้างจากการสะท้อน ย่อให้เป็นขนาด 2 ยกกำลัง (สูงสุด 1024x1024) กินหน่วยความจำน้อยลง ลายพื้นดูเท่าเดิม
 
 const MAP_PROP_FILES = {
   ground_new:     'assets/map/ground.png',
@@ -22,6 +24,7 @@ const MAP_PROP_FILES = {
 const USE_NEW_GROUND = true;     // false = ใช้พื้นเดิม
 const GROUND_TILE_SCALE = 0.7;  // ขนาดลายพื้น (น้อย = ลายเล็กลง)
 const GROUND_CROP = 45;          // ตัดขอบภาพพื้นออกกี่ px (ขอบเป็นสีเหลืองจาง)
+const GROUND_MAX_TEX = 1024;     // ขนาดสูงสุดของภาพพื้น (px) ต้องเป็น 256/512/1024 | เครื่องยังกระตุก -> 512
 const PROP_DENSITY = 1;          // คูณจำนวนของทุกชนิด (0.5 = ครึ่งหนึ่ง)
 const PROP_ORIGIN_Y = 0.88;
 
@@ -63,24 +66,31 @@ const GROUND_DECO_DEFS = [
   };
 
   // ----- พื้นที่ต่อกันไร้รอยต่อ: ตัดขอบ แล้วต่อภาพ 2x2 แบบสะท้อน -----
+  // คืนค่าสเกลที่ใช้กับ tileSprite (0 = ทำไม่ได้) | ภาพที่ได้เป็นขนาด 2 ยกกำลัง (<= GROUND_MAX_TEX)
   function makeSeamlessGround(scene, srcKey, outKey) {
-    if (scene.textures.exists(outKey)) return true;
-    if (!scene.textures.exists(srcKey)) return false;
+    scene._groundScale = scene._groundScale || {};
+    if (scene.textures.exists(outKey)) return scene._groundScale[outKey] || GROUND_TILE_SCALE;
+    if (!scene.textures.exists(srcKey)) return 0;
     const src = scene.textures.get(srcKey).getSourceImage();
     const I = GROUND_CROP, S = Math.min(src.width, src.height) - I * 2;
-    const cv = scene.textures.createCanvas(outKey, S * 2, S * 2);
+    let OUT = 256;
+    while (OUT < GROUND_MAX_TEX && OUT <= S) OUT *= 2;   // ใหญ่สุดที่ไม่เกินขนาดภาพต้นฉบับ (2 เท่าของ S หลังสะท้อน) และไม่เกิน GROUND_MAX_TEX
+    const H = OUT / 2;
+    const cv = scene.textures.createCanvas(outKey, OUT, OUT);
     const ctx = cv.getContext();
     const draw = (tx, ty, sx, sy) => {
       ctx.save(); ctx.translate(tx, ty); ctx.scale(sx, sy);
-      ctx.drawImage(src, I, I, S, S, 0, 0, S, S);
+      ctx.drawImage(src, I, I, S, S, 0, 0, H, H);
       ctx.restore();
     };
     draw(0, 0, 1, 1);
-    draw(S * 2, 0, -1, 1);
-    draw(0, S * 2, 1, -1);
-    draw(S * 2, S * 2, -1, -1);
+    draw(OUT, 0, -1, 1);
+    draw(0, OUT, 1, -1);
+    draw(OUT, OUT, -1, -1);
     cv.refresh();
-    return true;
+    const sc = GROUND_TILE_SCALE * (S * 2) / OUT;        // ชดเชยที่ย่อภาพ ให้ลายพื้นใหญ่เท่าเดิม
+    scene._groundScale[outKey] = sc;
+    return sc;
   }
 
   // ----- สร้างของตกแต่งหลัง buildObstacles เดิม -----
@@ -142,9 +152,10 @@ const GROUND_DECO_DEFS = [
       const rebirth = !!z.reqRebirth;                       // ด่านจุติทั้งหมด (id 10-22) ใช้พื้นเขียวเข้ม
       const src = rebirth ? 'ground_rebirth' : 'ground_new';
       const out = rebirth ? 'ground_seam_rb' : 'ground_seam';
-      if (makeSeamlessGround(this, src, out)) {
+      const gsc = makeSeamlessGround(this, src, out);
+      if (gsc) {
         const f = this.stageObjs && this.stageObjs[0];
-        if (f && f.setTexture) { f.setTexture(out); f.setTileScale(GROUND_TILE_SCALE); }
+        if (f && f.setTexture) { f.setTexture(out); f.setTileScale(gsc); }
       }
     }
 
@@ -216,6 +227,7 @@ const GROUND_DECO_DEFS = [
   };
 
   // ----- เรียงลำดับหน้า-หลังกับตัวละคร (เรียกทุกเฟรม) -----
+  // เรียก setDepth เฉพาะตอนค่าเปลี่ยนจริง: setDepth ของ Phaser สั่งให้เรียงลำดับวัตถุทั้งฉากใหม่ทุกครั้งที่เรียก แม้ค่าเท่าเดิม
   const _upd = P.updatePlayerHidden;
   P.updatePlayerHidden = function (time) {
     const res = _upd.apply(this, arguments);
@@ -224,7 +236,8 @@ const GROUND_DECO_DEFS = [
       const pd = pl.depth || 0;
       for (let i = 0; i < list.length; i++) {
         const s = list[i];
-        s.setDepth(pl.y < s.baseY ? pd + 0.5 : pd - 0.5);
+        const want = pl.y < s.baseY ? pd + 0.5 : pd - 0.5;
+        if (s.depth !== want) s.setDepth(want);
       }
     }
     return res;
