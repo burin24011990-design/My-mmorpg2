@@ -105,13 +105,20 @@ new Phaser.Game({
 
 // ----- หมุนจอข้ามแนว (นอน <-> ตั้ง) = เซฟแล้วโหลดใหม่ เพื่อใช้เลย์เอาต์ของแนวนั้น -----
 // (PORTRAIT ถูกกำหนดตอนโหลด config.js จึงต้องโหลดหน้าใหม่เพื่อให้ขนาดเกมเปลี่ยน)
+// ถ้าเกมเริ่มเล่นแล้ว จะตั้งแฟลก xh_resume ให้ js/systems/resume.js กดเริ่มเกมให้เองหลังโหลดใหม่ (ไม่ต้องล็อกอิน/กดเริ่มซ้ำ)
 // หมายเหตุ: startScreen.js หน่วงการสร้างเกม จึงไม่มีตัวแปร game ให้เรียกตรงๆ ใช้ GameSaveNow / CloudSave ที่มีอยู่แล้วแทน
 let _rotTimer = null;
 window.addEventListener('resize', function () {
   clearTimeout(_rotTimer);
   _rotTimer = setTimeout(function () {
     if ((window.innerHeight > window.innerWidth) === PORTRAIT) return;   // แนวเดิม ไม่ต้องทำอะไร
+    var ls = document.getElementById('login-screen');
+    var playing = !!ls && ls.style.display === 'none';                   // เกมเริ่มเล่นแล้วหรือยัง
+    if (!playing) { location.reload(); return; }                         // ยังอยู่หน้าล็อกอิน: โหลดใหม่เฉยๆ
     try { if (window.GameSaveNow) window.GameSaveNow(); } catch (e) {}   // เซฟลงเครื่อง
+    try {
+      sessionStorage.setItem('xh_resume', JSON.stringify({ t: Date.now(), guest: localStorage.getItem('mmo_cloud_uid') === 'guest' }));
+    } catch (e) {}
     var done = function () { location.reload(); };
     try {
       if (window.CloudSave && CloudSave.now) Promise.race([CloudSave.now(), new Promise(function (r) { setTimeout(r, 2500); })]).then(done, done);
