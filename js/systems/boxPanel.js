@@ -1,5 +1,6 @@
 // js/systems/boxPanel.js — ปุ่ม 📦 + หน้าต่างเปิดกล่องเงิน (ใช้ ServerBoxes)
 // + จัดตำแหน่ง: กล่องอยู่ข้างปุ่ม "จุติ" / ปุ่มยา ATK DEF HP+ เรียงมุมซ้ายล่าง
+// แนวตั้ง: ปุ่มกล่องใหญ่ขึ้น วางใต้การ์ด HP / แผงอยู่กลางจอ กว้างไม่เกินจอ
 (function () {
   const SB = window.ServerBoxes;
   if (!SB) return;
@@ -13,6 +14,14 @@
   const POTION_GAP = 8;       // ระยะห่างระหว่างปุ่มยา (px)
   const POTION_EDGE = 8;      // ระยะจากขอบซ้าย/ล่าง (px)
   const BOX_GAP = 8;          // ระยะห่างปุ่มกล่องกับปุ่มจุติ (px)
+
+  // ----- ค่าสำหรับจอแนวตั้ง (ปรับได้) -----
+  const BOX_SIZE_PORTRAIT = 46;   // ขนาดปุ่มกล่อง (px) ถ้าอยากใหญ่ขึ้นเพิ่มเลขนี้
+  const PORTRAIT_X = 0.012;       // ตำแหน่งแนวนอนของปุ่ม (สัดส่วนความกว้างแคนวาส)
+  const PORTRAIT_Y = 0.085;       // ตำแหน่งแนวตั้งของปุ่ม (สัดส่วนความสูงแคนวาส) เพิ่ม = ลงล่าง
+  const PANEL_W_LANDSCAPE = 300;
+  const PANEL_W_PORTRAIT = 340;
+
   let busy = false, timer = null;
 
   const st = document.createElement('style');
@@ -21,16 +30,22 @@
     'background:#26090f;border:2px solid #ffd45c;font-size:22px;display:none;align-items:center;justify-content:center;' +
     'cursor:pointer;-webkit-tap-highlight-color:transparent;touch-action:manipulation;box-sizing:border-box}' +
     '#box-btn img{max-width:80%;max-height:80%;object-fit:contain}' +
-    '#box-panel{position:fixed;left:60px;top:60px;z-index:9001;width:300px;max-width:70vw;display:none;' +
-    'background:rgba(20,8,12,.95);border:2px solid #ffd45c;border-radius:12px;padding:10px;color:#fff;' +
+    '#box-panel{position:fixed;left:60px;top:60px;z-index:9001;width:300px;max-width:calc(100vw - 16px);display:none;' +
+    'box-sizing:border-box;background:rgba(20,8,12,.95);border:2px solid #ffd45c;border-radius:12px;padding:10px;color:#fff;' +
     'font-family:Mitr,sans-serif;font-size:14px;touch-action:manipulation}' +
     '#box-panel h3{margin:0 0 8px;font-size:16px;color:#ffe28a;display:flex;justify-content:space-between}' +
     '#box-panel .x{cursor:pointer;padding:0 6px}' +
     '#box-panel .r{display:flex;align-items:center;gap:6px;margin:6px 0}' +
-    '#box-panel .n{flex:1}#box-panel .n b{display:block}#box-panel .n small{color:#aaa}' +
+    '#box-panel .n{flex:1;min-width:0}#box-panel .n b{display:block}#box-panel .n small{color:#aaa}' +
     '#box-panel button{font-family:inherit;font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid #ffd45c;' +
-    'background:#3a0f18;color:#ffe28a}' +
-    '#box-panel button:disabled{opacity:.35}';
+    'background:#3a0f18;color:#ffe28a;white-space:nowrap}' +
+    '#box-panel button:disabled{opacity:.35}' +
+    '@media (orientation:portrait){' +
+      '#box-panel{font-size:15px;padding:12px}' +
+      '#box-panel h3{font-size:18px}' +
+      '#box-panel .r{gap:8px;margin:10px 0}' +
+      '#box-panel button{font-size:14px;padding:9px 10px;min-height:40px}' +
+    '}';
   document.head.appendChild(st);
 
   const btn = document.createElement('div');
@@ -73,8 +88,9 @@
   });
 
   function open() {
-    panel.style.display = 'block'; render();
+    panel.style.display = 'block'; render(); place();
     SB.refresh().then(render).catch(function () {});
+    clearInterval(timer);
     timer = setInterval(render, 2000);
   }
   function close() { panel.style.display = 'none'; clearInterval(timer); }
@@ -110,8 +126,7 @@
     return null;
   }
 
-  // ===== ปุ่มกล่อง: วางต่อท้ายแถวปุ่ม เมือง / CH1-1 / จุติ =====
-  // ปรับ 3 ค่านี้ให้ตรงกับเกม (หน่วยเป็น px ของหน้าจอ CSS)
+  // ===== ปุ่มกล่อง (แนวนอน): วางต่อท้ายแถวปุ่ม เมือง / CH1-1 / จุติ =====
   const BOX_SIZE = 44;      // ขนาดปุ่มกล่อง (ให้เท่าปุ่มจุติ)
   const BOX_LEFT_PX = 0;    // ถ้าอยากขยับซ้าย/ขวาเพิ่ม ใส่ค่าบวก/ลบ
   const BOX_TOP_PX = 0;     // ถ้าอยากขยับขึ้น/ลงเพิ่ม
@@ -121,15 +136,26 @@
     const canvas = document.querySelector('canvas');
     if (!sc || !canvas) return;
     const cr = canvas.getBoundingClientRect();
-    const k = cr.width / (sc.scale ? sc.scale.width : cr.width);   // อัตราส่วนแคนวาสเทียบหน้าจอ
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const portrait = vh > vw;
 
-    // ตำแหน่งปุ่มจุติในเกม (ปุ่มที่ 3 ของแถวบน: เมือง, CH1-1, จุติ)
-    const jx = 747 / 2412 * cr.width + cr.left;   // กลางปุ่มจุติ
-    const jy = 55 / 1080 * cr.height + cr.top;    // กลางแนวตั้งของปุ่ม
-    const size = Math.round(88 / 2412 * cr.width);
+    let left, top, size, pw;
 
-    const left = Math.round(jx + size / 2 + 8 + BOX_LEFT_PX);
-    const top = Math.round(jy - size / 2 + BOX_TOP_PX);
+    if (portrait) {
+      size = BOX_SIZE_PORTRAIT;
+      left = Math.round(cr.left + PORTRAIT_X * cr.width);
+      top = Math.round(cr.top + PORTRAIT_Y * cr.height);
+      pw = Math.min(PANEL_W_PORTRAIT, vw - 16);
+    } else {
+      // ตำแหน่งปุ่มจุติในเกม (ปุ่มที่ 3 ของแถวบน: เมือง, CH1-1, จุติ)
+      const jx = 747 / 2412 * cr.width + cr.left;   // กลางปุ่มจุติ
+      const jy = 55 / 1080 * cr.height + cr.top;    // กลางแนวตั้งของปุ่ม
+      size = Math.max(BOX_SIZE, Math.round(88 / 2412 * cr.width));
+      left = Math.round(jx + size / 2 + BOX_GAP + BOX_LEFT_PX);
+      top = Math.round(jy - size / 2 + BOX_TOP_PX);
+      pw = Math.min(PANEL_W_LANDSCAPE, vw - 16);
+    }
+
     setImp(btn, 'position', 'fixed');
     setImp(btn, 'left', left + 'px');
     setImp(btn, 'top', top + 'px');
@@ -139,7 +165,12 @@
     setImp(btn, 'height', size + 'px');
     setImp(btn, 'margin', '0');
     setImp(btn, 'font-size', Math.round(size * 0.5) + 'px');
-    panel.style.left = left + 'px';
+
+    // แผง: ไม่ให้ล้นขอบจอ
+    let pl = portrait ? Math.round((vw - pw) / 2) : left;
+    pl = Math.max(8, Math.min(pl, vw - pw - 8));
+    panel.style.width = pw + 'px';
+    panel.style.left = pl + 'px';
     panel.style.top = (top + size + 8) + 'px';
   }
 
