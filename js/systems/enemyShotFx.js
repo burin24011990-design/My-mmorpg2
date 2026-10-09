@@ -1,17 +1,22 @@
-
 /* enemyShotFx.js — ลูกกระสุนของมอนยิงไกล / Epic / บอส ให้สวย: แกนดาวหมุน + รัศมีเรืองแสง + ละอองหางฟุ้ง + ประกายตอนแตก
  * ติดตั้ง: วางที่ js/systems/enemyShotFx.js ใส่ใน index.html หลัง enemyAttackFx.js และก่อน main.js
  *   <script src="js/systems/enemyShotFx.js?v=1"></script>
  * ไม่ต้องแก้ monsters.js: ครอบ fireShot ไว้ ฮิตบ็อกซ์/ดาเมจ/ความเร็วเหมือนเดิมทุกอย่าง (แค่เปลี่ยนหน้าตา)
  * สีของกระสุนเปลี่ยนตามธีมด่าน (ใช้ชุดสีเดียวกับเอฟเฟกต์ตอนตายใน monsterDefs.js) / Epic = ชมพูม่วง
+ *
+ * (ลดแลค v2) จำกัดจำนวนกระสุนที่แต่งภาพพร้อมกัน (เกินแล้วใช้ลูกกลมเดิม) | ซ่อนภาพของกระสุนที่อยู่นอกจอ
+ *            หางละอองถี่น้อยลง | ตัดจุดขาวกลาง (hot) | ประกายตอนแตกเล่นเฉพาะในจอ
  */
 (function () {
   var FX = {
     haloSize: 0.30,    // ขนาดรัศมี (คูณกับ scale ของกระสุน) เพิ่ม = ใหญ่ขึ้น
     coreSize: 0.30,    // ขนาดแกนดาว
     trail: true,       // ละอองหาง (ปิดถ้าเครื่องช้า)
-    trailEvery: 2,     // ปล่อยละอองทุกกี่เฟรม (มาก = เบาเครื่อง แต่หางห่าง)
+    trailEvery: 4,     // ปล่อยละอองทุกกี่ครั้ง (มาก = เบาเครื่อง แต่หางห่าง) เดิม 2
     spin: 0.22,        // ความเร็วหมุนแกน
+    maxShots: 30,      // กระสุนที่แต่งภาพพร้อมกันสูงสุด (เกินนี้ใช้ลูกกลมเดิม) ยังแลคตอนบอสยิงเยอะ -> ลดเหลือ 18
+    hot: false,        // จุดขาวร้อนตรงกลาง (เปิด = สวยขึ้นแต่หนักขึ้น)
+    burstN: 4,         // จำนวนประกายตอนแตก (เดิม 7)
   };
 
   function makeTextures(scene) {
@@ -52,12 +57,18 @@
   }
 
   function burst(scene, x, y, col, size) {
-    emitterFor(scene, col).emitParticleAt(x, y, 7);
+    emitterFor(scene, col).emitParticleAt(x, y, FX.burstN);
     var ring = scene.add.circle(x, y, 6 * size, col, 0.35).setStrokeStyle(2, 0xffffff, 0.9).setDepth(45).setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: ring, scale: 2.6, alpha: 0, duration: 260, onComplete: function () { ring.destroy(); } });
   }
 
+  function inView(scene, x, y, m) {
+    var v = scene.cameras.main.worldView;
+    return x > v.x - m && x < v.right + m && y > v.y - m && y < v.bottom + m;
+  }
+
   function decorate(scene, sh, e, scale) {
+    if (scene._shotFx.length >= FX.maxShots) return;          // เต็มแล้ว: ปล่อยลูกกลมเดิมไว้ (ฮิตบ็อกซ์เหมือนเดิม)
     makeTextures(scene);
     var pal = palette(e), col = pal[0], col2 = pal[1];
     var big = e.isBoss ? 1.35 : 1;
@@ -66,9 +77,12 @@
       .setDepth(44).setScale(scale * FX.haloSize * big).setAlpha(0.9);
     var core = scene.add.image(sh.x, sh.y, 'fx_star').setTint(col2).setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(45).setScale(scale * FX.coreSize * big);
-    var hot = scene.add.image(sh.x, sh.y, 'fx_glow').setBlendMode(Phaser.BlendModes.ADD)
-      .setDepth(46).setScale(scale * FX.coreSize * 0.55 * big);   // จุดขาวร้อนตรงกลาง
-    scene._shotFx.push({ sh: sh, halo: halo, core: core, hot: hot, col: col, base: scale * FX.haloSize * big, t: Math.random() * 6, size: big });
+    var hot = null;
+    if (FX.hot) {
+      hot = scene.add.image(sh.x, sh.y, 'fx_glow').setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(46).setScale(scale * FX.coreSize * 0.55 * big);   // จุดขาวร้อนตรงกลาง
+    }
+    scene._shotFx.push({ sh: sh, halo: halo, core: core, hot: hot, col: col, base: scale * FX.haloSize * big, t: Math.random() * 6, size: big, on: true });
   }
 
   var _fire = Main.prototype.fireShot;
@@ -82,17 +96,25 @@
         this._shotFx = []; var n = 0, sc = this;
         this.events.on('update', function () {            // อัปเดตภาพตามลูกกระสุนทุกเฟรม
           var list = sc._shotFx;
+          if (!list.length) return;
+          var v = sc.cameras.main.worldView;
           for (var i = list.length - 1; i >= 0; i--) {
             var f = list[i], s = f.sh;
             if (!s || !s.active) {
-              burst(sc, f.halo.x, f.halo.y, f.col, f.size);
-              f.halo.destroy(); f.core.destroy(); f.hot.destroy(); list.splice(i, 1); continue;
+              if (inView(sc, f.halo.x, f.halo.y, 60)) burst(sc, f.halo.x, f.halo.y, f.col, f.size);   // แตกเฉพาะในจอ
+              f.halo.destroy(); f.core.destroy(); if (f.hot) f.hot.destroy(); list.splice(i, 1); continue;
             }
+            var on = s.x > v.x - 60 && s.x < v.right + 60 && s.y > v.y - 60 && s.y < v.bottom + 60;
+            if (on !== f.on) {                              // นอกจอ = ซ่อนภาพ ไม่ต้องอัปเดต/ปล่อยละออง
+              f.on = on;
+              f.halo.setVisible(on); f.core.setVisible(on); if (f.hot) f.hot.setVisible(on);
+            }
+            if (!on) continue;
             f.t += 0.25;
             var pulse = 1 + 0.15 * Math.sin(f.t);
             f.halo.setPosition(s.x, s.y).setScale(f.base * pulse);
             f.core.setPosition(s.x, s.y).setRotation(f.core.rotation + FX.spin);
-            f.hot.setPosition(s.x, s.y);
+            if (f.hot) f.hot.setPosition(s.x, s.y);
             if (FX.trail && (++n % FX.trailEvery) === 0) emitterFor(sc, f.col).emitParticleAt(s.x, s.y, 1);
           }
         });
