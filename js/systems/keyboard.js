@@ -9,6 +9,8 @@
 //   E               = แดช (ของเดิมใน aimDash.js)
 //   Q               = ดื่มยา HP | F = ดื่มยา MP
 //   B               = เปิด/ปิดบอท (ของเดิม)
+//   I = กระเป๋า | P = อุปกรณ์ | K = สกิล | C = สเตตัส | G = ตั้งค่าบอท | M = เลือกด่าน
+//       (กดซ้ำเพื่อปิดหน้าต่างนั้น)
 //   Esc             = ปิดหน้าต่างที่เปิดอยู่
 (function () {
   const P = Main.prototype;
@@ -81,6 +83,22 @@
     if (this.toastMsg) this.toastMsg('ไม่พบปุ่มยา MP');
   };
 
+  // เปิด/ปิดหน้าต่างด้วยปุ่มลัด (กดซ้ำ = ปิด)
+  P.pcWindow = function (name) {
+    if (typing()) return;
+    const bagTab = (name === 'bag' || name === 'equip') ? name : null;
+    if (bagTab) {
+      if (window.BAG_OPEN && this.invTab === bagTab) { this.closePanel(); return; }
+      if (this.panel || window.BAG_OPEN) this.closePanel();
+      this.openInventory(bagTab);
+      return;
+    }
+    if (this.panel || window.BAG_OPEN) { this.closePanel(); if (this._pcWin === name) { this._pcWin = null; return; } }
+    this._pcWin = name;
+    const fn = { skill: 'openSkillBook', status: 'openStatusPanel', bot: 'openBotPanel', stage: 'openStageSelect' }[name];
+    if (fn && this[fn]) this[fn]();
+  };
+
   const _setupInput = P.setupInput;
   P.setupInput = function () {
     _setupInput.call(this);
@@ -99,7 +117,13 @@
     kb.on('keydown-R', () => this.pcUlti());
     kb.on('keydown-Q', () => this.pcPotion('hp'));
     kb.on('keydown-F', () => this.pcPotion('mp'));
-    kb.on('keydown-ESC', () => { if (this.panel && this.closePanel) this.closePanel(); });
+    kb.on('keydown-ESC', () => { if ((this.panel || window.BAG_OPEN) && this.closePanel) this.closePanel(); });
+    kb.on('keydown-I', () => this.pcWindow('bag'));
+    kb.on('keydown-P', () => this.pcWindow('equip'));
+    kb.on('keydown-K', () => this.pcWindow('skill'));
+    kb.on('keydown-C', () => this.pcWindow('status'));
+    kb.on('keydown-G', () => this.pcWindow('bot'));
+    kb.on('keydown-M', () => this.pcWindow('stage'));
 
     // PC: คลิกเมาส์ในครึ่งซ้ายของจอไม่ให้สร้างจอยสติ๊ก (จอยมีไว้สำหรับนิ้วบนมือถือ)
     this.events.off('update', this.pcKillMouseJoy, this);
