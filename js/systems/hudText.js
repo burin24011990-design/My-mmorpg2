@@ -1,5 +1,6 @@
 // ===== ข้อความกลางจอด้านบน: เป้าหมาย + บัพ + ข้อความแจ้งเตือน =====
 // ไฟล์: js/systems/hudText.js  (โหลดหลังไฟล์ระบบทั้งหมด ก่อน js/main.js)
+// (ลดแลค) สแกนหาข้อความบัพทุก 12 เฟรม (เดิมทุก 4 เฟรม วนทุกวัตถุในฉาก) | resolution ข้อความ 2 -> 1
 
 (function () {
   if (typeof Main === 'undefined' || !Main.prototype) {
@@ -10,6 +11,8 @@
   const FONT = 'Mitr, sans-serif';
 
   // ---- ปรับตรงนี้ ----
+  const TEXT_RES = 1;             // ความคมของข้อความ (1 = เร็วสุด, 1.5 = คมขึ้น, 2 = เดิม)
+  const BUFF_SCAN_EVERY = 12;     // สแกนหาบัพทุกกี่เฟรม (เลขมาก = เบาขึ้น แต่บัพใหม่โผล่ช้าลง)
   const TARGET_SIZE = '15px';     // ข้อความเป้าหมาย
   const TARGET_Y = 56;
   const BUFF_SIZE = '13px';       // ข้อความบัพที่มีอยู่
@@ -36,14 +39,16 @@
       t._htStyled = true;
       t.setFontFamily(FONT).setFontSize(TARGET_SIZE).setFontStyle('bold')
         .setColor('#ffffff').setStroke('#000000', 3)
-        .setShadow(0, 1, '#000000', 2, true, true)
+        .setShadow(0, 1, '#000000', 0, true, true)
         .setPadding(8, 2, 8, 2).setBackgroundColor(BG)
         .setOrigin(0.5, 0).setAlpha(1).setDepth(150);
-      if (t.setResolution) t.setResolution(2);
+      if (t.setResolution) t.setResolution(TEXT_RES);
       if (t.setScrollFactor) t.setScrollFactor(0);
     }
-    t.setPosition(getW(sc) / 2, TARGET_Y);
-    t.setVisible(!!t.text);
+    const cx = getW(sc) / 2;
+    if (t.x !== cx || t.y !== TARGET_Y) t.setPosition(cx, TARGET_Y);
+    const vis = !!t.text;
+    if (t.visible !== vis) t.setVisible(vis);
   }
 
   // ---------- ข้อความบัพ (หาจากรูปแบบ "(9s)") ----------
@@ -69,7 +74,7 @@
           .setColor('#ffe9a0').setStroke('#000000', 3)
           .setPadding(6, 1, 6, 1).setBackgroundColor(BG)
           .setOrigin(0.5, 0).setAlpha(1).setDepth(149);
-        if (o.setResolution) o.setResolution(2);
+        if (o.setResolution) o.setResolution(TEXT_RES);
         if (o.setScrollFactor) o.setScrollFactor(0);
       }
       o.setPosition(w / 2, y);
@@ -111,8 +116,8 @@
       wordWrap: { width: Math.min(w - 80, TOAST_WRAP) },
       padding: { x: 8, y: 2 }, backgroundColor: BG,
     }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(300);
-    txt.setShadow(0, 1, '#000000', 2, true, true);
-    if (txt.setResolution) txt.setResolution(2);
+    txt.setShadow(0, 1, '#000000', 0, true, true);
+    if (txt.setResolution) txt.setResolution(TEXT_RES);
 
     list.push(txt);
     while (list.length > TOAST_MAX) killToast(list.shift());
@@ -139,7 +144,7 @@
     const r = typeof oUT === 'function' ? oUT.apply(this, arguments) : undefined;
     try {
       styleTarget(this);
-      if ((frame++ % 4) === 0) styleBuffs(this);
+      if ((frame++ % BUFF_SCAN_EVERY) === 0) styleBuffs(this);
     } catch (e) { console.error('hudText:', e); }
     if (Object.prototype.hasOwnProperty.call(this, 'toastMsg') && this.toastMsg !== htToast) {
       this.toastMsg = htToast;
