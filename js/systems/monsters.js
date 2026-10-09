@@ -357,7 +357,7 @@ Object.assign(Main.prototype, {
 
       // ชื่อมอน: แสดงเฉพาะที่อยู่ในจอ (นอกจอซ่อนไว้ ไม่ต้องอัปเดตตำแหน่ง)
       if (e.levelText) {
-        const on = e.x > view.x - 80 && e.x < view.right + 80 && e.y > view.y - 80 && e.y < view.bottom + 80;
+        const on = !e.hiddenInBush && e.x > view.x - 80 && e.x < view.right + 80 && e.y > view.y - 80 && e.y < view.bottom + 80;   // hiddenInBush = ซ่อนในพุ่ม (obstacles.js) ห้ามโชว์ชื่อ
         if (on) {
           if (!e.levelText.visible) e.levelText.setVisible(true);
           e.levelText.setPosition(e.x, e.y - e.labelOff);
