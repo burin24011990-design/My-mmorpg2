@@ -1,7 +1,16 @@
 // ===== แถบเมนูด้านบน (ไอคอนวาดเอง) =====
 // ปรับขนาดปุ่มที่นี่: w = กว้าง, h = สูง, gap = ระยะห่าง, top = ระยะจากขอบบน
-// bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (แนวนอนอยู่กลางจอ | แนวตั้งอยู่ซ้ายบน)
+// bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (แนวนอนอยู่กลางจอ | แนวตั้งอยู่ในตารางปุ่ม)
 const TB = { w: 62, h: 58, gap: 6, top: 8, bigW: 88, bigH: 76 };
+
+// ===== แนวตั้ง: ปุ่มเล็กลง จัดเป็นตาราง 5 คอลัมน์ x 2 แถว ชิดขวา อยู่ใต้แถวปุ่มบนสุด =====
+// cols = จำนวนคอลัมน์ | top = ระยะจากขอบบน (ลดเลขนี้ = ขยับขึ้น, เพิ่ม = ขยับลง) | right = ระยะจากขอบขวา
+// ถ้ายังทับกับปุ่มอื่น (เมือง/CH/จุติ/สังคม/เสียง) ให้ปรับ top กับ right ตรงนี้
+// แนวนอนไม่ได้ใช้ค่าชุดนี้ ยังเป็นค่า TB เดิมทุกอย่าง
+const TBP = { w: 44, h: 46, gap: 3, top: 72, right: 6, cols: 5 };
+const tbIsPortrait = () =>
+  (typeof PORTRAIT !== 'undefined' && !!PORTRAIT) ||
+  (typeof W !== 'undefined' && typeof H !== 'undefined' && W < H);
 
 Main.prototype.makeTopIcons = function () {
   if (this.textures.exists('tb_bag')) return;
@@ -69,11 +78,27 @@ Main.prototype.makeTopIcons = function () {
 };
 
 // ตำแหน่งช่องของแต่ละปุ่ม
-// - เลือกด่าน: แนวนอน = กึ่งกลางจอด้านบน | แนวตั้ง = ซ้ายบน (กันทับกับเมนูที่ชิดขวา) ใหญ่กว่าปุ่มอื่น
-// - ปุ่มอื่น: เรียง 2 แถว x 4 คอลัมน์ ชิดขวา (shopBtn / cashBtn เตรียมช่องไว้ให้ไฟล์ร้านค้า/ร้านแคชมาใช้)
+// - แนวนอน: เลือกด่าน = กึ่งกลางจอด้านบน (ใหญ่กว่าปุ่มอื่น) | ปุ่มอื่นเรียง 2 แถว x 4 คอลัมน์ ชิดขวา
+// - แนวตั้ง: ทุกปุ่มรวมเลือกด่านอยู่ในตารางเล็ก 5 คอลัมน์ x 2 แถว ชิดขวา (ดู TBP ด้านบน)
+// (shopBtn / cashBtn เตรียมช่องไว้ให้ไฟล์ร้านค้า/ร้านแคชมาใช้)
 Main.prototype.topSlot = function (key) {
+  if (tbIsPortrait()) {
+    const rowsP = [
+      ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn', 'stageBtn'],
+      ['equipBtn', 'statusBtn', 'shopBtn', 'cashBtn'],
+    ];
+    const x0p = W - TBP.right - (TBP.cols * TBP.w + (TBP.cols - 1) * TBP.gap);
+    for (let r = 0; r < rowsP.length; r++) {
+      const c = rowsP[r].indexOf(key);
+      if (c >= 0) {
+        return { x: x0p + c * (TBP.w + TBP.gap), y: TBP.top + r * (TBP.h + TBP.gap), w: TBP.w, h: TBP.h, big: key === 'stageBtn' };
+      }
+    }
+    return null;
+  }
+
   if (key === 'stageBtn') {
-    return { x: (typeof PORTRAIT !== 'undefined' && PORTRAIT) ? 12 : Math.round(W / 2 - TB.bigW / 2), y: TB.top, w: TB.bigW, h: TB.bigH, big: true };
+    return { x: Math.round(W / 2 - TB.bigW / 2), y: TB.top, w: TB.bigW, h: TB.bigH, big: true };
   }
   const rows = [
     ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn'],
@@ -92,6 +117,7 @@ Main.prototype.topSlot = function (key) {
 
 Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick, big) {
   const cx = x + w / 2, cy = y + h / 2;
+  const compact = h < 52;   // ปุ่มเล็ก (แนวตั้ง): ย่อไอคอนกับตัวหนังสือ | แนวนอนไม่เข้าเงื่อนไขนี้
   const bg = this.add.graphics().setScrollFactor(0).setDepth(98);
   const draw = (down) => {
     bg.clear();
@@ -101,10 +127,10 @@ Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick
   };
   draw(false);
   const c = this.add.rectangle(cx, cy, w, h, color, 0.01).setScrollFactor(0).setDepth(99).setInteractive();
-  const isz = big ? 48 : 34;
-  const icon = this.add.image(cx, cy - (big ? 11 : 8), iconKey).setDisplaySize(isz, isz).setScrollFactor(0).setDepth(101);
-  const t = this.add.text(cx, y + h - (big ? 12 : 10), label, {
-    fontFamily: 'Mitr, sans-serif', fontSize: big ? '15px' : '11px', color: '#fff', stroke: '#000', strokeThickness: 3
+  const isz = compact ? Math.round(h * 0.54) : (big ? 48 : 34);
+  const icon = this.add.image(cx, cy - (compact ? Math.round(h * 0.14) : (big ? 11 : 8)), iconKey).setDisplaySize(isz, isz).setScrollFactor(0).setDepth(101);
+  const t = this.add.text(cx, y + h - (compact ? 8 : (big ? 12 : 10)), label, {
+    fontFamily: 'Mitr, sans-serif', fontSize: compact ? '9px' : (big ? '15px' : '11px'), color: '#fff', stroke: '#000', strokeThickness: compact ? 2 : 3
   }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
   c.on('pointerdown', () => { draw(true); onClick(); });
   c.on('pointerup', () => draw(false));
