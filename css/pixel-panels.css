@@ -159,39 +159,41 @@
 .pp-row{ padding:.22em 0; }
 
 /* ===== จอแนวตั้ง (มือถือ) =====
-   กฎด้านบนคำนวณจากความสูงจอ (vh) ซึ่งเหมาะกับแนวนอน พอเป็นแนวตั้งหน้าต่างจะแคบ
-   และหน้าสกิลถูกบีบเป็นคอลัมน์ ข้อความตัดทีละคำ -> ใช้ vw แทน และจัดแถวสกิลใหม่ */
+   กฎด้านบนคำนวณจากความสูงจอ (vh) ซึ่งเหมาะกับแนวนอน พอเป็นแนวตั้งใช้ vw แทน
+   ปรับขนาดหน้าสกิล: ลดเลข 88vw (ความกว้าง) และ 2.8vw (ตัวอักษร) ถ้ายังใหญ่ไป */
 @media (orientation:portrait){
   .pp-win{
-    width:min(94vw, 520px);
-    max-height:82vh; max-height:82dvh;
-    font-size:clamp(11px, 3.4vw, 15px);
+    width:min(88vw, 430px);
+    max-height:72vh; max-height:72dvh;
+    font-size:clamp(9px, 2.8vw, 12px);
   }
-  .pp-body{ padding:.5em; }
-  .pp-x{ width:2.2em; height:2.2em; min-width:36px; min-height:36px; }
-  .pp-tabs button, .pp-menu button{ min-height:36px; }
-  .pp-btn{ min-height:34px; padding:.3em .9em; }
-  .pp-slot{ width:clamp(38px, 11vw, 56px); }
-  .pp-char{ max-height:30vh; }
+  .pp-body{ padding:.4em; }
+  .pp-head{ padding:.2em .5em; }
+  .pp-x{ width:2em; height:2em; min-width:30px; min-height:30px; }
+  .pp-tabs{ margin-bottom:.4em; }
+  .pp-tabs button, .pp-menu button{ min-height:30px; }
+  .pp-btn{ min-height:30px; padding:.2em .7em; }
+  .pp-slot{ width:clamp(34px, 9vw, 48px); }
+  .pp-char{ max-height:26vh; }
 
   /* แถวสกิล: ไอคอนซ้าย + ข้อความขวา + ปุ่มอยู่แถวล่าง */
   .pp-skill2{
     display:flex !important; flex-wrap:wrap !important; align-items:flex-start !important;
-    gap:.5em !important; padding:.5em !important;
+    gap:.4em !important; padding:.35em !important; margin-bottom:.3em !important;
   }
   .pp-skill2 .pp-sicon{
-    flex:0 0 52px !important; width:52px !important; height:52px !important; position:relative !important;
+    flex:0 0 40px !important; width:40px !important; height:40px !important; position:relative !important;
   }
   .pp-skill2 .pp-sicon img{ width:100% !important; height:100% !important; object-fit:contain !important; }
   .pp-skill2 .pp-sbody{
     flex:1 1 0 !important; min-width:0 !important; width:auto !important; max-width:none !important;
   }
-  .pp-skill2 .pp-sdesc{ margin:.25em 0 !important; padding-left:1.1em !important; }
+  .pp-skill2 .pp-sdesc{ margin:.2em 0 !important; padding-left:1em !important; line-height:1.25 !important; }
   .pp-skill2 .pp-sdesc li{ word-break:normal !important; overflow-wrap:anywhere !important; }
   .pp-skill2 .pp-sbtns{
     flex:1 1 100% !important; position:static !important; width:100% !important;
     display:flex !important; flex-direction:row !important; flex-wrap:wrap !important;
-    justify-content:flex-end !important; gap:.5em !important;
+    justify-content:flex-end !important; gap:.4em !important;
   }
-  .pp-skill2 .pp-sbtns .row{ display:flex !important; flex-direction:row !important; gap:.5em !important; }
+  .pp-skill2 .pp-sbtns .row{ display:flex !important; flex-direction:row !important; gap:.4em !important; }
 }
