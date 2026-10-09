@@ -5,12 +5,16 @@
 //   - พอใส่สายเดียวกันครบ 3 ช่องอีกครั้ง ปุ่มกลับเป็นอันติ และสกิลที่ใส่ไว้ในช่องพิเศษจะถูกเก็บไว้ ไม่หาย
 // สกิลช่องพิเศษถูกเซฟไปกับเซฟเกม (save.js) และขึ้นหน้าต่างสกิลได้ (skillLevelPatch.js)
 // รูปบนปุ่ม: ใช้รูป sk_<รหัสสกิล> (โหลดโดย hudLayout.js จาก assets/skills/) เหมือนปุ่มสกิลปกติ ถ้าไม่มีรูปใช้ไอคอนเดิม
+// ขนาดปุ่ม/ไอคอน/ตัวหนังสือ ย่อตาม ROV.s ของ hudLayout.js (แนวนอน = 1 คือขนาดเดิม, แนวตั้ง = ย่อลง)
 // โหลดต่อจากไฟล์สกิล/เอฟเฟกต์ทั้งหมด และ "ก่อน" main.js (ต้องอยู่หลังสุดเพื่อให้กติกาของแต่ละอาชีพทำงานกับสกิลช่องนี้ด้วย)
 (function () {
   const P = Main.prototype;
   const IDX = 4;                           // ช่องพิเศษใช้ดัชนี 4 (cdEnd.slot4) แต่ไม่ได้อยู่ใน this.slots จึงไม่กระทบการนับคอมโบ
   const SELF_TYPES = ['heal1', 'healaoe', 'haste'];   // สกิลใช้กับตัวเอง บอทใช้ได้โดยไม่ต้องมีเป้า
-  const ICON_SIZE = 46;                    // ขนาดรูปสกิลบนปุ่ม (เท่ากับปุ่มสกิลปกติใน hudLayout.js)
+  const S = (typeof ROV !== 'undefined' && ROV.s) ? ROV.s : 1;   // ตัวคูณขนาดตามแนวจอ
+  const rs = n => Math.round(n * S);
+  const fz = n => Math.max(8, rs(n));      // ขนาดตัวอักษร (ไม่เล็กกว่า 8px)
+  const ICON_SIZE = rs(46);                // ขนาดรูปสกิลบนปุ่ม (เท่ากับปุ่มสกิลปกติใน hudLayout.js)
 
   const hex = c => '#' + ('000000' + (c || 0).toString(16)).slice(-6);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
@@ -40,12 +44,12 @@
     const x = ub.c.x, y = ub.c.y, r = Math.round((ub.c.radius || 38) * 0.95);
     const c = scene.add.circle(x, y, r, 0x3a3a3a, 0.55).setScrollFactor(0).setDepth(100).setInteractive();
     c.setStrokeStyle(3, 0xd4af37, 0.95);
-    const icon = scene.add.image(x, y - 4, 'ic_melee').setDisplaySize(22, 22).setScrollFactor(0).setDepth(101).setVisible(false);
-    const t = scene.add.text(x, y + Math.round(r * 0.55), '', { fontSize: '9px', color: '#fff', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
-    const cdText = scene.add.text(x, y, '+', { fontSize: '14px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
-    const edit = scene.add.circle(x + r * 0.72, y - r * 0.72, 13, 0x1d1d1d, 0.95).setScrollFactor(0).setDepth(103).setInteractive();
+    const icon = scene.add.image(x, y - rs(4), 'ic_melee').setDisplaySize(rs(22), rs(22)).setScrollFactor(0).setDepth(101).setVisible(false);
+    const t = scene.add.text(x, y + Math.round(r * 0.55), '', { fontSize: fz(9) + 'px', color: '#fff', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+    const cdText = scene.add.text(x, y, '+', { fontSize: fz(14) + 'px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setScrollFactor(0).setDepth(102);
+    const edit = scene.add.circle(x + r * 0.72, y - r * 0.72, rs(13), 0x1d1d1d, 0.95).setScrollFactor(0).setDepth(103).setInteractive();
     edit.setStrokeStyle(2, 0xd4af37, 1);
-    const editT = scene.add.text(edit.x, edit.y, '✎', { fontSize: '14px', color: '#ffe28a' }).setOrigin(0.5).setScrollFactor(0).setDepth(104);
+    const editT = scene.add.text(edit.x, edit.y, '✎', { fontSize: fz(14) + 'px', color: '#ffe28a' }).setOrigin(0.5).setScrollFactor(0).setDepth(104);
     const b = scene.flexBtn = { c: c, icon: icon, t: t, cdText: cdText, edit: edit, editT: editT, r: r };
 
     let mode = '';
@@ -84,7 +88,7 @@
     const sid = scene.flexSid, def = sid && SKILL_DEFS[sid];
     if (!def) {
       b.c.setFillStyle(0x3a3a3a, 0.55);
-      b.t.setPosition(x, y + Math.round(r * 0.55)).setFontSize(9).setText('ช่องพิเศษ');
+      b.t.setPosition(x, y + Math.round(r * 0.55)).setFontSize(fz(9)).setText('ช่องพิเศษ');
       b.cdText.setText('+');
     } else {
       const left = Math.max(0, (scene.cdEnd['slot' + IDX] || 0) - time);
@@ -94,14 +98,14 @@
       const key = 'sk_' + sid;
       if (scene.textures.exists(key)) {
         // มีรูปสกิล: แสดงรูปเดียวกับปุ่มสกิลปกติและหน้าต่างสกิล
-        b.icon.setTexture(key).setDisplaySize(ICON_SIZE, ICON_SIZE).setPosition(x, y - 6)
+        b.icon.setTexture(key).setDisplaySize(ICON_SIZE, ICON_SIZE).setPosition(x, y - rs(6))
           .setTint(0xffffff).setAlpha(busy ? 0.45 : 1);
-        b.t.setPosition(x, y + 27).setFontSize(10);
+        b.t.setPosition(x, y + rs(27)).setFontSize(fz(10));
       } else {
         // ยังไม่มีรูป: ใช้ไอคอนเดิมตามชนิดสกิล
-        b.icon.setTexture(skillIconKey(def.type)).setDisplaySize(22, 22).setPosition(x, y - 4)
+        b.icon.setTexture(skillIconKey(def.type)).setDisplaySize(rs(22), rs(22)).setPosition(x, y - rs(4))
           .setTint(0xffffff).setAlpha(1);
-        b.t.setPosition(x, y + Math.round(r * 0.55)).setFontSize(9);
+        b.t.setPosition(x, y + Math.round(r * 0.55)).setFontSize(fz(9));
       }
       b.t.setText(def.name);
       b.cdText.setText(left > 0 ? (left / 1000).toFixed(1) : '');
