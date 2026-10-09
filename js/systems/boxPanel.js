@@ -17,11 +17,11 @@
   // left/right/bottom = ระยะจากขอบ (px) | scale = ขนาด (1 = เดิม) | gap = ระยะห่างระหว่างปุ่ม
   const POT_CFG = {
     landscape: {
-      hp:   { right: 8, bottom: 190, scale: 0.6 },            // ปุ่ม HP 20% (ยกขึ้นให้พ้นปุ่มสกิล)
+      hp:   { cx: 0.931, bottomY: 0.435, scale: 0.6 },        // ปุ่ม HP 20% อยู่เหนือสกิลอัลติ
       pots: { left: 8,  bottom: 8,   gap: 8, scale: 0.6 }     // ATK DEF HP+
     },
     portrait: {
-      hp:   { right: 8, bottom: 160, scale: 0.6 },
+      hp:   { cx: 0.926, bottomY: 0.695, scale: 0.6 },
       pots: { left: 8,  bottom: 160, gap: 8, scale: 0.6 }
     }
   };
@@ -249,12 +249,18 @@
       hpPotEl = locateHpPotion();
       if (!hpPotEl) return '';
     }
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return '';
+    const cr = canvas.getBoundingClientRect();
     const c = POT_CFG[orient()].hp;
+    const w = (hpPotEl.offsetWidth || 60) * c.scale;
+    const right = Math.max(4, Math.round(window.innerWidth - (cr.left + c.cx * cr.width + w / 2)));
+    const bottom = Math.max(4, Math.round(window.innerHeight - (cr.top + c.bottomY * cr.height)));
     hpPotEl.setAttribute('data-hp-pot', '1');
     return '[data-hp-pot="1"]{' +
       'position:fixed!important;' +
-      'right:calc(env(safe-area-inset-right,0px) + ' + c.right + 'px)!important;' +
-      'bottom:calc(env(safe-area-inset-bottom,0px) + ' + c.bottom + 'px)!important;' +
+      'right:' + right + 'px!important;' +
+      'bottom:' + bottom + 'px!important;' +
       'left:auto!important;top:auto!important;margin:0!important;' +
       'transform:scale(' + c.scale + ')!important;transform-origin:right bottom!important}';
   }
