@@ -10,6 +10,7 @@
 // - v13: ยกเลิกการจำกัดระยะของ EXP และของดรอปในปาร์ตี้ (อยู่ห้องเดียวกันก็ได้ ไม่ว่าอยู่ตรงไหนของแผนที่)
 // - v14: แชร์ไอเทมตอน "เก็บเข้าตัว" -- ของดรอปตกที่คนฆ่ามอนเสมอ (บอทเก็บเองได้) พอเก็บ เครื่องส่ง 'lootShare'
 //        เซิร์ฟเวอร์สุ่ม/สลับคนรับตามโหมดปาร์ตี้แล้วส่ง 'lootGet' ให้คนนั้น (ใช้คู่กับ roomMonsters.js v6)
+// - v15: มอนแรงขึ้นตามด่าน -- เลือด x(1 + ด่าน x STAGE_HP_STEP), ดาเมจ x(1 + ด่าน x STAGE_DMG_STEP) (ดู makeMonster)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -63,6 +64,10 @@ const CONTACT_CD = 600;
 const MON_TICK_MS = 100;
 const HIT_MAX_DIST = 1200;
 
+// ความโหดเพิ่มตามด่าน (ด่านที่ n เริ่มที่ 0): เลือด x(1 + n x HP_STEP), ดาเมจ x(1 + n x DMG_STEP)
+// ** ต้องตรงกับ STAGE_HP_STEP / STAGE_DMG_STEP ใน js/data/zones.js **
+const STAGE_HP_STEP = 0.2, STAGE_DMG_STEP = 0.25;
+
 // ปาร์ตี้แชร์ EXP/ของ: ไม่จำกัดระยะ -- สมาชิกที่อยู่ "ห้องเดียวกับมอน" (ช่อง/ห้องเดียวกัน) ได้ทุกคน อยู่ตรงไหนของแผนที่ก็ได้
 
 const MFX_TYPES = { stun: 1, freeze: 1, root: 1, slow: 1, weak: 1 };
@@ -81,7 +86,8 @@ function makeMonster(R, stage, kind) {
   const boss = kind === 'boss', ranged = kind === 'ranged', epic = kind === 'epic';
   const lv = boss ? z.maxLv : rnd(z.minLv, z.maxLv);
   const pt = randPoint();
-  const baseHp = 30 + lv * 8, baseDmg = 5 + Math.floor(lv * 1.5);
+  const baseHp = (30 + lv * 8) * (1 + stage * STAGE_HP_STEP);
+  const baseDmg = (5 + Math.floor(lv * 1.5)) * (1 + stage * STAGE_DMG_STEP);
   const m = {
     id: R.nextId++, kind, stage, lv,
     x: pt.x, y: pt.y, homeX: pt.x, homeY: pt.y, wx: pt.x, wy: pt.y, nextWander: 0,
