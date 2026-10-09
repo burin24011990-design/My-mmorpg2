@@ -7,6 +7,7 @@
 // มีระบบหาทางเดินอ้อมหิน (A*) และตรวจแนวยิง ให้บอทใช้ (findPath / segmentBlocked)
 // ตำแหน่งสุ่มแบบคงที่ตามหมายเลขด่าน (ทุกครั้ง/ทุกคนเห็นเหมือนกัน)
 // โหลดต่อจาก monsters.js
+// (แก้ลดแลค: updateEnemyBushVisibility ไม่ไปสั่งโชว์ชื่อมอนแล้ว ปล่อยให้ monsters.js คุมการโชว์ชื่อนอกจอ)
 
 const ROCK_SIZES = [['rock_s', 56], ['rock_m', 84], ['rock_l', 116]];
 // รูปหินใน assets/ (โหลดโดย main.js) ถ้าโหลดไม่ได้จะใช้รูปที่วาดด้วยโค้ดแทน
@@ -443,7 +444,8 @@ Object.assign(Main.prototype, {
       }
       e.hiddenInBush = !vis;
       if (e.visible !== vis) e.setVisible(vis);
-      if (e.levelText && e.levelText.visible !== vis) e.levelText.setVisible(vis);
+      // ชื่อมอน: ที่นี่สั่งซ่อนอย่างเดียว (การโชว์ชื่อ + ซ่อนนอกจอ monsters.js เป็นคนคุม)
+      if (e.levelText && !vis) e.levelText.setVisible(false);
     });
   },
 
