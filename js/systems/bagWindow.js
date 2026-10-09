@@ -7,6 +7,8 @@
 // v29: ย่อหน้าต่างกระเป๋า (BAG_SCALE) และ "ไม่หยุดเกม" ตอนเปิดกระเป๋า -> บอทสู้ต่อได้ | กระเป๋าที่เปิดค้างรีเฟรชเองเมื่อของ/ทองเปลี่ยน
 // v30: จัดเลย์เอาต์ใหม่ให้ช่องไอเทมใหญ่ขึ้น: ช่องไอเทมกินพื้นที่ซ้ายเต็ม (ไม่มีที่ว่างสองข้าง)
 //      รายละเอียดไอเทมเล็กลงและแคบลง | หัวเรื่อง+แท็บอยู่แถวเดียว | ปุ่มเปลี่ยนหน้ารวมอยู่ในแถบปุ่ม
+// v31: จอแนวตั้ง: หน้าต่างกว้างเกือบเต็มจอ ไม่ย่อ, ช่องไอเทมเป็นสี่เหลี่ยมจัตุรัส, รายละเอียดย้ายลงล่างตาราง
+//      (แนวนอนทำงานเหมือนเดิม) ปรับได้ที่ค่า PORTRAIT_* ด้านล่าง
 // ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
@@ -21,6 +23,12 @@
   const BAG_BASE_H = 0.96;
   const BAG_COLS = 10;       // จำนวนคอลัมน์ช่องไอเทมในกระเป๋า
   const DETAIL_W = 25;       // ความกว้างช่องรายละเอียดไอเทม (% ของหน้าต่าง) ยิ่งน้อยยิ่งเหลือที่ให้ช่องไอเทม
+
+  // ---------- ตั้งค่าสำหรับจอแนวตั้ง (ปรับตรงนี้) ----------
+  const PORTRAIT_SCALE = 1;      // ขนาดหน้าต่างแนวตั้ง (1 = ปกติ ถ้าตัวหนังสือใหญ่ไปลดเป็น 0.9)
+  const PORTRAIT_W = 0.96;       // ความกว้างหน้าต่างเทียบกับจอ (0.96 = เกือบเต็มจอ)
+  const PORTRAIT_H = 0.78;       // ความสูงสูงสุดของหน้าต่างเทียบกับจอ (ลดเลขนี้ = หน้าต่างเตี้ยลง)
+  const PORTRAIT_ANCHOR_Y = 0.56; // ตำแหน่งแนวตั้ง (0.5 = กลางจอ, มากขึ้น = ลงล่าง)
 
   // ---------- ตั้งค่า "ย่อยทั้งหมดตามสี" (ปรับตรงนี้) ----------
   // สีที่ "ไม่ให้มีปุ่มย่อยทั้งหมด" (ใช้ id ของสีใน TIER_DEFS ถ้า id ไม่ตรงกับที่ใส่ไว้ ปุ่มของสีนั้นจะยังโชว์ แต่ยังต้องกดยืนยัน 2 ครั้ง)
@@ -63,16 +71,26 @@
 
   // ย่อ/จัดตำแหน่งหน้าต่างกระเป๋า: วางหน้าต่างขนาดเดิมแล้วย่อด้วย scale
   // ใช้ !important เพื่อทับ CSS เดิมของ .win โดยไม่ต้องแก้ไฟล์ css
+  // จอแนวตั้ง: ใช้ขนาด/ตำแหน่งชุด PORTRAIT_* และใส่คลาส bag-portrait ให้ CSS จัดเลย์เอาต์ใหม่
   function applyScale() {
     if (!root) return;
     const layer = document.getElementById('ui-layer');
     const vv = window.visualViewport;
     const lw = (layer && (parseFloat(layer.style.width) || layer.clientWidth)) || (vv ? vv.width : window.innerWidth);
     const lh = (layer && (parseFloat(layer.style.height) || layer.clientHeight)) || (vv ? vv.height : window.innerHeight);
+    const portrait = lh > lw;
+    root.classList.toggle('bag-portrait', portrait);
+
+    const scale = portrait ? PORTRAIT_SCALE : BAG_SCALE;
+    const bw = portrait ? PORTRAIT_W : BAG_BASE_W;
+    const bh = portrait ? PORTRAIT_H : BAG_BASE_H;
+
     // ดันตำแหน่งไม่ให้หน้าต่างล้นขอบจอ
-    const halfW = BAG_BASE_W * BAG_SCALE / 2, halfH = BAG_BASE_H * BAG_SCALE / 2;
-    const ax = Math.min(Math.max(BAG_ANCHOR_X, halfW), 1 - halfW);
-    const ay = Math.min(Math.max(BAG_ANCHOR_Y, halfH), 1 - halfH);
+    const halfW = bw * scale / 2, halfH = bh * scale / 2;
+    const wantX = portrait ? 0.5 : BAG_ANCHOR_X;
+    const wantY = portrait ? PORTRAIT_ANCHOR_Y : BAG_ANCHOR_Y;
+    const ax = Math.min(Math.max(wantX, halfW), 1 - halfW);
+    const ay = Math.min(Math.max(wantY, halfH), 1 - halfH);
     const set = (k, v) => root.style.setProperty(k, v, 'important');
     set('position', 'absolute');
     set('left', (ax * 100) + '%');
@@ -80,11 +98,11 @@
     set('right', 'auto');
     set('bottom', 'auto');
     set('margin', '0');
-    set('width', Math.round(lw * BAG_BASE_W) + 'px');
-    set('height', Math.round(lh * BAG_BASE_H) + 'px');
+    set('width', Math.round(lw * bw) + 'px');
+    set('height', Math.round(lh * bh) + 'px');
     set('max-width', 'none');
     set('max-height', 'none');
-    set('transform', 'translate(-50%,-50%) scale(' + BAG_SCALE + ')');
+    set('transform', 'translate(-50%,-50%) scale(' + scale + ')');
     set('transform-origin', 'center center');
   }
 
@@ -108,6 +126,7 @@
   // CSS เลย์เอาต์ของหน้าต่างกระเป๋า (ใช้ !important ทับ css/ui.css เดิม)
   function bagCSS() {
     const B = '#bag-win ';
+    const P = '#bag-win.bag-portrait ';
     return [
       // ---- กรอบหน้าต่าง: หัวเรื่อง+แท็บแถวเดียว / เนื้อหา / ท้าย ----
       B + '{flex-direction:column!important;overflow:hidden!important;box-sizing:border-box!important}',
@@ -161,6 +180,24 @@
       B + '.win-right .d-empty{font-size:11px!important;line-height:1.4!important;padding:6px!important}',
       B + '.win-right .d-actions{gap:4px!important;margin-top:6px!important}',
       B + '.win-right .d-actions .btn{font-size:11px!important;padding:6px 6px!important;min-height:0!important;line-height:1.1!important}',
+
+      // ---- จอแนวตั้ง: ตารางอยู่บน รายละเอียดอยู่ล่าง ช่องเป็นสี่เหลี่ยมจัตุรัส ----
+      P + '.win-body{flex-direction:column!important}',
+      P + '.win-left{flex:0 0 auto!important;min-height:auto!important}',
+      P + '.grid{flex:0 0 auto!important;grid-template-rows:none!important;grid-auto-rows:auto!important;align-content:start!important}',
+      P + '.grid .cell{height:auto!important;aspect-ratio:1/1!important}',
+      P + '.win-right{flex:1 1 0!important;width:100%!important;max-width:none!important;min-height:70px!important}',
+      P + '.win-head .win-title{font-size:17px!important}',
+      P + '.win-head .win-tab{font-size:13px!important;padding:5px 14px!important}',
+      P + '.win-head .win-x{width:32px!important;height:32px!important}',
+      P + '.bag-tools button{min-height:32px!important;padding:4px 8px!important;font-size:12px!important}',
+      P + '.win-right .d-name{font-size:14px!important}',
+      P + '.win-right .d-row{font-size:12px!important}',
+      P + '.win-right .d-note{font-size:11px!important}',
+      P + '.win-right .d-stats{font-size:12px!important}',
+      P + '.win-right .d-empty{font-size:12px!important;padding:10px!important}',
+      P + '.win-right .d-actions .btn{font-size:12px!important;padding:8px 6px!important}',
+      P + '.win-foot{font-size:12px!important}',
     ].join('');
   }
 
