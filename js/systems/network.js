@@ -3,6 +3,7 @@
 // v++++: วงกลมสำรองของสกิลวางพื้นแสดงที่จุดตกจริง (gx, gy)
 // v5: แก้มองไม่เห็นผู้เล่นอื่น: state เจอคนที่ไม่รู้จัก -> ขอรายชื่อห้องใหม่ (getPlayers) | ลบสไปรต์ที่ถูกทำลายทิ้ง
 //     สกิลธนู (ashot2/aroot/aheavy) ใช้กระสุนสำรองได้
+// v6 (ลดแลค): ชื่อผู้เล่น resolution 1 + ไม่ใช้เงา blur | ส่งตำแหน่งเฉพาะตอนขยับ (100ms) ยืนเฉยๆ ส่งทุก 1 วิ
 
 const NET_NAME_SIZE = '20px';
 const NET_NAME_STROKE = 6;
@@ -18,6 +19,10 @@ const NET_ROOM_CAP = 20;
 const NET_SWITCH_CD_MS = 5 * 60 * 1000;
 const NET_CH_BTN_CSS = 'position:fixed;left:96px;top:8px;z-index:9000;';
 
+// ความถี่ส่งตำแหน่ง (ms)
+const NET_SEND_MOVING_MS = 100;    // ตอนกำลังเดิน (เดิม 66)
+const NET_SEND_IDLE_MS = 1000;     // ตอนยืนเฉยๆ
+
 // ชนิดสกิลที่เป็นกระสุนยิงออกไป (ใช้ในส่วนสำรอง)
 const NET_PROJ_TYPES = { proj: 1, ashot2: 1, aroot: 1, aheavy: 1 };
 
@@ -32,8 +37,8 @@ function netNameStyle(color) {
   };
 }
 function netNameFx(t) {
-  t.setShadow(0, 2, '#000000', 3, true, true);
-  t.setResolution(2);
+  t.setShadow(0, 2, '#000000', 0, true, true);   // blur = 0 (เดิม 3)
+  t.setResolution(1);                             // เดิม 2 (หนักบนมือถือ)
   return t;
 }
 
@@ -450,9 +455,14 @@ Object.assign(Main.prototype, {
       o.s.anims.timeScale = 1;
     });
 
-    if (this.online && this.inRoom && time - this.lastSend > 66) {
-      this.lastSend = time;
-      this.sendNet('move', { x: Math.round(p.x), y: Math.round(p.y), cls: netMyClass(this) });
+    // ส่งตำแหน่ง: เดินอยู่ส่งทุก 100ms | ยืนเฉยๆ ส่งทุก 1 วิ (เป็น heartbeat)
+    if (this.online && this.inRoom) {
+      const rx = Math.round(p.x), ry = Math.round(p.y);
+      const moved = Math.abs(rx - (this._lsx || 0)) > 1 || Math.abs(ry - (this._lsy || 0)) > 1;
+      if (time - this.lastSend > (moved ? NET_SEND_MOVING_MS : NET_SEND_IDLE_MS)) {
+        this.lastSend = time; this._lsx = rx; this._lsy = ry;
+        this.sendNet('move', { x: rx, y: ry, cls: netMyClass(this) });
+      }
     }
   },
 });
