@@ -60,3 +60,14 @@ ZONES.push({
   reqLv: 1, minLv: 1, maxLv: 1, boxLevel: 1,
   bg: 0x1b241b, line: 0x1b241b,
 });
+
+// ===== ความโหดมอนเพิ่มตามด่าน (ด่าน 1-9) =====
+// ด่านที่ n (n = 0 คือด่าน 1) = 1 + n x STEP
+//   เลือด  STEP 0.2  -> ด่าน1 x1.0 | ด่าน5 x1.8 | ด่าน9 x2.6
+//   ดาเมจ  STEP 0.25 -> ด่าน1 x1.0 | ด่าน5 x2.0 | ด่าน9 x3.0
+// ด่านจุติ/เมือง (ดัชนี 9 ขึ้นไป) ได้ x1 เพราะมี hpMul / dmgMul ของตัวเองอยู่แล้ว
+// ** ค่า STEP ต้องตรงกับ STAGE_HP_STEP / STAGE_DMG_STEP ใน server.js **
+const STAGE_HP_STEP = 0.2;     // เลือดมอนเพิ่มด่านละเท่านี้
+const STAGE_DMG_STEP = 0.25;   // พลังโจมตีมอนเพิ่มด่านละเท่านี้
+function stageHpMul(zi)  { return zi < 9 ? 1 + zi * STAGE_HP_STEP  : 1; }
+function stageDmgMul(zi) { return zi < 9 ? 1 + zi * STAGE_DMG_STEP : 1; }
