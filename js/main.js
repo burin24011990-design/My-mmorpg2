@@ -89,7 +89,7 @@ const GRASS_ALPHA_INSIDE = 0.4;   // ความโปร่งของหญ�
   }
 })();
 
-new Phaser.Game({
+const game = new Phaser.Game({
   type: Phaser.AUTO,
   width: W, height: H,
   backgroundColor: '#1b241b',
@@ -101,4 +101,19 @@ new Phaser.Game({
   // Town อยู่ก่อน = เริ่มเกมที่เมือง แล้วเดินเข้า "ประตูเมือง" เพื่อไปฉาก Main
   // (ถ้าอยากข้ามเมืองชั่วคราว เปลี่ยนเป็น scene: Main)
   scene: [Main],
+});
+
+// ----- หมุนจอข้ามแนว (นอน <-> ตั้ง) = เซฟแล้วโหลดใหม่ เพื่อใช้เลย์เอาต์ของแนวนั้น -----
+// (PORTRAIT ถูกกำหนดตอนโหลด config.js จึงต้องโหลดหน้าใหม่เพื่อให้ขนาดเกมเปลี่ยน)
+let _rotTimer = null;
+window.addEventListener('resize', function () {
+  clearTimeout(_rotTimer);
+  _rotTimer = setTimeout(function () {
+    if ((window.innerHeight > window.innerWidth) === PORTRAIT) return;   // แนวเดิม ไม่ต้องทำอะไร
+    try {
+      const s = game.scene.scenes[0];
+      if (s && s.saveGame) s.saveGame();
+    } catch (e) {}
+    location.reload();
+  }, 400);
 });
