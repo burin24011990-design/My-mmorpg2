@@ -1,6 +1,7 @@
 // js/systems/boxPanel.js — ปุ่ม 📦 + หน้าต่างเปิดกล่องเงิน (ใช้ ServerBoxes)
-// + จัดตำแหน่ง: กล่องอยู่ข้างปุ่ม "จุติ" / ปุ่มยา ATK DEF HP+ เรียงมุมซ้ายล่าง / ปุ่มยา HP % มุมขวาล่าง
-// แนวตั้ง: ปุ่มกล่องอยู่ใต้ปุ่ม "เลือกด่าน" / แผงอยู่กลางจอ กว้างไม่เกินจอ
+// + จัดตำแหน่ง: กล่องอยู่ข้างปุ่ม "จุติ" / ปุ่มยา ATK DEF HP+ / ปุ่มยา HP % แยกตำแหน่ง แนวนอน-แนวตั้ง
+// วิธีจัดตำแหน่งปุ่มยา: เขียนเป็นกฎ CSS (!important) ลงใน <style id="pot-pos">
+// ชนะ inline style ของไฟล์อื่น (เช่น shop.js) -> ปุ่มไม่วิ่งสลับไปมาอีก
 (function () {
   const SB = window.ServerBoxes;
   if (!SB) return;
@@ -10,19 +11,25 @@
     { k: 'gold', name: 'กล่องทอง', c: '#ffd45c' }
   ];
   const MAX_SETS = 10;
-  const POTION_SCALE = 0.6;   // ขนาดปุ่มยา (1 = เดิม, ยิ่งน้อยยิ่งเล็ก)
-  const POTION_GAP = 8;       // ระยะห่างระหว่างปุ่มยา (px)
-  const POTION_EDGE = 8;      // ระยะจากขอบซ้าย/ล่าง (px)
   const BOX_GAP = 8;          // ระยะห่างปุ่มกล่องกับปุ่มจุติ (px)
 
-  // ----- ปุ่มยาเพิ่มเลือดอัตโนมัติ "HP xx%" (ปรับได้) -----
-  const HP_POT_SCALE = 0.6;   // ขนาดปุ่ม (1 = เดิม, ยิ่งน้อยยิ่งเล็ก)
-  const HP_POT_RIGHT = 8;     // ระยะจากขอบขวา (px) เพิ่ม = ขยับเข้ากลางจอ
-  const HP_POT_BOTTOM = 8;    // ระยะจากขอบล่าง (px) เพิ่ม = ขยับขึ้น
+  // ===== ตำแหน่งปุ่มยา แยกตามแนวจอ (ปรับเลขตรงนี้ได้เลย) =====
+  // left/right/bottom = ระยะจากขอบ (px) | scale = ขนาด (1 = เดิม) | gap = ระยะห่างระหว่างปุ่ม
+  const POT_CFG = {
+    landscape: {
+      hp:   { right: 8, bottom: 190, scale: 0.6 },            // ปุ่ม HP 20% (ยกขึ้นให้พ้นปุ่มสกิล)
+      pots: { left: 8,  bottom: 8,   gap: 8, scale: 0.6 }     // ATK DEF HP+
+    },
+    portrait: {
+      hp:   { right: 8, bottom: 160, scale: 0.6 },
+      pots: { left: 8,  bottom: 160, gap: 8, scale: 0.6 }
+    }
+  };
+  function orient() { return window.innerHeight > window.innerWidth ? 'portrait' : 'landscape'; }
 
-  // ----- ค่าสำหรับจอแนวตั้ง (ปรับได้) -----
+  // ----- ค่าสำหรับปุ่มกล่อง จอแนวตั้ง (ปรับได้) -----
   const BOX_SIZE_PORTRAIT = 40;   // ขนาดปุ่มกล่อง (px)
-  const PORTRAIT_CX = 0.463;      // กึ่งกลางปุ่มในแนวนอน (สัดส่วนความกว้างแคนวาส) = ตรงกับปุ่ม "เลือกด่าน" เพิ่ม = ขวา
+  const PORTRAIT_CX = 0.463;      // กึ่งกลางปุ่มในแนวนอน (สัดส่วนความกว้างแคนวาส) เพิ่ม = ขวา
   const PORTRAIT_Y = 0.178;       // ขอบบนของปุ่มในแนวตั้ง (สัดส่วนความสูงแคนวาส) เพิ่ม = ลงล่าง
   const PANEL_W_LANDSCAPE = 300;
   const PANEL_W_PORTRAIT = 340;
@@ -52,6 +59,11 @@
       '#box-panel button{font-size:14px;padding:9px 10px;min-height:40px}' +
     '}';
   document.head.appendChild(st);
+
+  // สไตล์ชีตสำหรับตำแหน่งปุ่มยา (เขียนใหม่ทุกครั้งที่ place())
+  const potSheet = document.createElement('style');
+  potSheet.id = 'pot-pos';
+  document.head.appendChild(potSheet);
 
   const btn = document.createElement('div');
   btn.id = 'box-btn'; btn.textContent = '📦';
@@ -115,26 +127,10 @@
     return out;
   }
 
-  // ---------- ปุ่มกล่อง: วางข้างปุ่ม "จุติ" ----------
-  function findJuti() {
-    const leaves = findLeaves(/^จุติ$/);
-    for (let i = 0; i < leaves.length; i++) {
-      let n = leaves[i];
-      while (n.parentElement && n.parentElement !== document.body) {
-        const r = n.parentElement.getBoundingClientRect();
-        if (r.width > 140 || r.height > 140) break;
-        n = n.parentElement;
-      }
-      const rr = n.getBoundingClientRect();
-      if (rr.width >= 40 && rr.width <= 140 && rr.height >= 40) return n;
-    }
-    return null;
-  }
-
-  // ===== ปุ่มกล่อง (แนวนอน): วางต่อท้ายแถวปุ่ม เมือง / CH1-1 / จุติ =====
+  // ===== ปุ่มกล่อง: วางต่อท้ายแถวปุ่ม เมือง / CH1-1 / จุติ (แนวนอน) =====
   const BOX_SIZE = 44;      // ขนาดปุ่มกล่อง (ให้เท่าปุ่มจุติ)
-  const BOX_LEFT_PX = 0;    // ถ้าอยากขยับซ้าย/ขวาเพิ่ม ใส่ค่าบวก/ลบ
-  const BOX_TOP_PX = 0;     // ถ้าอยากขยับขึ้น/ลงเพิ่ม
+  const BOX_LEFT_PX = 0;    // ขยับซ้าย/ขวาเพิ่ม ใส่ค่าบวก/ลบ
+  const BOX_TOP_PX = 0;     // ขยับขึ้น/ลงเพิ่ม
 
   function placeBox() {
     const sc = window.__mainScene;
@@ -179,7 +175,7 @@
     panel.style.top = (top + size + 8) + 'px';
   }
 
-  // ---------- ปุ่มยา ATK / DEF / HP+ : เรียงแนวนอนมุมซ้ายล่าง ----------
+  // ---------- ปุ่มยา ATK / DEF / HP+ ----------
   const POTION_LABELS = [/^ATK$/, /^DEF$/, /^HP\+$/];
   let potionEls = null;
 
@@ -191,7 +187,7 @@
       const p = n.parentElement;
       if (p.offsetWidth > 160 || p.offsetHeight > 160) break;
       const txt = (p.textContent || '');
-      if (others.some(function (o) { return o.test(txt.replace(/\s/g, '')) ; })) break;
+      if (others.some(function (o) { return o.test(txt.replace(/\s/g, '')); })) break;
       n = p;
     }
     return n;
@@ -208,31 +204,35 @@
     return els.every(Boolean) ? els : null;
   }
 
-  function placePotions() {
+  // คืนค่าเป็นกฎ CSS (ข้อความ) ไม่แก้ inline style
+  function potionRules() {
     if (!potionEls || potionEls.some(function (e) { return !e.isConnected; })) {
       potionEls = locatePotions();
-      if (!potionEls) return;
+      if (!potionEls) return '';
     }
-    let x = POTION_EDGE;
-    potionEls.forEach(function (el) {
+    const c = POT_CFG[orient()].pots;
+    let x = c.left, css = '';
+    potionEls.forEach(function (el, i) {
+      el.setAttribute('data-pot', String(i));
       const w = el.offsetWidth || 100;
-      setImp(el, 'position', 'fixed');
-      setImp(el, 'left', 'calc(env(safe-area-inset-left, 0px) + ' + Math.round(x) + 'px)');
-      setImp(el, 'bottom', 'calc(env(safe-area-inset-bottom, 0px) + ' + POTION_EDGE + 'px)');
-      setImp(el, 'top', 'auto');
-      setImp(el, 'right', 'auto');
-      setImp(el, 'margin', '0');
-      setImp(el, 'transform', 'scale(' + POTION_SCALE + ')');
-      setImp(el, 'transform-origin', 'left bottom');
-      x += w * POTION_SCALE + POTION_GAP;
+      css += '[data-pot="' + i + '"]{' +
+        'position:fixed!important;' +
+        'left:calc(env(safe-area-inset-left,0px) + ' + Math.round(x) + 'px)!important;' +
+        'bottom:calc(env(safe-area-inset-bottom,0px) + ' + c.bottom + 'px)!important;' +
+        'top:auto!important;right:auto!important;margin:0!important;' +
+        'transform:scale(' + c.scale + ')!important;transform-origin:left bottom!important}';
+      x += w * c.scale + c.gap;
     });
+    return css;
   }
 
-  // ---------- ปุ่มยาเพิ่มเลือด "HP 20%" : ย่อและย้ายไปมุมขวาล่าง ----------
+  // ---------- ปุ่มยาเพิ่มเลือด "HP 20%" ----------
   const HP_POT_RE = /^HP\s*\d+\s*%$/;
   let hpPotEl = null;
 
   function locateHpPotion() {
+    const byId = document.getElementById('potion-quick-r');
+    if (byId) return byId;
     const leaves = findLeaves(HP_POT_RE);
     if (!leaves.length) return null;
     let n = leaves[0];
@@ -244,23 +244,26 @@
     return n;
   }
 
-  function placeHpPotion() {
+  function hpPotionRules() {
     if (!hpPotEl || !hpPotEl.isConnected) {
       hpPotEl = locateHpPotion();
-      if (!hpPotEl) return;
+      if (!hpPotEl) return '';
     }
-    const el = hpPotEl;
-    setImp(el, 'position', 'fixed');
-    setImp(el, 'right', 'calc(env(safe-area-inset-right, 0px) + ' + HP_POT_RIGHT + 'px)');
-    setImp(el, 'bottom', 'calc(env(safe-area-inset-bottom, 0px) + ' + HP_POT_BOTTOM + 'px)');
-    setImp(el, 'left', 'auto');
-    setImp(el, 'top', 'auto');
-    setImp(el, 'margin', '0');
-    setImp(el, 'transform', 'scale(' + HP_POT_SCALE + ')');
-    setImp(el, 'transform-origin', 'right bottom');
+    const c = POT_CFG[orient()].hp;
+    hpPotEl.setAttribute('data-hp-pot', '1');
+    return '[data-hp-pot="1"]{' +
+      'position:fixed!important;' +
+      'right:calc(env(safe-area-inset-right,0px) + ' + c.right + 'px)!important;' +
+      'bottom:calc(env(safe-area-inset-bottom,0px) + ' + c.bottom + 'px)!important;' +
+      'left:auto!important;top:auto!important;margin:0!important;' +
+      'transform:scale(' + c.scale + ')!important;transform-origin:right bottom!important}';
   }
 
-  function place() { placeBox(); placePotions(); placeHpPotion(); }
+  function place() {
+    placeBox();
+    const css = potionRules() + hpPotionRules();
+    if (potSheet.textContent !== css) potSheet.textContent = css;
+  }
 
   // โชว์ปุ่มเฉพาะตอนเข้าเกมแล้ว
   setInterval(function () {
@@ -268,4 +271,5 @@
     if (window.__mainScene) place();
   }, 1000);
   window.addEventListener('resize', function () { setTimeout(place, 300); });
+  window.addEventListener('orientationchange', function () { setTimeout(place, 400); });
 })();
