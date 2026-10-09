@@ -1,5 +1,6 @@
 // chat.js (ฝั่งเกม) -- แชตโลก / ปาร์ตี้ / ส่วนตัว
 // เริ่มต้นอยู่ล่างกลาง-ซ้าย (พ้นปุ่มขวดยา) | กดค้างที่ปุ่ม 💬 แล้วลากเพื่อย้ายได้ (จำตำแหน่งไว้)
+// แนวตั้ง: วางชิดซ้ายล่างและแคบลง เพื่อไม่ให้ทับปุ่มสกิล/แดช (แนวนอนเหมือนเดิมทุกอย่าง)
 // โหลดหลัง social.js ก่อน main.js | ต้องใช้คู่กับ server/chat.js
 (function () {
   const P = Main.prototype;
@@ -10,13 +11,22 @@
   const FADE_MS = 10000;     // ตอนปิดแชต ข้อความจะแสดงกี่ ms
   const SHADOW = 'text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000;';
 
+  // ---------- แนวจอ ----------
+  const isPortrait = () =>
+    (typeof PORTRAIT !== 'undefined' && !!PORTRAIT) ||
+    (typeof W !== 'undefined' && typeof H !== 'undefined' && W < H);
+
   // ---------- ตำแหน่งแชต ----------
-  const DEF_X = 0.30;                 // ตำแหน่งเริ่มต้น: ห่างจากขอบซ้ายจอเกม 30% (ขยับเลขนี้ได้ ถ้ายังทับ)
-  const POS_KEY = 'chatPos2';         // เก็บตำแหน่งที่ลากไว้ (x = สัดส่วนซ้าย, b = สัดส่วนจากขอบล่าง)
+  const DEF_X = 0.30;                 // ตำแหน่งเริ่มต้นแนวนอน: ห่างจากขอบซ้ายจอเกม 30% (ขยับเลขนี้ได้ ถ้ายังทับ)
+  const DEF_X_P = 0.02;               // ตำแหน่งเริ่มต้นแนวตั้ง: ชิดซ้าย (ปุ่มสกิลอยู่ฝั่งขวา)
+  const W_CLOSED = 0.30, W_OPEN = 0.36;       // ความกว้างแนวนอน (สัดส่วนของจอเกม)
+  const W_CLOSED_P = 0.38, W_OPEN_P = 0.38;   // ความกว้างแนวตั้ง (เกิน 0.40 จะเริ่มทับปุ่มสกิล)
+  // เก็บตำแหน่งที่ลากไว้แยกตามแนวจอ (x = สัดส่วนซ้าย, b = สัดส่วนจากขอบล่าง) กันตำแหน่งแนวนอนไปทับแนวตั้ง
+  const posKey = () => isPortrait() ? 'chatPos2p' : 'chatPos2';
   const LONG_MS = 400;                // กดค้างกี่ ms ถึงเริ่มลาก
   const loadPos = () => {
     try {
-      const p = JSON.parse(localStorage.getItem(POS_KEY));
+      const p = JSON.parse(localStorage.getItem(posKey()));
       if (p && isFinite(p.x) && isFinite(p.b)) return p;
     } catch (e) {}
     return null;
@@ -120,7 +130,7 @@
     const endDrag = () => {
       clearTimeout(timer);
       if (drag) {
-        try { localStorage.setItem(POS_KEY, JSON.stringify(st.pos)); } catch (e) {}
+        try { localStorage.setItem(posKey(), JSON.stringify(st.pos)); } catch (e) {}
         drag = null; tog.style.outline = '';
       }
       down = null;
@@ -161,19 +171,19 @@
     const r = cv.getBoundingClientRect();
     if (r.width < 50) { c.root.style.display = 'none'; return; }
     c.root.style.display = 'flex';
-    const st = this.chatSt;
+    const st = this.chatSt, por = isPortrait();
     const k = r.width / (typeof W !== 'undefined' ? W : 960), open = st.open;
     const fs = Math.max(11, 12 * k);
-    const wFrac = open ? 0.36 : 0.30;
+    const wFrac = por ? (open ? W_OPEN_P : W_CLOSED_P) : (open ? W_OPEN : W_CLOSED);
     const w = r.width * wFrac;
 
-    // ตำแหน่ง: ใช้ที่ลากไว้ ถ้าไม่มีใช้ค่าเริ่มต้น (ขยับมาทางขวา พ้นปุ่มขวดยา)
+    // ตำแหน่ง: ใช้ที่ลากไว้ ถ้าไม่มีใช้ค่าเริ่มต้น (แนวนอน: พ้นปุ่มขวดยา | แนวตั้ง: ชิดซ้าย พ้นปุ่มสกิล)
     let x, bottomPx;
     if (st.pos) {
       x = st.pos.x;
       bottomPx = st.pos.b * r.height;
     } else {
-      x = DEF_X;
+      x = por ? DEF_X_P : DEF_X;
       bottomPx = 4 * k;
     }
     x = Math.max(0, Math.min(1 - wFrac, x));          // กันล้นขอบขวา
@@ -261,9 +271,9 @@
     }
     else if ((m = text.match(/^\/p\s+([\s\S]+)/i))) { ch = 'party'; text = m[1]; }
     else if ((m = text.match(/^\/(?:world|all|s)\s+([\s\S]+)/i))) { ch = 'world'; text = m[1]; }
-    else if (/^\/resetchat\s*$/i.test(text)) {            // รีเซ็ตตำแหน่งแชตกลับค่าเริ่มต้น
+    else if (/^\/resetchat\s*$/i.test(text)) {            // รีเซ็ตตำแหน่งแชตกลับค่าเริ่มต้น (เฉพาะแนวจอที่เล่นอยู่)
       st.pos = null;
-      try { localStorage.removeItem(POS_KEY); } catch (e) {}
+      try { localStorage.removeItem(posKey()); } catch (e) {}
       c.msgIn.value = '';
       this.chatLayout();
       return this.chatSys('รีเซ็ตตำแหน่งแชตแล้ว');
