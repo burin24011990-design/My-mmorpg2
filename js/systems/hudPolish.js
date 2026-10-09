@@ -2,6 +2,9 @@
  * วางที่ js/systems/hudPolish.js และใส่ใน index.html "ก่อน" js/main.js (หลัง statusPanel.js):
  *   <script src="js/systems/hudPolish.js?v=1"></script>
  * ปรับขนาด/ตำแหน่ง: แก้ HP_HUD_X, HP_HUD_Y, HP_HUD_SCALE ด้านล่าง
+ *
+ * (ลดแลค) เดิมเขียน DOM ทุกเฟรม (textContent / style.width ของทุกหลอด + getElementById ซ้ำๆ)
+ *         ตอนนี้เก็บ element ไว้ใช้ซ้ำ และเขียนเฉพาะเมื่อค่าเปลี่ยนจริง
  */
 (function () {
   var HP_HUD_X = 3, HP_HUD_Y = 4;   // ตำแหน่งในพิกัดเกม (มุมซ้ายบน)
@@ -57,26 +60,48 @@
   function mount() { document.body.appendChild(el); }
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
 
-  function setBar(id, v, max, pct) {
-    var b = document.getElementById(id); if (!b) return;
+  // ----- เก็บ element ไว้ใช้ซ้ำ (ไม่ต้องค้นหาใหม่ทุกเฟรม) + จำค่าล่าสุดที่เขียนไป -----
+  function mkBar(id) {
+    var b = el.querySelector('#' + id);
+    return { el: b, fill: b.querySelector('.fill'), txt: b.querySelector('.txt'), w: -1, t: '', low: false };
+  }
+  var R = {
+    lv: el.querySelector('#hh-lv'), lvVal: '',
+    nm: el.querySelector('#hh-nm'), nmVal: '',
+    hp: mkBar('hh-hp'), mp: mkBar('hh-mp'), xp: mkBar('hh-xp'),
+    g: el.querySelector('#hh-g'), gVal: '',
+    k: el.querySelector('#hh-k'), kVal: '',
+    pos: ''                         // ค่า left|top|scale ล่าสุด
+  };
+
+  // เขียนเฉพาะตอนค่าเปลี่ยน
+  function setBar(b, v, max, pct, isHp) {
     max = Math.max(1, max || 1); v = Math.max(0, Math.min(v || 0, max));
     var p = v / max * 100;
-    b.querySelector('.fill').style.width = p + '%';
-    b.querySelector('.txt').textContent = pct ? p.toFixed(1) + '%' : Math.floor(v) + ' / ' + Math.floor(max);
-    if (id === 'hh-hp') b.classList.toggle('low', p <= 25);
+    var w = Math.round(p * 2) / 2;                      // ปัดทีละ 0.5% กันเขียนถี่เกินไป
+    if (w !== b.w) { b.w = w; b.fill.style.width = w + '%'; }
+    var t = pct ? p.toFixed(1) + '%' : Math.floor(v) + ' / ' + Math.floor(max);
+    if (t !== b.t) { b.t = t; b.txt.textContent = t; }
+    if (isHp) {
+      var low = p <= 25;
+      if (low !== b.low) { b.low = low; b.el.classList.toggle('low', low); }
+    }
   }
-  function setTxt(id, t) { var n = document.getElementById(id); if (n && n.textContent !== t) n.textContent = t; }
 
   // วางให้ตรงกับมุมซ้ายบนของ canvas (เกมถูกย่อ/ขยายตามจอ) และย่อตามสเกลของ canvas
   function place(scene) {
     var cv = scene.game && scene.game.canvas; if (!cv) return;
     var r = cv.getBoundingClientRect();
-    if (!r.width) { el.style.display = 'none'; return; }
+    if (!r.width) { if (el.style.display !== 'none') el.style.display = 'none'; return; }
     var k = r.width / scene.scale.width * HP_HUD_SCALE;
     var kb = r.width / scene.scale.width;
+    var left = Math.round(r.left + HP_HUD_X * kb), top = Math.round(r.top + HP_HUD_Y * kb);
+    var key = left + '|' + top + '|' + k.toFixed(3);
+    if (key === R.pos) return;                          // ตำแหน่งไม่เปลี่ยน ไม่ต้องแตะ DOM
+    R.pos = key;
     el.style.display = 'flex';
-    el.style.left = (r.left + HP_HUD_X * kb) + 'px';
-    el.style.top = (r.top + HP_HUD_Y * kb) + 'px';
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
     el.style.transform = 'scale(' + k + ')';
   }
 
@@ -91,16 +116,19 @@
       if (this.hudText) this.hudText.setVisible(false);
 
       var s = this.stats; if (!s) return;
-      var lv = document.getElementById('hh-lv');
-      if (lv.textContent !== String(s.level)) { lv.textContent = s.level; lv.className = String(s.level).length >= 3 ? 's3' : ''; }
+      var lvs = String(s.level);
+      if (lvs !== R.lvVal) { R.lvVal = lvs; R.lv.textContent = lvs; R.lv.className = lvs.length >= 3 ? 's3' : ''; }
       // ขั้นจุติเก็บที่ stats.rebirth (rebirth.js) -- แสดงเฉพาะเมื่อจุติแล้ว
       var rbn = Math.floor(s.rebirth || 0);
-      setTxt('hh-nm', rbn > 0 ? '☯ จุติ ' + rbn : '');
-      setBar('hh-hp', s.hp, this.maxHp());
-      setBar('hh-mp', s.mp, this.maxMp());
-      setBar('hh-xp', s.exp, s.expNext, true);
-      setTxt('hh-g', 'ทอง ' + s.gold);
-      setTxt('hh-k', 'ฆ่า ' + (this.kills || 0));
+      var nmv = rbn > 0 ? '☯ จุติ ' + rbn : '';
+      if (nmv !== R.nmVal) { R.nmVal = nmv; R.nm.textContent = nmv; }
+      setBar(R.hp, s.hp, this.maxHp(), false, true);
+      setBar(R.mp, s.mp, this.maxMp());
+      setBar(R.xp, s.exp, s.expNext, true);
+      var gv = 'ทอง ' + s.gold;
+      if (gv !== R.gVal) { R.gVal = gv; R.g.textContent = gv; }
+      var kv = 'ฆ่า ' + (this.kills || 0);
+      if (kv !== R.kVal) { R.kVal = kv; R.k.textContent = kv; }
       if (frame++ % 20 === 0) place(this);
     } catch (e) { /* ไม่ให้ HUD ทำเกมค้าง */ }
   };
