@@ -17,7 +17,9 @@ Object.assign(Main.prototype, {
     this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.4).setScrollFactor(0).setDepth(101).setVisible(false);
     this.input.on('pointerdown', p => {
       if (this.panel) return; // แก้บั๊ก: ไม่สร้างจอยขณะเปิดแผงเมนู
-      if (p.x < W * 0.4 && this.joy.id === null) {
+      // แนวนอน: โซนจอยคือ 40% ซ้ายของจอ | แนวตั้ง: จำกัดให้อยู่ครึ่งล่างของจอด้วย (กันแตะโซนเมนู/HUD ด้านบนแล้วจอยโผล่)
+      const inZone = p.x < W * 0.4 && (!PORTRAIT || p.y > H * 0.45);
+      if (inZone && this.joy.id === null) {
         this.joy.id = p.id; this.joy.ox = p.x; this.joy.oy = p.y;
         this.joyBase.setPosition(p.x, p.y).setVisible(true);
         this.joyKnob.setPosition(p.x, p.y).setVisible(true);
