@@ -89,7 +89,7 @@ const GRASS_ALPHA_INSIDE = 0.4;   // ความโปร่งของหญ�
   }
 })();
 
-const game = new Phaser.Game({
+new Phaser.Game({
   type: Phaser.AUTO,
   width: W, height: H,
   backgroundColor: '#1b241b',
@@ -105,15 +105,17 @@ const game = new Phaser.Game({
 
 // ----- หมุนจอข้ามแนว (นอน <-> ตั้ง) = เซฟแล้วโหลดใหม่ เพื่อใช้เลย์เอาต์ของแนวนั้น -----
 // (PORTRAIT ถูกกำหนดตอนโหลด config.js จึงต้องโหลดหน้าใหม่เพื่อให้ขนาดเกมเปลี่ยน)
+// หมายเหตุ: startScreen.js หน่วงการสร้างเกม จึงไม่มีตัวแปร game ให้เรียกตรงๆ ใช้ GameSaveNow / CloudSave ที่มีอยู่แล้วแทน
 let _rotTimer = null;
 window.addEventListener('resize', function () {
   clearTimeout(_rotTimer);
   _rotTimer = setTimeout(function () {
     if ((window.innerHeight > window.innerWidth) === PORTRAIT) return;   // แนวเดิม ไม่ต้องทำอะไร
+    try { if (window.GameSaveNow) window.GameSaveNow(); } catch (e) {}   // เซฟลงเครื่อง
+    var done = function () { location.reload(); };
     try {
-      const s = game.scene.scenes[0];
-      if (s && s.saveGame) s.saveGame();
-    } catch (e) {}
-    location.reload();
+      if (window.CloudSave && CloudSave.now) Promise.race([CloudSave.now(), new Promise(function (r) { setTimeout(r, 2500); })]).then(done, done);
+      else done();
+    } catch (e) { done(); }
   }, 400);
 });
