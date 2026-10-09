@@ -7,9 +7,11 @@
 // สไปรต์ชีตแบบ rects: รูปที่แต่ละเฟรมกว้างไม่เท่ากัน (เช่น ไฟระเบิดที่ขยายใหญ่ขึ้น) ห้ามตัดเป็นช่องเท่าๆ กัน
 //   rects = [[x, กว้าง], ...] ต่อ 1 เฟรม (วัดจากไฟล์ภาพจริง) | fh = ความสูงภาพ
 //   fit จะปรับให้เฟรมที่กว้างที่สุด = เส้นผ่านศูนย์กลางสกิล (range * 2)
+// (ลดแลค) MAX_FX = จำนวนเอฟเฟกต์สกิลที่เล่นพร้อมกันได้สูงสุด เกินแล้วเอฟเฟกต์ใหม่จะไม่แสดง (ดาเมจยังคำนวณปกติ)
 (function () {
   const P = Main.prototype;
   const PAD = 2;   // ขอบเผื่อรอบเฟรมแบบ rects (พิกเซล)
+  const MAX_FX = 14;   // เอฟเฟกต์พร้อมกันสูงสุด (ยังแลคตอนใช้สกิล -> ลดเหลือ 8-10)
 
   const SHEETS = {
     sw_slash: { file: 'img/fx/sw_slash2.png', fw: 221, fh: 248, frames: 12, fps: 30, ox: 0.9367, oy: 0.5484, peakW: 203, peakH: 208 },
@@ -155,12 +157,15 @@
 
   function play(scene, cfg, x, y, ang, def, tx, ty) {
     if (!scene.anims.exists(cfg.sheet)) return;
+    if ((scene._fxN || 0) >= MAX_FX) return;          // เอฟเฟกต์เต็มจอแล้ว ข้ามอันใหม่ (กันแลค)
     const d = SHEETS[cfg.sheet];
     const base = d.rects ? d.maxW : (d.ring || d.fw * 0.8);                 // rects: เฟรมกว้างสุด = เส้นผ่านศูนย์กลางสกิล
     let sc = cfg.fit ? (def.range * 2) / base * (cfg.fitMul || 1) : (cfg.scale || 1);
     if (cfg.byRange && d.peakW) sc = (def.range * 2 * (cfg.mul || 1)) / d.peakW;            // ขนาดตามระยะสกิล
     if (cfg.byHalfW && d.peakH && def.halfW) sc = (def.halfW * 2 * (cfg.mul || 1)) / d.peakH; // ขนาดตามความกว้างแนวฟัน
     const s = scene.add.sprite(x, y, cfg.sheet).setDepth(70).setScale(sc);
+    scene._fxN = (scene._fxN || 0) + 1;
+    s.once('destroy', () => { scene._fxN = Math.max(0, (scene._fxN || 1) - 1); });
     if (d.ox) s.setOrigin(d.ox, d.oy || 0.5);          // ชีตแบบยึดปลายคม
     else if (cfg.oy) s.setOrigin(0.5, cfg.oy);
     if (cfg.rotate) s.setRotation(ang);
