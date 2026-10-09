@@ -8,6 +8,7 @@
 // blockMs = บล็อกการโจมตีของมอนได้ 1 ครั้ง ภายในเวลานี้ (3000 = 3 วิ)
 // scale = ตัวคูณสเตตัส: ดาเมจ = dmg x เลเวลสกิล + ตัวคูณ x สเตตัส
 // ** มานาทุกสกิลถูกคูณด้วย MP_COST_MUL (0.5 = ครึ่งเดียว | ตั้ง 1 = ค่าเดิม) **
+// ** เอฟเฟกต์ภาพ/เสียง: ใช้ SwordVFX (SwordVFX.js) และ SwordSFX (SwordSFX.js) ถ้าโหลดอยู่ — ไม่มีไฟล์ก็ไม่พัง จะใช้เอฟเฟกต์เดิมแทน **
 (function () {
   const Classes = window.Classes;
   if (!Classes) throw new Error('sword.js: ไม่พบ window.Classes -> _shared.js ไม่ทำงาน/โหลดไม่ขึ้น (ดู error ก่อนหน้า)');
@@ -25,6 +26,21 @@
   // ตัวคูณมานาของสกิลดาบทุกสกิลรวมอัลติ: 0.5 = ใช้มานาครึ่งเดียว | ตั้ง 1 = ค่าเดิม
   const MP_COST_MUL = 0.5;
   const mpc = n => Math.max(1, Math.round(n * MP_COST_MUL));
+
+  // ---------- ตัวช่วยเรียก VFX / SFX (ปลอดภัย: ไม่มีไฟล์หรือ error ก็ไม่ทำให้สกิลพัง) ----------
+  function hasVfx(name) { return !!(window.SwordVFX && typeof window.SwordVFX[name] === 'function'); }
+  function vfx(name) {
+    try {
+      if (!hasVfx(name)) return false;
+      window.SwordVFX[name].apply(window.SwordVFX, Array.prototype.slice.call(arguments, 1));
+      return true;
+    } catch (e) { console.warn('SwordVFX.' + name, e); return false; }
+  }
+  function sfx(name, scene) {
+    try {
+      if (window.SwordSFX && typeof window.SwordSFX[name] === 'function') window.SwordSFX[name](scene);
+    } catch (e) { console.warn('SwordSFX.' + name, e); }
+  }
 
   // ตัวช่วยเขียนข้อความอธิบายสกิล (แต่ละท่อนที่คั่นด้วย ' • ' = 1 บรรทัดในหน้าต่างสกิล)
   const pct = v => Math.round((v || 0) * 100);
@@ -146,17 +162,28 @@
   }
 
   // ฟันตรงเป็นแนวสี่เหลี่ยม: ยาว def.range กว้าง def.halfW*2 ไปทางทิศ (fx,fy)
-  // withStun = true จะสตั้นทุกตัวที่โดนด้วย (ฟันสตั้น/อัลติ) | false = ฟันเฉยๆ (ฟันตรง)
-  function slashBox(scene, def, dmg, fx, fy, color, withStun) {
+  // opts.stun = true จะสตั้นทุกตัวที่โดน (ฟันสตั้น/อัลติ) | false = ฟันเฉยๆ (ฟันตรง)
+  // opts.ult = true ใช้ภาพอัลติ (SwordVFX.ultimate) | opts.shot = ทีที่เท่าไหร่ของอัลติ
+  // opts.sfx = ชื่อเสียงตอนฟัน | opts.hitSfx = ชื่อเสียงตอนโดนศัตรู
+  function slashBox(scene, def, dmg, fx, fy, color, opts) {
+    opts = opts || {};
+    const withStun = !!opts.stun;
     const p = scene.player;
     let ux = fx, uy = fy;
     const l = Math.hypot(ux, uy);
     if (l < 0.001) { ux = 1; uy = 0; } else { ux /= l; uy /= l; }
     const len = def.range, hw = def.halfW;
 
-    const r = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, color, 0.4)
-      .setRotation(Math.atan2(uy, ux)).setDepth(60);
-    scene.tweens.add({ targets: r, alpha: 0, duration: 280, onComplete: () => r.destroy() });
+    // ภาพฟัน: ใช้ SwordVFX ถ้ามี ไม่งั้นใช้สี่เหลี่ยมเดิม
+    let drew = false;
+    if (opts.ult) drew = vfx('ultimate', scene, p.x, p.y, ux, uy, len, hw, opts.shot || 1);
+    else drew = vfx('slash', scene, p.x, p.y, ux, uy, len, hw, color);
+    if (!drew) {
+      const r = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, color, 0.4)
+        .setRotation(Math.atan2(uy, ux)).setDepth(60);
+      scene.tweens.add({ targets: r, alpha: 0, duration: 280, onComplete: () => r.destroy() });
+    }
+    if (opts.sfx) sfx(opts.sfx, scene);
 
     const list = scene.enemies.getChildren().filter(e => {
       if (!e.active) return false;
@@ -164,8 +191,14 @@
       const along = rx * ux + ry * uy, perp = Math.abs(-rx * uy + ry * ux);
       return along >= -15 && along <= len + 12 && perp <= hw + 12;
     });
-    list.forEach(e => { if (withStun) stun(scene, e, def.stunMs); scene.damage(e, dmg); });
+    list.forEach(e => {
+      if (withStun) stun(scene, e, def.stunMs);
+      scene.damage(e, dmg);
+      vfx('hit', scene, e);
+    });
+    if (list.length && opts.hitSfx) sfx(opts.hitSfx, scene);
     if (withStun && list.length) scene.popText(p.x, p.y - 40, 'สตั้น!', '#ffe066');
+    return drew;
   }
 
   // บัพสเตตัสตัวเอง (ผ่านระบบบัพของ stats.js) คืน true ถ้าสำเร็จ
@@ -214,7 +247,10 @@
       if (!key) key = ARMOR_KEYS.find(k => S && (k in S));
     } catch (e) { console.error('armorBuff', e); }
     const r = pctBuff(scene, 'sw_armor', key, def.armorPct, def.armorMs);
-    if (r.ok) scene.toastMsg('🛡 เกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ');
+    if (r.ok) {
+      scene.toastMsg('🛡 เกราะ +' + Math.round(def.armorPct * 100) + '% นาน ' + (def.armorMs / 1000) + ' วิ');
+      if (scene.player) vfx('guard', scene, scene.player.x, scene.player.y);
+    }
     else warnOnce(scene, 'เพิ่มเกราะไม่ได้ (ไม่พบสเตตัสเกราะ/addStatBuff) ใส่ชื่อที่ ARMOR_STAT');
   }
 
@@ -268,7 +304,9 @@
           if (this.player) {
             this.popText(this.player.x, this.player.y - 40, 'บล็อก!', '#9be7ff');
             this.flash(this.player.x, this.player.y, 40, 0x9be7ff);
+            vfx('block', this, this.player.x, this.player.y);
           }
+          sfx('block', this);
           return;
         }
       }
@@ -306,13 +344,15 @@
     const ny = clamp(sy + (fy || 0) * def.range, 20, WORLD_H - 20);
     const res = withoutDamage(scene, () => _apply.apply(scene, args));
     const pw = def.pathW || 55;
+    vfx('dash', scene, sx, sy, nx, ny, pw);   // เส้นพลังพุ่ง
+    sfx('dash', scene);
     let n = 0;
     scene.enemies.getChildren().slice().forEach(e => {
       if (!e.active) return;
       const hit = distToSeg(e.x, e.y, sx, sy, nx, ny) <= pw
         || Phaser.Math.Distance.Between(x, y, e.x, e.y) < pw + 35
         || Phaser.Math.Distance.Between(nx, ny, e.x, e.y) < pw + 15;
-      if (hit) { n++; scene.damage(e, dmg); }
+      if (hit) { n++; scene.damage(e, dmg); vfx('hit', scene, e); }
     });
     if (n > 1) scene.popText(sx, sy - 40, 'ทะลวง x' + n + '!', '#ffe066');
     return res;
@@ -321,11 +361,11 @@
   // ---------- เอฟเฟกต์สกิล (this = scene) ----------
   // ฟันตรง: ฟันเป็นแนวยาวกว้าง ไม่สตั้น (บัพโจมตีอยู่ใน useSkill ด้านล่าง)
   Classes.handlers.sslash = function (def, x, y, dmg, fx, fy) {
-    slashBox(this, def, dmg, fx, fy, 0xffffff, false);
+    slashBox(this, def, dmg, fx, fy, 0xffffff, { stun: false, sfx: 'slash' });
   };
 
   Classes.handlers.sstun = function (def, x, y, dmg, fx, fy) {
-    slashBox(this, def, dmg, fx, fy, 0xffd45e, true);
+    slashBox(this, def, dmg, fx, fy, 0xffd45e, { stun: true, sfx: 'cross' });
     // ฟื้นเลือดอย่างมากทันทีที่ใช้ (% ของ HP สูงสุด)
     if (def.healPct && this.healPlayer) {
       const amt = Math.round(this.maxHp() * def.healPct);
@@ -343,10 +383,18 @@
     scene._swSpin = null;
     const fresh = !(cont && now - cont.t < 250);
     const left = fresh ? Math.max(0, (def.spins || 1) - 1) : cont.left;   // จำนวนครั้งที่ยังเหลือหลังครั้งนี้
+    const turn = Math.max(0, (def.spins || 1) - 1 - left);                // รอบที่เท่าไหร่ (เริ่มที่ 0)
 
-    scene.flash(p.x, p.y, def.range, col);
-    scene.time.delayedCall(110, () => scene.flash(p.x, p.y, def.range * 0.6, 0xffffff));
-    Classes.enemiesIn(scene, p.x, p.y, def.range).forEach(e => scene.damage(e, dmg));
+    // ภาพฟันหมุน: ใช้ SwordVFX ถ้ามี ไม่งั้นใช้วงแฟลชเดิม
+    if (!vfx('spin', scene, p.x, p.y, def.range, turn)) {
+      scene.flash(p.x, p.y, def.range, col);
+      scene.time.delayedCall(110, () => scene.flash(p.x, p.y, def.range * 0.6, 0xffffff));
+    }
+    sfx('spin', scene);
+
+    const hits = Classes.enemiesIn(scene, p.x, p.y, def.range);
+    hits.forEach(e => { scene.damage(e, dmg); vfx('hit', scene, e); });
+    if (hits.length) sfx('spinHit', scene);
     if (fresh) { armorBuff(scene, def); giveBlock(scene, def.blockMs); }   // บล็อกเฉพาะตอนร่ายจริง ไม่ใช่ทุกรอบหมุน
 
     if (left > 0) {
@@ -361,14 +409,15 @@
   // อัลติ: ฟันตรงแนวกว้างยาวมาก "def.shots ที" (ห่างกัน def.shotGap) แต่ละทีสตั้น + ดาเมจเต็ม
   Classes.handlers.sult = function (def, x, y, dmg, fx, fy) {
     const scene = this, shots = def.shots || 1, gap = def.shotGap || 400;
-    slashBox(scene, def, dmg, fx, fy, 0xff6b5e, true);
-    if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(160, 0.004);
+    const drew = slashBox(scene, def, dmg, fx, fy, 0xff6b5e, { stun: true, ult: true, shot: 1, sfx: 'ultimate', hitSfx: 'ultimateHit' });
+    // SwordVFX.ultimate สั่นจอเองอยู่แล้ว | ถ้าไม่มี VFX ใช้การสั่นจอเดิม
+    if (!drew && scene.cameras && scene.cameras.main) scene.cameras.main.shake(160, 0.004);
     if (shots > 1 && scene.player) scene.popText(scene.player.x, scene.player.y - 60, 'ฟันที่ 1!', '#ff9a8a');
     for (let i = 1; i < shots; i++) {
       scene.time.delayedCall(i * gap, () => {
         if (!scene.player || (scene.stats && scene.stats.hp <= 0)) return;
-        slashBox(scene, def, dmg, fx, fy, 0xffd45e, true);
-        if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(220, 0.006);
+        const d2 = slashBox(scene, def, dmg, fx, fy, 0xffd45e, { stun: true, ult: true, shot: i + 1, sfx: 'ultimate', hitSfx: 'ultimateHit' });
+        if (!d2 && scene.cameras && scene.cameras.main) scene.cameras.main.shake(220, 0.006);
         scene.flash(scene.player.x, scene.player.y, 60, 0xffffff);
         scene.popText(scene.player.x, scene.player.y - 60, 'ฟันที่ ' + (i + 1) + '!', '#ffe9a8');
       });
