@@ -19,6 +19,8 @@
 //       โบนัสปาร์ตี้ +10/20/40% ยังคูณใน gainExp ของ social.js เหมือนเดิม (ไม่ต้องแก้ไฟล์นั้น)
 // - v6: แชร์ไอเทมตอน "เก็บเข้าตัว": ของดรอปตกที่คนฆ่าเสมอ (บอทเก็บเองได้) พอเก็บ ถ้าปาร์ตี้ตั้งโหมดสุ่ม/สลับ
 //       เครื่องจะส่ง 'lootShare' ให้เซิร์ฟเวอร์เลือกคนรับ แล้วของไปเกิดที่ตัวคนรับ (ถูกเก็บเข้ากระเป๋าทันที) | ใช้คู่กับ server.js v14
+// - v7 (ลดแลค): โหมดห้อง ซ่อนชื่อมอนที่อยู่นอกจอ (เดิมอัปเดตตำแหน่งชื่อมอนทุกตัวทุกเฟรม) + ไม่เล่นอนิเมชันมอนนอกจอ
+//       (ในโหมดห้อง ส่วนลดแลคของ monsters.js ไม่ทำงาน เพราะไฟล์นี้คุมมอนแทน)
 
 (function () {
   const P = Main.prototype;
@@ -219,6 +221,7 @@
     const g = this.enemyBarGfx;
     g.clear();
     const self = this;
+    const view = this.cameras.main.worldView;            // คำนวณครั้งเดียวต่อเฟรม (ใช้ซ่อนของนอกจอ)
     this.enemies.getChildren().forEach(function (e) {
       if (!e.active || e.sid === undefined) return;
       const held = ccActive(self, e, NO_MOVE);               // ติดสถานะ = ยืนอยู่กับที่
@@ -228,12 +231,25 @@
         else if (d > 0.5) e.setPosition(e.x + dx * 0.3, e.y + dy * 0.3);
       }
       if (e.body) e.body.setVelocity(0, 0);
-      if (e.def && e.def.hasSheet) {
+
+      // นอกจอ (เผื่อขอบ 120px): ไม่ต้องเล่นอนิเมชัน
+      const onScr = e.x > view.x - 120 && e.x < view.right + 120 && e.y > view.y - 120 && e.y < view.bottom + 120;
+      if (onScr && e.def && e.def.hasSheet) {
         const st = time < e.atkUntil ? 'attack' : ((!held && d > 3) ? 'walk' : 'idle');
         if (e.animState !== st) { e.animState = st; e.play(e.def.key + '_' + st, true); }
         if (!held && Math.abs(dx) > 3) e.setFlipX(dx < 0);
       }
-      if (e.levelText) e.levelText.setPosition(e.x, e.y - e.labelOff);
+
+      // ชื่อมอน: โชว์เฉพาะที่อยู่ในจอ และไม่ได้ซ่อนในพุ่ม (hiddenInBush ตั้งโดย obstacles.js)
+      if (e.levelText) {
+        const on = !e.hiddenInBush && e.x > view.x - 80 && e.x < view.right + 80 && e.y > view.y - 80 && e.y < view.bottom + 80;
+        if (on) {
+          if (!e.levelText.visible) e.levelText.setVisible(true);
+          e.levelText.setPosition(e.x, e.y - e.labelOff);
+        } else if (e.levelText.visible) {
+          e.levelText.setVisible(false);
+        }
+      }
       self.drawEnemyBar(g, e);
     });
   };
