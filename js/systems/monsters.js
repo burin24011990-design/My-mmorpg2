@@ -10,6 +10,7 @@
 // หมายเหตุ: หนังสือสกิลดรอปจากมินิบอส/มอนธรรมดา เป็นไอเทมบนพื้น -> เก็บเข้ากระเป๋า (ดู pickup ใน inventory.js)
 // หมายเหตุ: ชื่อ/สี/แอนิเมชันของมอนอยู่ใน js/data/monsterDefs.js
 // หมายเหตุ: ตัวเลขดาเมจอยู่ใน js/systems/damageFx.js (showDamage)
+// หมายเหตุ: ความโหดเพิ่มตามด่าน (stageHpMul / stageDmgMul) อยู่ท้ายไฟล์ js/data/zones.js
 const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
@@ -126,8 +127,8 @@ Object.assign(Main.prototype, {
     e.def = def;
     e.kind = kind; e.ranged = ranged; e.isBoss = false;
     e.level = lv;
-    e.hp = (30 + lv * 8) * NORMAL_HP_MULT; e.maxHp = e.hp;
-    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * NORMAL_DMG_MULT * MONSTER_DMG_SCALE));
+    e.hp = (30 + lv * 8) * NORMAL_HP_MULT * stageHpMul(zi); e.maxHp = e.hp;
+    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * NORMAL_DMG_MULT * MONSTER_DMG_SCALE * stageDmgMul(zi)));
     e.aggro = ranged ? 350 : 130; e.lose = ranged ? 480 : 320; e.leash = 450;
     e.speed = 70; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
@@ -144,8 +145,8 @@ Object.assign(Main.prototype, {
     e.def = def;
     e.kind = 'boss'; e.ranged = false; e.isBoss = true; e.bossSlot = slot;
     e.level = lv;
-    e.hp = (30 + lv * 8) * BOSS_MULT; e.maxHp = e.hp;
-    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * BOSS_MULT * MONSTER_DMG_SCALE));
+    e.hp = (30 + lv * 8) * BOSS_MULT * stageHpMul(zi); e.maxHp = e.hp;
+    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * BOSS_MULT * MONSTER_DMG_SCALE * stageDmgMul(zi)));
     e.aggro = 220; e.lose = 520; e.leash = 700;
     e.speed = BOSS_SPEED; e.hitRange = 40 * def.scale; e.nextShot = 0;
     e.nextTeleport = this.time.now + Phaser.Math.Between(BOSS_TELEPORT_MIN_MINUTES * 60000, BOSS_TELEPORT_MAX_MINUTES * 60000);
@@ -165,8 +166,8 @@ Object.assign(Main.prototype, {
     e.def = def;
     e.kind = 'epic'; e.ranged = false; e.isBoss = false; e.isEpic = true;
     e.level = lv;
-    e.hp = (30 + lv * 8) * EPIC_MULT; e.maxHp = e.hp;
-    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * EPIC_MULT * MONSTER_DMG_SCALE));
+    e.hp = (30 + lv * 8) * EPIC_MULT * stageHpMul(zi); e.maxHp = e.hp;
+    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * EPIC_MULT * MONSTER_DMG_SCALE * stageDmgMul(zi)));
     e.aggro = 200; e.lose = 420; e.leash = 500;
     e.speed = 75; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
