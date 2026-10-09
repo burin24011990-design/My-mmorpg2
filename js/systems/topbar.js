@@ -3,14 +3,31 @@
 // bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (แนวนอนอยู่กลางจอ | แนวตั้งอยู่ในตารางปุ่ม)
 const TB = { w: 62, h: 58, gap: 6, top: 8, bigW: 88, bigH: 76 };
 
-// ===== แนวตั้ง: ปุ่มเล็กลง จัดเป็นตาราง 5 คอลัมน์ x 2 แถว ชิดขวา อยู่ใต้แถวปุ่มบนสุด =====
-// cols = จำนวนคอลัมน์ | top = ระยะจากขอบบน (ลดเลขนี้ = ขยับขึ้น, เพิ่ม = ขยับลง) | right = ระยะจากขอบขวา
-// ถ้ายังทับกับปุ่มอื่น (เมือง/CH/จุติ/สังคม/เสียง) ให้ปรับ top กับ right ตรงนี้
-// แนวนอนไม่ได้ใช้ค่าชุดนี้ ยังเป็นค่า TB เดิมทุกอย่าง
-const TBP = { w: 44, h: 46, gap: 3, top: 72, right: 6, cols: 5 };
+// ===== แนวตั้ง: ปุ่มทุกอัน (ทั้งปุ่มในแคนวาสและปุ่ม DOM เมือง/CH/สังคม/เสียง/จุติ) จัดเป็นตารางเดียวกัน 7 คอลัมน์ x 2 แถว =====
+// อยู่ขวาของกรอบ HP/MP (ซ้ายบน) ไม่ทับกัน | ไฟล์ town.js / social.js / music.js / portraitTop.js ดึงตำแหน่งจากที่นี่
+// ปรับขนาด/ระยะ: w, h, gap, top (ระยะจากขอบบน), right (ระยะจากขอบขวา)
+// ถ้ากรอบ HP/MP ทางซ้ายยังทับ ให้ลด w ลงเล็กน้อย (เช่น 43) แนวนอนไม่ได้ใช้ค่าชุดนี้
+const TBP = { w: 45, h: 46, gap: 3, top: 4, right: 4, cols: 7 };
+const TBP_ROWS = [
+  ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn', 'equipBtn', 'statusBtn', 'stageBtn'],
+  ['shopBtn', 'cashBtn', 'townBtn', 'chBtn', 'socialBtn', 'soundBtn', 'rebirthBtn'],
+];
 const tbIsPortrait = () =>
   (typeof PORTRAIT !== 'undefined' && !!PORTRAIT) ||
   (typeof W !== 'undefined' && typeof H !== 'undefined' && W < H);
+// ตำแหน่งช่อง (หน่วยพิกัดเกม) ของปุ่มแนวตั้ง | คืน null ถ้าไม่ใช่แนวตั้งหรือไม่มีปุ่มนี้
+window.PortraitTop = {
+  is: tbIsPortrait,
+  slot: function (key) {
+    if (!tbIsPortrait()) return null;
+    const x0 = W - TBP.right - (TBP.cols * TBP.w + (TBP.cols - 1) * TBP.gap);
+    for (let r = 0; r < TBP_ROWS.length; r++) {
+      const c = TBP_ROWS[r].indexOf(key);
+      if (c >= 0) return { x: x0 + c * (TBP.w + TBP.gap), y: TBP.top + r * (TBP.h + TBP.gap), w: TBP.w, h: TBP.h };
+    }
+    return null;
+  },
+};
 
 Main.prototype.makeTopIcons = function () {
   if (this.textures.exists('tb_bag')) return;
@@ -79,22 +96,12 @@ Main.prototype.makeTopIcons = function () {
 
 // ตำแหน่งช่องของแต่ละปุ่ม
 // - แนวนอน: เลือกด่าน = กึ่งกลางจอด้านบน (ใหญ่กว่าปุ่มอื่น) | ปุ่มอื่นเรียง 2 แถว x 4 คอลัมน์ ชิดขวา
-// - แนวตั้ง: ทุกปุ่มรวมเลือกด่านอยู่ในตารางเล็ก 5 คอลัมน์ x 2 แถว ชิดขวา (ดู TBP ด้านบน)
+// - แนวตั้ง: ทุกปุ่มอยู่ในตารางเล็ก 7 คอลัมน์ x 2 แถว ชิดขวา (ดู TBP ด้านบน)
 // (shopBtn / cashBtn เตรียมช่องไว้ให้ไฟล์ร้านค้า/ร้านแคชมาใช้)
 Main.prototype.topSlot = function (key) {
   if (tbIsPortrait()) {
-    const rowsP = [
-      ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn', 'stageBtn'],
-      ['equipBtn', 'statusBtn', 'shopBtn', 'cashBtn'],
-    ];
-    const x0p = W - TBP.right - (TBP.cols * TBP.w + (TBP.cols - 1) * TBP.gap);
-    for (let r = 0; r < rowsP.length; r++) {
-      const c = rowsP[r].indexOf(key);
-      if (c >= 0) {
-        return { x: x0p + c * (TBP.w + TBP.gap), y: TBP.top + r * (TBP.h + TBP.gap), w: TBP.w, h: TBP.h, big: key === 'stageBtn' };
-      }
-    }
-    return null;
+    const sp = window.PortraitTop.slot(key);
+    return sp ? { x: sp.x, y: sp.y, w: sp.w, h: sp.h, big: key === 'stageBtn' } : null;
   }
 
   if (key === 'stageBtn') {
