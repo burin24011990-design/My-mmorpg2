@@ -1,6 +1,6 @@
 // js/systems/boxPanel.js — ปุ่ม 📦 + หน้าต่างเปิดกล่องเงิน (ใช้ ServerBoxes)
 // + จัดตำแหน่ง: กล่องอยู่ข้างปุ่ม "จุติ" / ปุ่มยา ATK DEF HP+ เรียงมุมซ้ายล่าง
-// แนวตั้ง: ปุ่มกล่องใหญ่ขึ้น วางใต้การ์ด HP / แผงอยู่กลางจอ กว้างไม่เกินจอ
+// แนวตั้ง: ปุ่มกล่องอยู่ใต้ปุ่ม "เลือกด่าน" / แผงอยู่กลางจอ กว้างไม่เกินจอ
 (function () {
   const SB = window.ServerBoxes;
   if (!SB) return;
@@ -16,9 +16,9 @@
   const BOX_GAP = 8;          // ระยะห่างปุ่มกล่องกับปุ่มจุติ (px)
 
   // ----- ค่าสำหรับจอแนวตั้ง (ปรับได้) -----
-  const BOX_SIZE_PORTRAIT = 46;   // ขนาดปุ่มกล่อง (px) ถ้าอยากใหญ่ขึ้นเพิ่มเลขนี้
-  const PORTRAIT_X = 0.012;       // ตำแหน่งแนวนอนของปุ่ม (สัดส่วนความกว้างแคนวาส)
-  const PORTRAIT_Y = 0.085;       // ตำแหน่งแนวตั้งของปุ่ม (สัดส่วนความสูงแคนวาส) เพิ่ม = ลงล่าง
+  const BOX_SIZE_PORTRAIT = 40;   // ขนาดปุ่มกล่อง (px)
+  const PORTRAIT_CX = 0.463;      // กึ่งกลางปุ่มในแนวนอน (สัดส่วนความกว้างแคนวาส) = ตรงกับปุ่ม "เลือกด่าน" เพิ่ม = ขวา
+  const PORTRAIT_Y = 0.178;       // ขอบบนของปุ่มในแนวตั้ง (สัดส่วนความสูงแคนวาส) เพิ่ม = ลงล่าง
   const PANEL_W_LANDSCAPE = 300;
   const PANEL_W_PORTRAIT = 340;
 
@@ -143,7 +143,7 @@
 
     if (portrait) {
       size = BOX_SIZE_PORTRAIT;
-      left = Math.round(cr.left + PORTRAIT_X * cr.width);
+      left = Math.round(cr.left + PORTRAIT_CX * cr.width - size / 2);
       top = Math.round(cr.top + PORTRAIT_Y * cr.height);
       pw = Math.min(PANEL_W_PORTRAIT, vw - 16);
     } else {
