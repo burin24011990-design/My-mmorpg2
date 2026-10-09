@@ -16,15 +16,6 @@
 <style>
   html, body { margin:0; height:100%; background:#111; overflow:hidden; touch-action:none; overscroll-behavior:none; }
   canvas { display:block; }
-  #rotate-hint {
-    display:none; position:fixed; inset:0; z-index:9999;
-    background:#111; color:#fff; align-items:center; justify-content:center;
-    text-align:center; font-size:18px; padding:24px; font-family:sans-serif;
-  }
-  @media (orientation: portrait) {
-    #rotate-hint { display:flex; }
-    canvas { display:none; }
-  }
 
   /* ปุ่มแตะเพื่อกลับเข้าเต็มจอ (โผล่เฉพาะตอนเล่นแล้วหลุดจากเต็มจอ) */
   #start-overlay {
@@ -61,7 +52,6 @@ window.addEventListener('error', function (e) {
   box.appendChild(line);
 }, true);
 </script>
-<div id="rotate-hint">🔄<br>กรุณาหมุนจอเป็นแนวนอนเพื่อเล่นเกมนี้</div>
 
 <!-- ===== หน้าเริ่มเกม / ล็อกอิน (ต้องล็อกอิน Google เท่านั้น) ===== -->
 <div id="login-screen">
@@ -112,14 +102,14 @@ window.addEventListener('error', function (e) {
 <div id="start-overlay">
   <div>
     <div class="btn">แตะเพื่อกลับเข้าเต็มจอ</div>
-    <div class="sub">เกมจะหมุนเป็นแนวนอนและซ่อนแถบเบราว์เซอร์อัตโนมัติ</div>
+    <div class="sub">เกมจะซ่อนแถบเบราว์เซอร์อัตโนมัติ (เล่นได้ทั้งแนวนอนและแนวตั้ง)</div>
   </div>
 </div>
 
 <script>
-// ===== บังคับเต็มจอ + แนวนอน =====
+// ===== เต็มจอ + ล็อกแนวจอตามที่ถืออยู่ตอนนี้ (นอน/ตั้ง) =====
 // เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงเรียกจากปุ่ม "เริ่มเล่น"
-// ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอแนวนอนทันที
+// ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอทันที
 (function () {
   var ov = document.getElementById('start-overlay');
   var de = document.documentElement;
@@ -130,10 +120,14 @@ window.addEventListener('error', function (e) {
     return (window.matchMedia && (window.matchMedia('(display-mode: fullscreen)').matches ||
             window.matchMedia('(display-mode: standalone)').matches)) || window.navigator.standalone === true;
   }
-  function lockLandscape() {
+  // ล็อกแนวจอตามแนวที่ถืออยู่ตอนนี้ (เดิมบังคับแนวนอนอย่างเดียว) | หมุนจอข้ามแนวแล้วเกมจะโหลดใหม่เอง (ดู main.js)
+  function lockOrient() {
     try {
       var o = screen.orientation;
-      if (o && o.lock) { var p = o.lock('landscape'); if (p && p.catch) p.catch(function () {}); }
+      if (o && o.lock) {
+        var m = String(o.type || '').indexOf('portrait') === 0 ? 'portrait' : 'landscape';
+        var p = o.lock(m); if (p && p.catch) p.catch(function () {});
+      }
     } catch (e) {}
   }
   function nudgeResize() {
@@ -144,26 +138,26 @@ window.addEventListener('error', function (e) {
   function showOverlay() { if (started && !isInstalled()) ov.style.display = 'flex'; }
 
   function enter() {
-    if (isInstalled()) { lockLandscape(); hideOverlay(); return; }
+    if (isInstalled()) { lockOrient(); hideOverlay(); return; }
     var req = de.requestFullscreen || de.webkitRequestFullscreen || de.msRequestFullscreen;
     if (!req) { hideOverlay(); return; }          // เช่น iPhone: ไม่รองรับเต็มจอ
     var p;
     try { p = req.call(de, { navigationUI: 'hide' }); } catch (e) { hideOverlay(); return; }
     Promise.resolve(p).then(function () {
-      lockLandscape(); hideOverlay(); nudgeResize();
+      lockOrient(); hideOverlay(); nudgeResize();
     }).catch(function () { hideOverlay(); });
   }
   window.GameFS = { enter: enter, setStarted: function () { started = true; } };
 
   ov.addEventListener('click', enter);
   function onFsChange() {
-    if (isFS()) { lockLandscape(); hideOverlay(); }
+    if (isFS()) { lockOrient(); hideOverlay(); }
     else showOverlay();                            // หลุดเต็มจอ -> ขึ้นปุ่มกลับเข้าเต็มจอ
     nudgeResize();
   }
   document.addEventListener('fullscreenchange', onFsChange);
   document.addEventListener('webkitfullscreenchange', onFsChange);
-  if (isInstalled()) lockLandscape();
+  if (isInstalled()) lockOrient();
 })();
 
 // ลงทะเบียน service worker เพื่อให้ติดตั้งลงหน้าจอโฮมแบบเต็มจอได้ (ไม่แคชไฟล์เกม)
@@ -195,7 +189,7 @@ if ('serviceWorker' in navigator) {
   <link rel="stylesheet" href="css/skill-panel.css?v=2">
   <link rel="stylesheet" href="css/shop.css?v=5">
 <link rel="stylesheet" href="css/status-panel.css?v=1">
-  <script src="js/config.js?v=22"></script>
+  <script src="js/config.js?v=23"></script>
 <script src="js/data/zones.js?v=24"></script>
 <script src="js/data/skills.js?v=21"></script>
 <script src="js/data/items.js?v=26"></script>
@@ -207,9 +201,9 @@ if ('serviceWorker' in navigator) {
 <script src="js/systems/inventory.js?v=22"></script>
 <script src="js/systems/equipment.js?v=21"></script>
 <script src="js/systems/skills.js?v=21"></script>
-<script src="js/systems/input.js?v=21"></script>
+<script src="js/systems/input.js?v=22"></script>
 <script src="js/systems/ui.js?v=22"></script>
-  <script src="js/systems/topbar.js?v=3"></script>
+  <script src="js/systems/topbar.js?v=4"></script>
 <script src="js/systems/panels.js?v=23"></script>
 <script src="js/systems/inventoryPanel.js?v=21"></script>
 <script src="js/systems/network.js?v=29"></script>
@@ -272,6 +266,6 @@ if ('serviceWorker' in navigator) {
   <script src="js/systems/hudText.js?v=4"></script>
   <script src="js/systems/music.js?v=10"></script>
   <script src="js/systems/keyboard.js?v=2"></script>
-<script src="js/main.js?v=23"></script>
+<script src="js/main.js?v=24"></script>
 </body>
 </html>
