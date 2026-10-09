@@ -107,9 +107,10 @@ window.addEventListener('error', function (e) {
 </div>
 
 <script>
-// ===== เต็มจอ + ล็อกแนวจอตามที่ถืออยู่ตอนนี้ (นอน/ตั้ง) =====
+// ===== เต็มจอ + ปล่อยให้หมุนจอได้อิสระ (นอน/ตั้ง) =====
 // เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงเรียกจากปุ่ม "เริ่มเล่น"
 // ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอทันที
+// หมายเหตุ: ต้องเปิด "หมุนอัตโนมัติ" (Auto-rotate) ในมือถือ | หมุนจอข้ามแนวแล้วเกมจะโหลดใหม่เอง (ดู main.js)
 (function () {
   var ov = document.getElementById('start-overlay');
   var de = document.documentElement;
@@ -120,14 +121,13 @@ window.addEventListener('error', function (e) {
     return (window.matchMedia && (window.matchMedia('(display-mode: fullscreen)').matches ||
             window.matchMedia('(display-mode: standalone)').matches)) || window.navigator.standalone === true;
   }
-  // ล็อกแนวจอตามแนวที่ถืออยู่ตอนนี้ (เดิมบังคับแนวนอนอย่างเดียว) | หมุนจอข้ามแนวแล้วเกมจะโหลดใหม่เอง (ดู main.js)
+  // เดิมล็อกแนวจอไว้ตามที่ถืออยู่ตอนเริ่ม ทำให้หมุนจอไม่ได้ -> เปลี่ยนเป็นปลดล็อก ให้หมุนได้ทั้งสองแนว
   function lockOrient() {
     try {
       var o = screen.orientation;
-      if (o && o.lock) {
-        var m = String(o.type || '').indexOf('portrait') === 0 ? 'portrait' : 'landscape';
-        var p = o.lock(m); if (p && p.catch) p.catch(function () {});
-      }
+      if (!o) return;
+      if (o.unlock) o.unlock();
+      else if (o.lock) { var p = o.lock('any'); if (p && p.catch) p.catch(function () {}); }
     } catch (e) {}
   }
   function nudgeResize() {
@@ -207,7 +207,7 @@ if ('serviceWorker' in navigator) {
 <script src="js/systems/panels.js?v=23"></script>
 <script src="js/systems/inventoryPanel.js?v=21"></script>
 <script src="js/systems/network.js?v=29"></script>
-  <script src="js/systems/hudLayout.js?v=29"></script>
+  <script src="js/systems/hudLayout.js?v=30"></script>
 <script src="js/systems/obstacles.js?v=22"></script>
   <script src="js/systems/bot.js?v=35"></script>
 <script src="js/systems/save.js?v=26"></script>
