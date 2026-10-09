@@ -13,6 +13,9 @@
 const AGGRESSIVE_FROM_ZONE = 5;
 const BUSH_REVEAL_DIST = 110;
 const BUSH_REVEAL_AFTER_ATTACK = 1500;
+// ===== ปรับความแรงมอนสเตอร์ทั้งหมด (ปรับตรงนี้) =====
+const MONSTER_DMG_SCALE = 0.6;         // ตัวคูณพลังโจมตีมอนทุกชนิด (1 = เดิม, 0.6 = เหลือ 60%)
+const MONSTER_ATK_INTERVAL_MUL = 1.6;  // ตัวคูณช่วงเวลาระหว่างโจมตี (1 = เดิม, 1.6 = ช้าลง 1.6 เท่า)
 // โอกาสดรอปหนังสือสกิล (ปรับตรงนี้)
 const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
@@ -123,7 +126,8 @@ Object.assign(Main.prototype, {
     e.def = def;
     e.kind = kind; e.ranged = ranged; e.isBoss = false;
     e.level = lv;
-    e.hp = (30 + lv * 8) * NORMAL_HP_MULT; e.maxHp = e.hp; e.dmg = Math.round((5 + Math.floor(lv * 1.5)) * NORMAL_DMG_MULT);
+    e.hp = (30 + lv * 8) * NORMAL_HP_MULT; e.maxHp = e.hp;
+    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * NORMAL_DMG_MULT * MONSTER_DMG_SCALE));
     e.aggro = ranged ? 350 : 130; e.lose = ranged ? 480 : 320; e.leash = 450;
     e.speed = 70; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
@@ -140,7 +144,8 @@ Object.assign(Main.prototype, {
     e.def = def;
     e.kind = 'boss'; e.ranged = false; e.isBoss = true; e.bossSlot = slot;
     e.level = lv;
-    e.hp = (30 + lv * 8) * BOSS_MULT; e.maxHp = e.hp; e.dmg = (5 + Math.floor(lv * 1.5)) * BOSS_MULT;
+    e.hp = (30 + lv * 8) * BOSS_MULT; e.maxHp = e.hp;
+    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * BOSS_MULT * MONSTER_DMG_SCALE));
     e.aggro = 220; e.lose = 520; e.leash = 700;
     e.speed = BOSS_SPEED; e.hitRange = 40 * def.scale; e.nextShot = 0;
     e.nextTeleport = this.time.now + Phaser.Math.Between(BOSS_TELEPORT_MIN_MINUTES * 60000, BOSS_TELEPORT_MAX_MINUTES * 60000);
@@ -161,7 +166,7 @@ Object.assign(Main.prototype, {
     e.kind = 'epic'; e.ranged = false; e.isBoss = false; e.isEpic = true;
     e.level = lv;
     e.hp = (30 + lv * 8) * EPIC_MULT; e.maxHp = e.hp;
-    e.dmg = (5 + Math.floor(lv * 1.5)) * EPIC_MULT;
+    e.dmg = Math.max(1, Math.round((5 + Math.floor(lv * 1.5)) * EPIC_MULT * MONSTER_DMG_SCALE));
     e.aggro = 200; e.lose = 420; e.leash = 500;
     e.speed = 75; e.hitRange = 26 * def.scale; e.nextShot = 0;
     e.setScale(def.scale);
@@ -223,7 +228,7 @@ Object.assign(Main.prototype, {
   fireShot(e, ang, speed, scale, dmgMul) {
     const sh = this.enemyShots.create(e.x, e.y, 'eshot');
     sh.setScale(scale);
-    sh.setData('dmg', Math.round(e.dmg * dmgMul)); sh.setData('ox', e.x); sh.setData('oy', e.y);
+    sh.setData('dmg', Math.max(1, Math.round(e.dmg * dmgMul))); sh.setData('ox', e.x); sh.setData('oy', e.y);
     sh.setVelocity(Math.cos(ang) * speed, Math.sin(ang) * speed);
     this.time.delayedCall(2000, () => sh.active && sh.destroy());
   },
@@ -235,18 +240,18 @@ Object.assign(Main.prototype, {
     const a = Math.atan2(p.y - e.y, p.x - e.x);
     e.atkUntil = time + 500;
     if (e.isEpic) {
-      e.nextSkill = time + Phaser.Math.Between(4000, 6000);
+      e.nextSkill = time + Phaser.Math.Between(4000, 6000) * MONSTER_ATK_INTERVAL_MUL;
       [-0.3, 0, 0.3].forEach(o => this.fireShot(e, a + o, 220, RANGED_SHOT_SCALE, 0.5));
       return;
     }
-    e.nextSkill = time + Phaser.Math.Between(2500, 4000);
+    e.nextSkill = time + Phaser.Math.Between(2500, 4000) * MONSTER_ATK_INTERVAL_MUL;
     const r = Phaser.Math.Between(0, 3);
     if (r === 0) {
       for (let i = 0; i < 12; i++) this.fireShot(e, i * Math.PI / 6, 200, 2.5, 0.4);
     } else if (r === 1) {
       [-0.5, -0.25, 0, 0.25, 0.5].forEach(o => this.fireShot(e, a + o, 260, 2.2, 0.4));
     } else if (r === 2) {
-      const R = 140, x = e.x, y = e.y, d = Math.round(e.dmg * 0.8);
+      const R = 140, x = e.x, y = e.y, d = Math.max(1, Math.round(e.dmg * 0.8));
       const ring = this.add.circle(x, y, R, 0xff2222, 0.25).setStrokeStyle(2, 0xff2222).setDepth(6);
       this.time.delayedCall(800, () => {
         ring.destroy();
@@ -254,7 +259,7 @@ Object.assign(Main.prototype, {
       });
     } else {
       // สกิลวงกว้างมาก: เตือนวงแดงใหญ่ 1.3 วิ แล้วระเบิด (ต้องวิ่งออกนอกวง)
-      const R = 340, x = e.x, y = e.y, d = Math.round(e.dmg * 1.0);
+      const R = 340, x = e.x, y = e.y, d = Math.max(1, Math.round(e.dmg * 1.0));
       const ring = this.add.circle(x, y, R, 0xff2222, 0.2).setStrokeStyle(3, 0xff2222).setDepth(6);
       this.tweens.add({ targets: ring, alpha: 0.45, duration: 300, yoyo: true, repeat: 2 });
       this.time.delayedCall(1300, () => {
@@ -337,7 +342,7 @@ Object.assign(Main.prototype, {
             const away = new Phaser.Math.Vector2(e.x - p.x, e.y - p.y).normalize();
             e.setVelocity(away.x * 60, away.y * 60);
           } else e.setVelocity(0, 0);
-          if (canSee && distPlayer < 340 && time > e.nextShot) { this.enemyShoot(e); e.nextShot = time + Phaser.Math.Between(1600, 2200); }
+          if (canSee && distPlayer < 340 && time > e.nextShot) { this.enemyShoot(e); e.nextShot = time + Phaser.Math.Between(1600, 2200) * MONSTER_ATK_INTERVAL_MUL; }
         } else {
           this.physics.moveToObject(e, p, e.speed);
         }
@@ -347,7 +352,7 @@ Object.assign(Main.prototype, {
 
       // ชนตัวทำดาเมจเฉพาะตอนไล่ตี (มอนที่ยังไม่โกรธเดินชนไม่เจ็บ)
       if (e.state === 'chase' && time > this.hitCd && distPlayer < e.hitRange) {
-        this.hitCd = time + 600;
+        this.hitCd = time + Math.round(600 * MONSTER_ATK_INTERVAL_MUL);
         e.atkUntil = time + 400;                         // เล่นท่าโจมตี
         this.hurtPlayer(e.dmg || 8);
       }
