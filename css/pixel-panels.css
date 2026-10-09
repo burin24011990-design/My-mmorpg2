@@ -163,9 +163,9 @@
    ปรับขนาดหน้าสกิล: ลดเลข 88vw (ความกว้าง) และ 2.8vw (ตัวอักษร) ถ้ายังใหญ่ไป */
 @media (orientation:portrait){
   .pp-win{
-    width:min(88vw, 430px);
-    max-height:72vh; max-height:72dvh;
-    font-size:clamp(9px, 2.8vw, 12px);
+    width:min(62vw, 300px);
+    max-height:50vh; max-height:50dvh;
+    font-size:clamp(8px, 2.3vw, 11px);
   }
   .pp-body{ padding:.4em; }
   .pp-head{ padding:.2em .5em; }
