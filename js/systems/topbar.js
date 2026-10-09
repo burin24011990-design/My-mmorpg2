@@ -3,15 +3,17 @@
 // bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (แนวนอนอยู่กลางจอ | แนวตั้งอยู่ในตารางปุ่ม)
 const TB = { w: 62, h: 58, gap: 6, top: 8, bigW: 88, bigH: 76 };
 
-// ===== แนวตั้ง: ปุ่มทุกอัน (ทั้งปุ่มในแคนวาสและปุ่ม DOM เมือง/CH/สังคม/เสียง/จุติ) จัดเป็นตารางเดียวกัน 7 คอลัมน์ x 2 แถว =====
+// ===== แนวตั้ง: ปุ่มทุกอัน (ทั้งปุ่มในแคนวาสและปุ่ม DOM เมือง/CH/สังคม/เสียง/จุติ) จัดเป็นตารางเดียวกัน 7 คอลัมน์ x 2 แถว (ยกเว้นปุ่มเลือกด่าน) =====
 // อยู่ขวาของกรอบ HP/MP (ซ้ายบน) ไม่ทับกัน | ไฟล์ town.js / social.js / music.js / portraitTop.js ดึงตำแหน่งจากที่นี่
 // ปรับขนาด/ระยะ: w, h, gap, top (ระยะจากขอบบน), right (ระยะจากขอบขวา)
 // ถ้ากรอบ HP/MP ทางซ้ายยังทับ ให้ลด w ลงเล็กน้อย (เช่น 43) แนวนอนไม่ได้ใช้ค่าชุดนี้
 const TBP = { w: 45, h: 46, gap: 3, top: 4, right: 4, cols: 7 };
 const TBP_ROWS = [
-  ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn', 'equipBtn', 'statusBtn', 'stageBtn'],
-  ['shopBtn', 'cashBtn', 'townBtn', 'chBtn', 'socialBtn', 'soundBtn', 'rebirthBtn'],
+  ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn', 'equipBtn', 'statusBtn', 'shopBtn'],
+  ['fsBtn', 'cashBtn', 'townBtn', 'chBtn', 'socialBtn', 'soundBtn', 'rebirthBtn'],   // fsBtn = ปุ่มขยายเต็มจอ (fullscreenBtn.js)
 ];
+// ปุ่ม "เลือกด่าน" แยกออกมา ใหญ่กว่าปุ่มอื่น วางชิดมินิแมป (ขวาของกรอบมินิแมป) | ขยับได้ที่ x, y | ขนาด w, h
+const TBP_STAGE = { x: 214, y: 108, w: 72, h: 62 };
 const tbIsPortrait = () =>
   (typeof PORTRAIT !== 'undefined' && !!PORTRAIT) ||
   (typeof W !== 'undefined' && typeof H !== 'undefined' && W < H);
@@ -20,6 +22,7 @@ window.PortraitTop = {
   is: tbIsPortrait,
   slot: function (key) {
     if (!tbIsPortrait()) return null;
+    if (key === 'stageBtn') return { x: TBP_STAGE.x, y: TBP_STAGE.y, w: TBP_STAGE.w, h: TBP_STAGE.h };
     const x0 = W - TBP.right - (TBP.cols * TBP.w + (TBP.cols - 1) * TBP.gap);
     for (let r = 0; r < TBP_ROWS.length; r++) {
       const c = TBP_ROWS[r].indexOf(key);
@@ -96,7 +99,7 @@ Main.prototype.makeTopIcons = function () {
 
 // ตำแหน่งช่องของแต่ละปุ่ม
 // - แนวนอน: เลือกด่าน = กึ่งกลางจอด้านบน (ใหญ่กว่าปุ่มอื่น) | ปุ่มอื่นเรียง 2 แถว x 4 คอลัมน์ ชิดขวา
-// - แนวตั้ง: ทุกปุ่มอยู่ในตารางเล็ก 7 คอลัมน์ x 2 แถว ชิดขวา (ดู TBP ด้านบน)
+// - แนวตั้ง: ทุกปุ่มอยู่ในตารางเล็ก 7 คอลัมน์ x 2 แถว ชิดขวา (ดู TBP ด้านบน) ยกเว้น "เลือกด่าน" ที่แยกไปชิดมินิแมป (TBP_STAGE)
 // (shopBtn / cashBtn เตรียมช่องไว้ให้ไฟล์ร้านค้า/ร้านแคชมาใช้)
 Main.prototype.topSlot = function (key) {
   if (tbIsPortrait()) {
