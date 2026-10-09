@@ -1,6 +1,6 @@
 // ===== แถบเมนูด้านบน (ไอคอนวาดเอง) =====
 // ปรับขนาดปุ่มที่นี่: w = กว้าง, h = สูง, gap = ระยะห่าง, top = ระยะจากขอบบน
-// bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (อยู่กลางจอ)
+// bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (แนวนอนอยู่กลางจอ | แนวตั้งอยู่ซ้ายบน)
 const TB = { w: 62, h: 58, gap: 6, top: 8, bigW: 88, bigH: 76 };
 
 Main.prototype.makeTopIcons = function () {
@@ -69,11 +69,11 @@ Main.prototype.makeTopIcons = function () {
 };
 
 // ตำแหน่งช่องของแต่ละปุ่ม
-// - เลือกด่าน: กึ่งกลางจอด้านบน ใหญ่กว่าปุ่มอื่น
+// - เลือกด่าน: แนวนอน = กึ่งกลางจอด้านบน | แนวตั้ง = ซ้ายบน (กันทับกับเมนูที่ชิดขวา) ใหญ่กว่าปุ่มอื่น
 // - ปุ่มอื่น: เรียง 2 แถว x 4 คอลัมน์ ชิดขวา (shopBtn / cashBtn เตรียมช่องไว้ให้ไฟล์ร้านค้า/ร้านแคชมาใช้)
 Main.prototype.topSlot = function (key) {
   if (key === 'stageBtn') {
-    return { x: Math.round(W / 2 - TB.bigW / 2), y: TB.top, w: TB.bigW, h: TB.bigH, big: true };
+    return { x: (typeof PORTRAIT !== 'undefined' && PORTRAIT) ? 12 : Math.round(W / 2 - TB.bigW / 2), y: TB.top, w: TB.bigW, h: TB.bigH, big: true };
   }
   const rows = [
     ['bagBtn', 'bookBtn', 'autoBtn', 'botCfgBtn'],
