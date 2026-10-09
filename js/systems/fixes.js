@@ -4,13 +4,17 @@
 // อมตะ 3 วินาทีหลังโดนตี/หลังออกจากเมือง (invulnUntil)
 // v2: โหมดห้อง (rmActive) ดาเมจมอนมาจากเซิร์ฟเวอร์ ไม่ผ่าน MONSTER_DMG_SCALE ใน monsters.js
 //     จึงคูณ MONSTER_DMG_SCALE ที่นี่เฉพาะตอน rmActive (โหมดมอนในเครื่องคูณไปแล้ว ไม่คูณซ้ำ)
+// v3: จำกัดให้ผู้เล่นโดนมอนตีได้อย่างมาก 1 ครั้งต่อ MONSTER_HIT_GAP_MS (ทุกแหล่ง: ชนตัว/กระสุน/สกิล ทั้งโหมดห้องและในเครื่อง)
 const RESPAWN_INVULN_MS = 3000;
+const MONSTER_HIT_GAP_MS = 1000;   // ระยะห่างขั้นต่ำระหว่างการโดนตีแต่ละครั้ง (มิลลิวินาที) 1000 = 1 วินาที
 
 Object.assign(Main.prototype, {
   hurtPlayer(raw) {
     const p = this.player, now = this.time.now;
     if (now < (this.invulnUntil || 0)) return;
     if (window._townBusy) return;   // อยู่ในเมืองแล้ว ไม่ต้องรับดาเมจ
+    if (now < (this._lastHurtAt || 0) + MONSTER_HIT_GAP_MS) return;   // ยังไม่ครบ 1 วิจากการโดนครั้งก่อน
+    this._lastHurtAt = now;
 
     // โหมดห้อง: คูณตัวคูณความแรงมอนที่ฝั่งไคลเอนต์ | โหมดในเครื่อง: e.dmg คูณมาแล้ว
     const k = (this.rmActive && typeof MONSTER_DMG_SCALE === 'number') ? MONSTER_DMG_SCALE : 1;
