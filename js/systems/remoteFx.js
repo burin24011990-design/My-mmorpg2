@@ -3,15 +3,23 @@
 // v2: สกิลลากเล็ง/วางพื้น เล่นที่จุดตกจริง (gx, gy)
 // v3: สร้าง animation ให้เองถ้ายังไม่มี | เล่นไม่ได้จริงคืน false | สกิลกระสุนมีกระสุนแสงสำรอง
 // v4: เพิ่มสกิลธนู (ashot2 ยิงคู่ / aroot ตรึงขา / aheavy เจาะเกราะ) และโจร rg_dash (rdash) ที่ไม่เคยแสดงให้ผู้เล่นอื่น
+// v5 (ลดแลค): ไม่เล่นเอฟเฟกต์ของผู้เล่นอื่นที่อยู่นอกจอ | โจมตีธรรมดาของคนอื่นถ้าเกิดถี่เกินไป (>6 ครั้ง/0.3 วิ) ข้ามบางครั้ง
 // วางไฟล์: js/systems/remoteFx.js (เรียกจาก network.js: RemoteFx.play(scene, d, caster))
 (function () {
   const ADD = Phaser.BlendModes.ADD;
+  const VIEW_MARGIN = 350;      // เผื่อขอบจอ (px) ที่ยังเล่นเอฟเฟกต์ให้
+  const BASIC_BURST_MAX = 6;    // โจมตีธรรมดาของคนอื่นที่เล่นได้ใน 0.3 วิ
 
   const unit = (fx, fy) => {
     const l = Math.hypot(fx || 0, fy || 0);
     return l > 0.001 ? [fx / l, fy / l] : null;
   };
   const DIR_VEC = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1] };
+
+  function inView(scene, x, y, m) {
+    const v = scene.cameras.main.worldView;
+    return x > v.x - m && x < v.right + m && y > v.y - m && y < v.bottom + m;
+  }
 
   function casterPos(caster, d) {
     if (caster && caster.s && caster.s.active) return { x: caster.s.x, y: caster.s.y };
@@ -388,6 +396,18 @@
       def = typeof SKILL_DEFS !== 'undefined' ? SKILL_DEFS[name] : null;
     }
     if (!def) return false;
+
+    // ลดแลค: ผู้เล่นอื่นอยู่นอกจอ (ทั้งตัวคนร่าย และจุดตก) = ไม่ต้องวาดเอฟเฟกต์ (คืน true กันไม่ให้ไปใช้ภาพสำรอง)
+    const cp0 = casterPos(caster, d), gp0 = groundPos(d);
+    if (!inView(scene, cp0.x, cp0.y, VIEW_MARGIN) && !inView(scene, gp0.x, gp0.y, VIEW_MARGIN)) return true;
+
+    // ลดแลค: โจมตีธรรมดาของคนอื่นถี่เกินไป (ห้องที่มีคนเยอะ) ข้ามบางครั้ง
+    if (kind === 'basic') {
+      const now = scene.time.now;
+      const win = scene._rfxWin = (scene._rfxWin || []).filter(function (t) { return now - t < 300; });
+      if (win.length >= BASIC_BURST_MAX) return true;
+      win.push(now);
+    }
 
     let ux = 1, uy = 0;
     const u = unit(d.fx, d.fy);
