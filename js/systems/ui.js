@@ -121,7 +121,9 @@ Object.assign(Main.prototype, {
       if (e.isPvp) return;   // PvP: ไม่แสดงฝั่งตรงข้ามบนแผนที่ย่อ
       const ex = this.mini.x + (e.x / WORLD_W) * this.mini.w, ey = this.mini.y + (e.y / WORLD_H) * this.mini.h;
       const col = e.isBoss ? 0xb35ae0 : (e.ranged ? 0xe0883a : 0xe05a5a);
-      this.miniDots.fillStyle(col, 0.95).fillCircle(ex, ey, e.isBoss ? 4 : 2);
+      // ใช้สี่เหลี่ยมเล็กแทนวงกลม (เบากว่ามากตอนวาด 90 จุดทุกเฟรม ดูบนแผนที่ย่อแทบไม่ต่าง)
+      const sz = e.isBoss ? 7 : 3;
+      this.miniDots.fillStyle(col, 0.95).fillRect(ex - sz / 2, ey - sz / 2, sz, sz);
     });
     this.miniDots.fillStyle(0xffe066, 1).fillCircle(mx, my, 3.5);
 
