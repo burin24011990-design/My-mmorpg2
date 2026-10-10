@@ -99,9 +99,15 @@
       head = (rt === 2 ? 'WebGL' : (rt === 1 ? 'Canvas (ช้า!)' : '?')) + '  ' + sc.scale.width + 'x' + sc.scale.height +
              '  dpr' + (window.devicePixelRatio || 1) + '\n';
       var list = sc.children && sc.children.list ? sc.children.list : [], texts = 0, add = 0, types = {};
+      var gl = [], gTotal = 0;
+      var scanG = function (g, dep) {
+        if (g.type === 'Graphics' && g.commandBuffer) { var c = g.commandBuffer.length; gTotal += c; gl.push({ d: g.depth, c: c }); }
+        else if (g.type === 'Container' && g.list && dep < 2) for (var j = 0; j < g.list.length; j++) if (g.list[j]) scanG(g.list[j], dep + 1);
+      };
       for (var i = 0; i < list.length; i++) {
         var o = list[i];
         if (!o) continue;
+        scanG(o, 0);
         types[o.type] = (types[o.type] || 0) + 1;
         if (o.type === 'Text') texts++;
         if (o.blendMode === 1 && o.visible) add++;
@@ -116,6 +122,9 @@
              '\nobj ' + list.length + ' (max ' + objMax + ')  text ' + texts + '  enemy ' + enemies +
              '\ntween ' + tw + '  body ' + bodies + '  add ' + add +
              '\n' + top;
+      gl.sort(function (a, b) { return b.c - a.c; });
+      info += '\nGfx ' + gl.length + ' cmd ' + gTotal + '  top ' +
+              gl.slice(0, 3).map(function (g) { return 'd' + g.d + ':' + g.c; }).join(' ');
     } catch (e) { /* ไม่ให้แผงวัดทำเกมพัง */ }
     stat.style.color = fps >= 50 ? '#8f8' : (fps >= 30 ? '#ff8' : '#f88');
     stat.textContent = head + 'FPS ' + fps + '\navg ' + avg.toFixed(1) + 'ms  max ' + mx.toFixed(0) + 'ms  spike ' + sp + info;
