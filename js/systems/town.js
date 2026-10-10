@@ -1,17 +1,12 @@
-// ===== เมือง v10 — เมืองเป็น "ด่านหนึ่ง" ในฉาก Main (เห็นผู้เล่นอื่น / แชนเนล / ห้อง ใช้ร่วมกับข้างนอก) =====
+// ===== เมือง v9 — เมืองเป็น "ด่านหนึ่ง" ในฉาก Main (เห็นผู้เล่นอื่น / แชนเนล / ห้อง ใช้ร่วมกับข้างนอก) =====
 // ไฟล์: js/systems/town.js (แทนไฟล์เดิมทั้งไฟล์) | โหลดก่อน js/main.js
-// v10: ใช้รูปเมือง assets/maps/town.webp รูปเดียวแทนพื้นหญ้า/ถนน/อาคารที่สร้างด้วยโค้ด
-//      ตำแหน่ง NPC / จุดเกิด / กำแพง-อาคารกันเดิน เป็น "สัดส่วนของรูป" (0-1) ปรับที่ TOWN_NPCS / TOWN_BLOCKS / TOWN.walk ได้เลย
 // v9: townClearMonsters เก็บ GameObject ทุกชิ้นของผู้เล่นอื่นไว้ (เดิมเก็บแค่ o.s / o.t ทำให้ป้ายชื่อ/เลเวลถูกลบตอนเข้าเมือง)
 // - ต้องมีด่าน { town:true } ต่อท้าย ZONES ใน js/data/zones.js
 // - ฟังก์ชันชื่อเดิม (townGoToTown / townLeave / townMain / townRevive / TownHooks / window._townBusy) ยังอยู่ครบ
 
 const TOWN = {
-  w: 2193, h: 2400,                 // ขนาดรูปเมืองในเกม (px) สัดส่วนเท่ารูปต้นฉบับ 1199:1312 | ต้องไม่เกิน WORLD_W x WORLD_H
-  spawn: { fx: 0.50, fy: 0.72 },    // จุดเกิดในเมือง (สัดส่วนของรูป)
-  walk: { x0: 0.10, y0: 0.085, x1: 0.90, y1: 0.745 },   // พื้นที่ในกำแพงที่เดินได้ (สัดส่วนของรูป)
-  speed: 190, feet: 20,
-  atlas: 'assets/town/', ver: 2,    // atlas เดิมใช้โหลดรูป NPC (npc_*) เท่านั้น ถ้าไม่มีไฟล์จะใช้ไอคอนแทน
+  w: 2400, h: 1900, spawnX: 1200, spawnY: 1360, speed: 190, feet: 20,
+  atlas: 'assets/town/', ver: 2,
 };
 
 // ---------- ปุ่มเมือง + ปุ่มแชนเนล (DOM) ----------
@@ -66,12 +61,12 @@ window.addEventListener('orientationchange', function () { setTimeout(hudBtnLayo
 document.addEventListener('fullscreenchange', function () { setTimeout(hudBtnLayout, 300); });
 setInterval(hudBtnLayout, 500);
 
-// ---------- NPC | x,y = จุดเท้า เป็นสัดส่วนของรูปเมือง (0-1) ----------
+// ---------- NPC | x,y = จุดเท้า (พิกัดในผังเมือง 2400x1900) ----------
 const TOWN_NPCS = [
-  { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 0.44, y: 0.70, sprite: 'npc_pvp',    color: 0xe05555, icon: '⚔️' },
-  { id: 'market', name: 'พ่อค้าตลาดกลาง',   title: 'ตลาดกลาง',          x: 0.42, y: 0.385, sprite: 'npc_market', color: 0xf0c040, icon: '🏪' },
-  { id: 'trade',  name: 'นายหน้าแลกเปลี่ยน', title: 'แลกเปลี่ยนไอเทม',   x: 0.58, y: 0.385, sprite: 'npc_trade',  color: 0x55b0e0, icon: '🔄' },
-  { id: 'boss',   name: 'ผู้นำทางบอสโลก',   title: 'บอสโลก (เร็วๆ นี้)', x: 0.56, y: 0.70, sprite: 'npc_boss',   color: 0xa060e0, icon: '👹' },
+  { id: 'pvp',    name: 'ผู้ดูแลสนามประลอง', title: 'ห้อง PvP',          x: 1700, y: 1400, sprite: 'npc_pvp',    color: 0xe05555, icon: '⚔️' },
+  { id: 'market', name: 'พ่อค้าตลาดกลาง',   title: 'ตลาดกลาง',          x: 860,  y: 1120, sprite: 'npc_market', color: 0xf0c040, icon: '🏪' },
+  { id: 'trade',  name: 'นายหน้าแลกเปลี่ยน', title: 'แลกเปลี่ยนไอเทม',   x: 1540, y: 1120, sprite: 'npc_trade',  color: 0x55b0e0, icon: '🔄' },
+  { id: 'boss',   name: 'ผู้นำทางบอสโลก',   title: 'บอสโลก (เร็วๆ นี้)', x: 1110, y: 705,  sprite: 'npc_boss',   color: 0xa060e0, icon: '👹' },
 ];
 
 const TOWN_TEXT = {
@@ -81,21 +76,44 @@ const TOWN_TEXT = {
   boss:   'บอสโลกกำลังจะมาเร็วๆ นี้! ต้องใช้กุญแจเปิดประตู และรวมปาร์ตี้ 10 คนขึ้นไป โปรดรอการอัปเดต',
 };
 
-// ---------- กำแพง/อาคาร/สระ ที่เดินทะลุไม่ได้ | [x0, y0, x1, y1] เป็นสัดส่วนของรูปเมือง ----------
-const TOWN_BLOCKS = [
-  [0.37, 0.01, 0.63, 0.15],   // ศาลาใหญ่ด้านบน
-  [0.34, 0.11, 0.42, 0.23],   // ตึกข้างบันได (ซ้าย)
-  [0.58, 0.11, 0.66, 0.23],   // ตึกข้างบันได (ขวา)
-  [0.07, 0.07, 0.31, 0.27],   // ศาลา+สระมุมซ้ายบน
-  [0.69, 0.13, 0.89, 0.28],   // สวนมุมขวาบน
-  [0.10, 0.23, 0.37, 0.43],   // บ้านฝั่งซ้าย
-  [0.10, 0.42, 0.33, 0.53],
-  [0.09, 0.56, 0.34, 0.68],
-  [0.07, 0.64, 0.38, 0.79],
-  [0.63, 0.29, 0.92, 0.55],   // ตลาดแผงขายของฝั่งขวา
-  [0.71, 0.565, 0.90, 0.665], // ตึกใหญ่ฝั่งขวาล่าง
-  [0.68, 0.69, 0.92, 0.79],
-  [0.38, 0.43, 0.67, 0.66],   // สระกลางเมือง
+// ---------- ผังเมือง ----------
+const TOWN_ROADS = [
+  { x: 1125, y: 640,  w: 150,  h: 1260 },
+  { x: 330,  y: 665,  w: 1740, h: 110 },
+  { x: 330,  y: 1315, w: 1740, h: 110 },
+];
+
+const TOWN_BUILDINGS = [
+  { k: 'bld_hall',   x: 1200, y: 650,  foot: 0.50, block: [[0.22,0.02,0.78,0.50],[0.06,0.40,0.31,0.84],[0.69,0.40,0.94,0.84],[0.33,0.64,0.67,0.82]] },
+  { k: 'bld_temple', x: 520,  y: 640,  foot: 0.62, block: [[0.20,0.05,0.80,0.62],[0.72,0.40,0.96,0.74]] },
+  { k: 'bld_koi',    x: 1880, y: 640,  foot: 1.00, block: [[0.05,0.02,0.95,0.98]] },
+  { k: 'bld_inn',    x: 480,  y: 1290, foot: 0.62, block: [[0.22,0.02,0.72,0.62],[0.06,0.38,0.28,0.72],[0.72,0.30,0.96,0.80],[0.06,0.74,0.34,0.96]] },
+  { k: 'bld_herb',   x: 1920, y: 1290, foot: 0.62, block: [[0.22,0.02,0.75,0.62],[0.72,0.28,0.96,0.62],[0.04,0.35,0.30,0.58],[0.70,0.72,0.96,0.90]] },
+  { k: 'qi',         x: 1200, y: 1270, foot: 0.30, block: [[0.30,0.00,0.70,0.27],[0.05,0.45,0.22,0.78],[0.78,0.45,0.95,0.78],[0.35,0.80,0.45,0.95],[0.55,0.80,0.65,0.95]] },
+  { k: 'bld_forge',  x: 520,  y: 1800, foot: 0.40, block: [[0.10,0.03,0.85,0.40],[0.04,0.25,0.38,0.58],[0.62,0.20,0.84,0.58],[0.78,0.52,0.98,0.82],[0.12,0.77,0.27,0.90],[0.54,0.77,0.92,0.90]] },
+  { k: 'gate',       x: 1200, y: 1860, foot: 1.00, block: [[0.04,0.70,0.30,1.00],[0.70,0.70,0.96,1.00]] },
+];
+
+const TOWN_PROPS = [
+  { k: 'tree_bamboo', x: 150,  y: 560,  bw: 150 }, { k: 'tree_bamboo', x: 2250, y: 560,  bw: 150, flip: 1 },
+  { k: 'tree_pine',   x: 130,  y: 930,  bw: 110 }, { k: 'tree_pine',   x: 2270, y: 930,  bw: 110, flip: 1 },
+  { k: 'tree_plum',   x: 130,  y: 1230, bw: 100 }, { k: 'tree_plum',   x: 2270, y: 1230, bw: 100, flip: 1 },
+  { k: 'tree_bamboo', x: 150,  y: 1620, bw: 150 }, { k: 'tree_bamboo', x: 2260, y: 1640, bw: 150, flip: 1 },
+  { k: 'pole1', x: 330,  y: 780,  bw: 40, bh: 20 }, { k: 'pole1', x: 2070, y: 780,  bw: 40, bh: 20, flip: 1 },
+  { k: 'pole2', x: 330,  y: 1400, bw: 40, bh: 20 }, { k: 'pole2', x: 2070, y: 1400, bw: 40, bh: 20, flip: 1 },
+  { k: 'burner',  x: 1200, y: 770,  bw: 80, bh: 30 },
+  { k: 'lantern', x: 1100, y: 800,  bw: 34, bh: 20 }, { k: 'lantern', x: 1300, y: 800,  bw: 34, bh: 20 },
+  { k: 'lantern', x: 1100, y: 1335, bw: 34, bh: 20 }, { k: 'lantern', x: 1300, y: 1335, bw: 34, bh: 20 },
+  { k: 'stall_green', x: 860,  y: 1010, bw: 150, bh: 50 },
+  { k: 'stall_cream', x: 1540, y: 1010, bw: 150, bh: 50 },
+  { k: 'rack_spear',   x: 1790, y: 1590, bw: 150, bh: 30 }, { k: 'rack_sword',  x: 2040, y: 1590, bw: 150, bh: 30 },
+  { k: 'dummy_a',      x: 1760, y: 1730, bw: 34,  bh: 20 }, { k: 'dummy_hat',   x: 1850, y: 1730, bw: 34, bh: 20 },
+  { k: 'dummy_target', x: 1990, y: 1730, bw: 34,  bh: 20 }, { k: 'dummy_big',   x: 2080, y: 1730, bw: 38, bh: 20 },
+  { k: 'low_wall',     x: 1960, y: 1800, bw: 330, bh: 20 },
+  { k: 'wall_l', x: 800,  y: 1895, bw: 380, bh: 36 }, { k: 'wall_l', x: 1600, y: 1895, bw: 380, bh: 36, flip: 1 },
+  { k: 'rock1', x: 760,  y: 1480 }, { k: 'rock2', x: 1660, y: 1520 },
+  { k: 'rock2', x: 330,  y: 1560 }, { k: 'rock1', x: 2150, y: 880  },
+  { k: 'rock1', x: 980,  y: 1130 }, { k: 'rock2', x: 1420, y: 1160 },
 ];
 
 window.TownHooks = window.TownHooks || {};
@@ -210,9 +228,55 @@ function townDialog(m, title, text, buttons) {
   m.townModal = box;
 }
 
+// ---------- พื้นหญ้า + ถนนหิน (สร้างด้วยโค้ด) ----------
+function townMakeGroundTextures(m) {
+  if (m.textures.exists('town_grass')) return;
+  const S = 128;
+  let seed = 11;
+  const rnd = function () { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+  const wrapRect = function (c, x, y, w, h) {
+    for (const ox of [0, -S]) for (const oy of [0, -S]) c.fillRect(x + ox, y + oy, w, h);
+  };
+  const gt = m.textures.createCanvas('town_grass', S, S);
+  const gc = gt.getContext('2d');
+  gc.fillStyle = '#44703c'; gc.fillRect(0, 0, S, S);
+  const gcols = ['#3a6334', '#4f7c43', '#5b8a4a', '#33582f', '#668f4e'];
+  for (let i = 0; i < 560; i++) {
+    gc.fillStyle = gcols[Math.floor(rnd() * gcols.length)];
+    wrapRect(gc, Math.floor(rnd() * S), Math.floor(rnd() * S), 2 + Math.floor(rnd() * 3), 1 + Math.floor(rnd() * 2));
+  }
+  const fcols = ['#e9e2c8', '#f2c9d0', '#f0dc7a'];
+  for (let i = 0; i < 9; i++) {
+    gc.fillStyle = fcols[i % 3];
+    wrapRect(gc, Math.floor(rnd() * S), Math.floor(rnd() * S), 2, 2);
+  }
+  gt.refresh();
+
+  const ct = m.textures.createCanvas('town_cobble', S, S);
+  const cc = ct.getContext('2d');
+  cc.fillStyle = '#4d453a'; cc.fillRect(0, 0, S, S);
+  const scols = ['#8d8473', '#9a917f', '#847b6b', '#a39a88', '#8a806f'];
+  const N = 4, C = S / N;
+  for (let gx = 0; gx < N; gx++) {
+    for (let gy = 0; gy < N; gy++) {
+      const x = gx * C + 2 + Math.floor(rnd() * 3), y = gy * C + 2 + Math.floor(rnd() * 3);
+      const w = C - 5 - Math.floor(rnd() * 3), h = C - 5 - Math.floor(rnd() * 3);
+      cc.fillStyle = scols[Math.floor(rnd() * scols.length)];
+      cc.fillRect(x + 2, y, w - 4, h); cc.fillRect(x, y + 2, w, h - 4); cc.fillRect(x + 1, y + 1, w - 2, h - 2);
+      cc.fillStyle = 'rgba(255,255,255,.18)'; cc.fillRect(x + 3, y + 1, w - 7, 2);
+      cc.fillStyle = 'rgba(0,0,0,.18)';       cc.fillRect(x + 3, y + h - 2, w - 6, 2);
+    }
+  }
+  for (let i = 0; i < 30; i++) {
+    cc.fillStyle = (i % 2) ? 'rgba(70,110,60,.55)' : 'rgba(0,0,0,.18)';
+    cc.fillRect(Math.floor(rnd() * S), Math.floor(rnd() * S), 2, 2);
+  }
+  ct.refresh();
+}
+
 // ---------- NPC ----------
 function townMakeNpc(m, n, ox, oy, atlas, objs) {
-  const nx = ox + n.x * TOWN.w, ny = oy + n.y * TOWN.h;
+  const nx = ox + n.x, ny = oy + n.y;
   const npcH = Phaser.Math.Clamp((m.player && m.player.displayHeight) ? m.player.displayHeight * 1.15 : 96, 80, 150);
   const c = m.add.container(nx, ny).setDepth(townDepth(ny));
   const g = m.add.graphics();
@@ -289,50 +353,53 @@ function townApproach(m, n, nx, ny) {
 }
 
 // ---------- สร้าง/ล้างเมืองในฉาก Main ----------
-// โหลดรูปเมืองตอนเข้าเมืองครั้งแรก (ไม่โหลดตอนเปิดเกม) แล้วเรียก done
-function townLoadMap(m, done) {
-  if (m.textures.exists('map_town')) { done(); return; }
-  if (typeof MAP_FILES === 'undefined' || !MAP_FILES.map_town) return;
-  m.load.once('filecomplete-image-map_town', done);
-  m.load.once('loaderror', function (f) { if (f && f.key === 'map_town') console.warn('โหลดรูปเมืองไม่ได้:', f.src); });
-  m.load.image('map_town', MAP_FILES.map_town);
-  if (!m.load.isLoading()) m.load.start();
-}
-
 function townBuild(m) {
   const wb = m.physics.world.bounds;
   const ox = Math.round(wb.x + (wb.width - TOWN.w) / 2);
   const oy = Math.round(wb.y + (wb.height - TOWN.h) / 2);
   const objs = [], blockers = [];
   const atlas = m.textures.exists('town');
+  const has = function (k) { return atlas && !!m.textures.getFrame('town', k); };
 
-  // พื้นหลังเขียวเข้มรอบรูปเมือง
-  objs.push(m.add.rectangle(wb.x + wb.width / 2, wb.y + wb.height / 2, wb.width, wb.height, 0x1b241b).setDepth(1));
-
-  // กำแพง/อาคาร/สระ -> กรอบกันเดิน
-  TOWN_BLOCKS.forEach(function (f) {
-    blockers.push({ x0: ox + f[0] * TOWN.w, y0: oy + f[1] * TOWN.h, x1: ox + f[2] * TOWN.w, y1: oy + f[3] * TOWN.h });
+  townMakeGroundTextures(m);
+  objs.push(m.add.tileSprite(wb.x, wb.y, wb.width, wb.height, 'town_grass').setOrigin(0).setDepth(1));
+  const edge = m.add.graphics().setDepth(1.5);
+  objs.push(edge);
+  TOWN_ROADS.forEach(function (r) {
+    objs.push(m.add.tileSprite(ox + r.x, oy + r.y, r.w, r.h, 'town_cobble').setOrigin(0).setDepth(1.2));
+    edge.lineStyle(5, 0x3a342b, 0.95).strokeRect(ox + r.x, oy + r.y, r.w, r.h);
+    edge.lineStyle(2, 0x6f9a55, 0.8).strokeRect(ox + r.x - 4, oy + r.y - 4, r.w + 8, r.h + 8);
   });
+
+  TOWN_BUILDINGS.forEach(function (b) {
+    if (!has(b.k)) return;
+    const bx = ox + b.x, by = oy + b.y;
+    const s = m.add.image(bx, by, 'town', b.k).setOrigin(0.5, 1);
+    const w = s.displayWidth, h = s.displayHeight, left = bx - w / 2, top = by - h;
+    s.setDepth(townDepth(by - h * (1 - b.foot)));
+    objs.push(s);
+    b.block.forEach(function (f) {
+      blockers.push({ x0: left + f[0] * w, y0: top + f[1] * h, x1: left + f[2] * w, y1: top + f[3] * h });
+    });
+  });
+
+  TOWN_PROPS.forEach(function (p) {
+    if (!has(p.k)) return;
+    const px = ox + p.x, py = oy + p.y;
+    const s = m.add.image(px, py, 'town', p.k).setOrigin(0.5, 1).setDepth(townDepth(p.bw === undefined ? py - 1 : py));
+    if (p.flip) s.setFlipX(true);
+    objs.push(s);
+    if (p.bw) blockers.push({ x0: px - p.bw / 2, y0: py - (p.bh || 24), x1: px + p.bw / 2, y1: py });
+  });
+
+  objs.push(m.add.text(ox + TOWN.w / 2, oy + 56, '🏰 เมืองเริ่มต้น', {
+    fontFamily: 'Mitr, sans-serif', fontSize: '34px', color: '#ffe28a', stroke: '#000', strokeThickness: 5,
+  }).setOrigin(0.5).setDepth(40));
 
   TOWN_NPCS.forEach(function (n) { townMakeNpc(m, n, ox, oy, atlas, objs); });
 
-  const T = {
-    ox: ox, oy: oy, objs: objs, blockers: blockers,
-    bounds: {
-      x0: ox + TOWN.walk.x0 * TOWN.w, y0: oy + TOWN.walk.y0 * TOWN.h,
-      x1: ox + TOWN.walk.x1 * TOWN.w, y1: oy + TOWN.walk.y1 * TOWN.h,
-    },
-  };
-
-  // รูปเมือง (โหลดเสร็จแล้วค่อยวาง ถ้าออกจากเมืองไปก่อนก็ไม่วาง)
-  const place = function () {
-    if (m._town !== T || !m.textures.exists('map_town')) return;
-    const img = m.add.image(ox + TOWN.w / 2, oy + TOWN.h / 2, 'map_town').setDisplaySize(TOWN.w, TOWN.h).setDepth(1.2);
-    T.objs.push(img);
-  };
-  townLoadMap(m, function () { m.time.delayedCall(0, place); });   // เลื่อน 1 เฟรม เพราะ m._town ยังไม่ถูกตั้งตอนที่ townBuild ยังไม่จบ
-
-  return T;
+  return { ox: ox, oy: oy, objs: objs, blockers: blockers,
+           bounds: { x0: ox, y0: oy, x1: ox + TOWN.w, y1: oy + TOWN.h } };
 }
 
 function townTeardown(m) {
@@ -390,7 +457,7 @@ function townClearMonsters(m) {
     if (g && typeof g.clear === 'function') { try { g.clear(true, true); } catch (e) {} }
   });
 
-  // 2) กวาดป้ายชื่อมอนที่ไม่ได้ผูกกับตัวมอน + ของตกแต่งด่านเก่า (รูปแผนที่ map_* ไม่อยู่ใน MAP_IMAGES จึงไม่โดนลบ)
+  // 2) กวาดป้ายชื่อมอนที่ไม่ได้ผูกกับตัวมอน + ของตกแต่งด่านเก่า
   const deco = (typeof MAP_IMAGES !== 'undefined') ? MAP_IMAGES : {};
   m.children.list.slice().forEach(function (o) {
     if (keep.has(o) || o.scrollFactorX === 0) return;
@@ -407,7 +474,7 @@ function townEnter(m) {
   townTeardown(m);
   m._town = townBuild(m);
   const T = m._town;
-  const sx = T.ox + TOWN.spawn.fx * TOWN.w, sy = T.oy + TOWN.spawn.fy * TOWN.h;
+  const sx = T.ox + TOWN.spawnX, sy = T.oy + TOWN.spawnY;
   townClearMonsters(m);
   if (m.player) {
     m.player.setPosition(sx, sy);
