@@ -1,6 +1,4 @@
-// ===== พุ่มหญ้า + ก้อนหิน + แผนที่รูปภาพ (สไตล์ ROV) =====
-// v2: ด่านที่มีฟิลด์ map ใน zones.js จะใช้ "รูปแผนที่" เป็นพื้น (โหลดทีละด่าน) + พื้นที่เดินได้จาก js/data/mapMasks.js
-//     ด่านแบบนี้ไม่สุ่มพุ่ม/หิน/บ่อ/ของตกแต่งแล้ว (ในรูปมีครบอยู่แล้ว) | ผู้เล่นและมอนเดินออกนอกพื้นที่เดินได้ไม่ได้
+// ===== พุ่มหญ้า + ก้อนหิน (สไตล์ ROV) =====
 // พุ่มหญ้า: ใช้รูป grass1-3 (assets/) วางซ้อนกันเป็นแปลงรูปวงรี
 //           ผู้เล่นเดินเข้าไป -> หญ้าตรงนั้นจางลงให้เห็นตัวเอง, มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็นเรา
 //           มอนที่อยู่ในพุ่ม: ผู้เล่นมองไม่เห็นถ้าอยู่ไกล (เข้าใกล้ / มอนยิงกระสุน / อยู่พุ่มเดียวกัน = เห็น)
@@ -18,9 +16,6 @@ const BUSH_COUNT = 18;
 const ROCK_MAX = 30;
 const PLAYER_SHOTS_BLOCKED_BY_ROCKS = true;
 
-// ----- แผนที่รูปภาพ (ปรับตรงนี้) -----
-const MAP_DEBUG_MASK = false;   // true = ซ้อนสีแดงตรงพื้นที่เดินไม่ได้ (ไว้ตรวจ/แก้ mapMasks.js) ใช้เสร็จแล้วเปลี่ยนเป็น false
-
 // ----- ตั้งค่าพุ่มหญ้า (ปรับตรงนี้) -----
 const GRASS_IMG_KEYS = ['grass1', 'grass2', 'grass3']; // รูปใน assets/ (โหลดโดย main.js)
 const BUSH_R_MIN = 90, BUSH_R_MAX = 140;               // ขนาดแปลงหญ้า (รัศมีฐาน)
@@ -29,8 +24,8 @@ const BUSH_RX = 1.15, BUSH_RY = 0.8;                   // วงรีที่�
 const BUSH_ALPHA_INSIDE = 0.45;                        // ความทึบของหญ้าตอนเราอยู่ข้างใน (น้อย = จางมาก)
 const BUSH_PLAYER_HIDDEN_ALPHA = 0.7;                  // ความทึบของตัวเราตอนซ่อนในหญ้า
 
-// ----- พื้นแมพ + ของตกแต่ง (ใช้เฉพาะด่านที่ไม่มีรูปแผนที่) -----
-const FLOOR_KEY = 'floor_grass';        // รูปพื้นที่ปูซ้ำ
+// ----- พื้นแมพ + ของตกแต่ง (ปรับตรงนี้) -----
+const FLOOR_KEY = 'floor_grass';        // รูปพื้นที่ปูซ้ำ (ใช้ทุกด่าน; อยากแยกตามด่านให้ทำเป็น map ตาม z.id)
 // ของตกแต่ง: key, ความกว้างในเกม (px), จำนวนต่อด่าน, depth (ต่ำกว่าตัวละครเสมอ), หมุนสุ่มได้ไหม
 const DECO_DEFS = [
   { key: 'deco_dirt',     w: 128, count: 10, depth: -9.5, rotate: true },
@@ -98,17 +93,6 @@ function bushContains(b, x, y) {
   };
 })();
 
-// ทุกเฟรม: ผู้เล่น/มอนที่เดินออกนอกพื้นที่เดินได้ของรูปแผนที่ -> ดึงกลับ (ไถลไปตามขอบได้)
-(function () {
-  const _update = Main.prototype.update;
-  if (!_update) return;
-  Main.prototype.update = function () {
-    const r = _update.apply(this, arguments);
-    try { if (this.walkMask) this.enforceWalkMask(); } catch (e) {}
-    return r;
-  };
-})();
-
 Object.assign(Main.prototype, {
   makeObstacleTextures() {
     if (this.textures.exists('rock_m')) return;
@@ -124,66 +108,8 @@ Object.assign(Main.prototype, {
     g.destroy();
   },
 
-  // ---------- แผนที่รูปภาพ ----------
-  // จุด (x,y) เดินได้ไหม (ไม่มีรูปแผนที่ = เดินได้ทุกที่)
-  walkableAt(x, y) {
-    const m = this.walkMask;
-    if (!m) return true;
-    const c = Math.floor(x / MAP_MASK_CELL), r = Math.floor(y / MAP_MASK_CELL);
-    if (r < 0 || c < 0 || r >= m.length || c >= m[0].length) return false;
-    return m[r].charCodeAt(c) === 49;   // '1'
-  },
-
-  enforceWalkMask() {
-    const fix = o => {
-      if (!o || !o.active) return;
-      if (this.walkableAt(o.x, o.y)) { o._wx = o.x; o._wy = o.y; return; }
-      if (o._wx === undefined) return;
-      let nx = o._wx, ny = o._wy;
-      if (this.walkableAt(o.x, o._wy)) nx = o.x;          // ไถลตามแกน x
-      else if (this.walkableAt(o._wx, o.y)) ny = o.y;     // ไถลตามแกน y
-      if (o.body) {
-        if (nx !== o.x) o.body.velocity.x = 0;
-        if (ny !== o.y) o.body.velocity.y = 0;
-      }
-      o.setPosition(nx, ny);
-    };
-    fix(this.player);
-    if (this.enemies) this.enemies.getChildren().forEach(fix);
-  },
-
-  // ใส่รูปแผนที่แทนพื้นเดิม (stageObjs[0]) ถ้ายังไม่โหลดจะโหลดก่อน (โหลดทีละด่าน ประหยัดแรม) แล้วลบรูปด่านอื่นทิ้ง
-  setStageMap(z) {
-    const key = 'map_' + z.map, token = this.stageToken;
-    const apply = () => {
-      if (this.stageToken !== token || !this.textures.exists(key) || !this.stageObjs) return;
-      const old = this.stageObjs[0];
-      if (old && old.destroy) old.destroy();
-      this.stageObjs[0] = this.add.image(WORLD_W / 2, WORLD_H / 2, key).setDisplaySize(WORLD_W, WORLD_H).setDepth(-10);
-    };
-    // ลบรูปแผนที่ด่านอื่นที่เคยโหลดไว้ (รูปด่านปัจจุบัน + รูปเมืองเก็บไว้)
-    Object.keys(MAP_FILES).forEach(k => {
-      if (k !== key && k !== 'map_town' && this.textures.exists(k)) this.textures.remove(k);
-    });
-    if (this.textures.exists(key)) { apply(); return; }
-    this._mapLoading = this._mapLoading || {};
-    if (!this._mapLoading[key]) {
-      this._mapLoading[key] = true;
-      this.load.once('filecomplete-image-' + key, () => { this._mapLoading[key] = false; });
-      this.load.once('loaderror', f => { if (f && f.key === key) { this._mapLoading[key] = false; console.warn('โหลดแผนที่ไม่ได้:', f.src); } });
-      this.load.image(key, MAP_FILES[key]);
-      if (!this.load.isLoading()) this.load.start();
-    }
-    this.load.once('filecomplete-image-' + key, apply);
-  },
-
   buildObstacles(idx) {
     const z = ZONES[idx];
-    // ด่านที่ใช้รูปแผนที่ (ต้องมีทั้งฟิลด์ map และพื้นที่เดินได้) หรือเมือง = ไม่สุ่มพุ่ม/หิน/บ่อ
-    const hasMap = !!(z.map && typeof MAP_MASKS !== 'undefined' && MAP_MASKS[z.map] && MAP_FILES['map_' + z.map]);
-    const skipRandom = hasMap || !!z.town;
-    this.walkMask = hasMap ? MAP_MASKS[z.map] : null;
-    if (this.player) { this.player._wx = undefined; this.player._wy = undefined; }
     this.makeObstacleTextures();
     if (!this.rocks) {
       this.rocks = this.physics.add.staticGroup();
@@ -209,75 +135,73 @@ Object.assign(Main.prototype, {
     const farFrom = (x, y, list, d) => list.every(o => dist(x, y, o.x, o.y) > d);
     const awayFromSpawn = (x, y, d) => dist(x, y, z.x, z.y) > d;
 
-    if (!skipRandom) {
-      // บ่อน้ำ
-      const pondKey = this.makePondTexture();
-      const prnd = mulberry32(9000 + z.id * 6151);
-      for (let tries = 0; this.pondRects.length < POND_COUNT && tries < 300; tries++) {
-        const sc = 0.85 + prnd() * 0.35;
-        let x, y;
-        if (this.pondRects.length === 0) {
-          // บ่อแรกอยู่ใกล้จุดเกิด (ซ้ายหรือขวา) ให้เห็นตั้งแต่เริ่มด่าน
-          const a = (prnd() < 0.5 ? 0 : Math.PI) + (prnd() - 0.5) * 0.8, d = 400 + prnd() * 120;
-          x = z.x + Math.cos(a) * d; y = z.y + Math.sin(a) * d;
-          if (x < 250 || x > WORLD_W - 250 || y < 200 || y > WORLD_H - 200) continue;
-        } else {
-          x = 220 + prnd() * (WORLD_W - 440); y = 180 + prnd() * (WORLD_H - 360);
-        }
-        if (!awayFromSpawn(x, y, 380) || !this.pondRects.every(p => dist(x, y, p.x, p.y) > 520)) continue;
-        const img = this.add.image(x, y, pondKey).setDepth(-7);
-        img.setScale((POND_W * sc) / img.width);
-        const vw = img.displayWidth, vh = img.displayHeight;
-        const cw = vw * POND_HIT_W, ch = vh * POND_HIT_H;
-        this.obstacleObjs.push(img);
-        this.ponds.add(this.add.rectangle(x, y, cw, ch, 0x000000, 0));   // กล่องชน (มองไม่เห็น)
-        this.pondRects.push({ x, y, w: cw, h: ch, vw, vh });
+    // บ่อน้ำ
+    const pondKey = this.makePondTexture();
+    const prnd = mulberry32(9000 + z.id * 6151);
+    for (let tries = 0; this.pondRects.length < POND_COUNT && tries < 300; tries++) {
+      const sc = 0.85 + prnd() * 0.35;
+      let x, y;
+      if (this.pondRects.length === 0) {
+        // บ่อแรกอยู่ใกล้จุดเกิด (ซ้ายหรือขวา) ให้เห็นตั้งแต่เริ่มด่าน
+        const a = (prnd() < 0.5 ? 0 : Math.PI) + (prnd() - 0.5) * 0.8, d = 400 + prnd() * 120;
+        x = z.x + Math.cos(a) * d; y = z.y + Math.sin(a) * d;
+        if (x < 250 || x > WORLD_W - 250 || y < 200 || y > WORLD_H - 200) continue;
+      } else {
+        x = 220 + prnd() * (WORLD_W - 440); y = 180 + prnd() * (WORLD_H - 360);
       }
+      if (!awayFromSpawn(x, y, 380) || !this.pondRects.every(p => dist(x, y, p.x, p.y) > 520)) continue;
+      const img = this.add.image(x, y, pondKey).setDepth(-7);
+      img.setScale((POND_W * sc) / img.width);
+      const vw = img.displayWidth, vh = img.displayHeight;
+      const cw = vw * POND_HIT_W, ch = vh * POND_HIT_H;
+      this.obstacleObjs.push(img);
+      this.ponds.add(this.add.rectangle(x, y, cw, ch, 0x000000, 0));   // กล่องชน (มองไม่เห็น)
+      this.pondRects.push({ x, y, w: cw, h: ch, vw, vh });
+    }
 
-      // พุ่มหญ้า (ตำแหน่ง + ขนาด)
-      const cols = [0x2f7d32, 0x3f9a3f, 0x58b358];
-      for (let tries = 0; this.bushes.length < BUSH_COUNT && tries < 500; tries++) {
-        const r = rand(BUSH_R_MIN, BUSH_R_MAX), x = rand(M, WORLD_W - M), y = rand(M, WORLD_H - M);
-        if (!awayFromSpawn(x, y, 300) || !farFrom(x, y, this.bushes, BUSH_SPACING) || this.nearPond(x, y, r * BUSH_RX + 20)) continue;
-        const blobs = [];                               // ใช้เฉพาะตอนไม่มีรูปหญ้า (วาดวงกลมแทน)
-        for (let i = 0; i < 8; i++) {
-          const a = rnd() * Math.PI * 2, d = rand(0.15, 0.7) * r;
-          blobs.push({ dx: Math.cos(a) * d, dy: Math.sin(a) * d, r: rand(0.25, 0.4) * r, c: cols[Math.floor(rnd() * cols.length)] });
-        }
-        this.bushes.push({ x, y, r, rx: r * BUSH_RX, ry: r * BUSH_RY, blobs, sprites: [] });
+    // พุ่มหญ้า (ตำแหน่ง + ขนาด)
+    const cols = [0x2f7d32, 0x3f9a3f, 0x58b358];
+    for (let tries = 0; this.bushes.length < BUSH_COUNT && tries < 500; tries++) {
+      const r = rand(BUSH_R_MIN, BUSH_R_MAX), x = rand(M, WORLD_W - M), y = rand(M, WORLD_H - M);
+      if (!awayFromSpawn(x, y, 300) || !farFrom(x, y, this.bushes, BUSH_SPACING) || this.nearPond(x, y, r * BUSH_RX + 20)) continue;
+      const blobs = [];                               // ใช้เฉพาะตอนไม่มีรูปหญ้า (วาดวงกลมแทน)
+      for (let i = 0; i < 8; i++) {
+        const a = rnd() * Math.PI * 2, d = rand(0.15, 0.7) * r;
+        blobs.push({ dx: Math.cos(a) * d, dy: Math.sin(a) * d, r: rand(0.25, 0.4) * r, c: cols[Math.floor(rnd() * cols.length)] });
       }
+      this.bushes.push({ x, y, r, rx: r * BUSH_RX, ry: r * BUSH_RY, blobs, sprites: [] });
+    }
 
-      // ก้อนหิน
-      const addRock = (x, y, sz) => {
-        const [key, s] = sz;
-        if (x < 80 || y < 80 || x > WORLD_W - 80 || y > WORLD_H - 80) return false;
-        if (!awayFromSpawn(x, y, 220) || !farFrom(x, y, this.rockRects, 130) || this.nearPond(x, y, s / 2 + 10)) return false;
-        const imgKey = ROCK_IMG[key];
-        if (imgKey && this.textures.exists(imgKey)) {
-          // ใช้รูปหินจริง: ย่อ/ขยายให้เป็นสี่เหลี่ยม s x s (hitbox เท่ากับขนาดที่แสดง)
-          this.rocks.create(x, y, imgKey).setDisplaySize(s, s).setDepth(1).refreshBody();
-        } else {
-          this.rocks.create(x, y, key).setDepth(1);
-        }
-        this.rockRects.push({ x, y, w: s, h: s });
-        return true;
-      };
-      this.bushes.forEach(b => {                       // หินตั้งข้างพุ่ม (ที่กำบัง)
-        const n = rnd() < 0.5 ? 1 : 2;
-        for (let i = 0; i < n; i++) {
-          const sz = ROCK_SIZES[1 + Math.floor(rnd() * 2)];
-          const a = rnd() * Math.PI * 2, d = b.rx + sz[1] / 2 + 6;
-          addRock(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d * (b.ry / b.rx), sz);
-        }
-      });
-      for (let tries = 0; this.rockRects.length < ROCK_MAX && tries < 300; tries++) {  // หินเดี่ยวกระจายทั่วแมพ
-        addRock(rand(M / 2, WORLD_W - M / 2), rand(M / 2, WORLD_H - M / 2), ROCK_SIZES[Math.floor(rnd() * 3)]);
+    // ก้อนหิน
+    const addRock = (x, y, sz) => {
+      const [key, s] = sz;
+      if (x < 80 || y < 80 || x > WORLD_W - 80 || y > WORLD_H - 80) return false;
+      if (!awayFromSpawn(x, y, 220) || !farFrom(x, y, this.rockRects, 130) || this.nearPond(x, y, s / 2 + 10)) return false;
+      const imgKey = ROCK_IMG[key];
+      if (imgKey && this.textures.exists(imgKey)) {
+        // ใช้รูปหินจริง: ย่อ/ขยายให้เป็นสี่เหลี่ยม s x s (hitbox เท่ากับขนาดที่แสดง)
+        this.rocks.create(x, y, imgKey).setDisplaySize(s, s).setDepth(1).refreshBody();
+      } else {
+        this.rocks.create(x, y, key).setDepth(1);
       }
+      this.rockRects.push({ x, y, w: s, h: s });
+      return true;
+    };
+    this.bushes.forEach(b => {                       // หินตั้งข้างพุ่ม (ที่กำบัง)
+      const n = rnd() < 0.5 ? 1 : 2;
+      for (let i = 0; i < n; i++) {
+        const sz = ROCK_SIZES[1 + Math.floor(rnd() * 2)];
+        const a = rnd() * Math.PI * 2, d = b.rx + sz[1] / 2 + 6;
+        addRock(b.x + Math.cos(a) * d, b.y + Math.sin(a) * d * (b.ry / b.rx), sz);
+      }
+    });
+    for (let tries = 0; this.rockRects.length < ROCK_MAX && tries < 300; tries++) {  // หินเดี่ยวกระจายทั่วแมพ
+      addRock(rand(M / 2, WORLD_W - M / 2), rand(M / 2, WORLD_H - M / 2), ROCK_SIZES[Math.floor(rnd() * 3)]);
     }
 
     this.buildNavGrid();
 
-    // วาดพุ่มหญ้า (อยู่เหนือตัวละคร) -- ใช้รูป grass1-3 วางซ้อนกันเป็นแปลง (ไม่ทำงานถ้าไม่มีพุ่ม)
+    // วาดพุ่มหญ้า (อยู่เหนือตัวละคร) -- ใช้รูป grass1-3 วางซ้อนกันเป็นแปลง
     const useImg = GRASS_IMG_KEYS.every(k => this.textures.exists(k));
     const g = this.add.graphics().setDepth(6);
     this.obstacleObjs.push(g);
@@ -307,23 +231,10 @@ Object.assign(Main.prototype, {
     });
 
     this.buildFloorAndDecor(z);
-
-    // โหมดตรวจ: ซ้อนสีแดงตรงที่เดินไม่ได้
-    if (MAP_DEBUG_MASK && this.walkMask) {
-      const dg = this.add.graphics().setDepth(9000).setAlpha(0.35);
-      dg.fillStyle(0xff0000, 1);
-      this.walkMask.forEach((row, r) => {
-        for (let c = 0; c < row.length; c++) if (row.charCodeAt(c) !== 49) dg.fillRect(c * MAP_MASK_CELL, r * MAP_MASK_CELL, MAP_MASK_CELL, MAP_MASK_CELL);
-      });
-      this.obstacleObjs.push(dg);
-    }
   },
 
-  // ปูพื้น: ด่านที่มีรูปแผนที่ = วางรูป / เมือง = ไม่ทำอะไร (town.js วาดเอง) / ด่านอื่น = ปูพื้นหญ้าซ้ำ + โรยของตกแต่ง
+  // ปูพื้นด้วยรูปแทนตารางเส้นเดิม + โรยของตกแต่ง (ไม่ชน ไม่ทับหิน/พุ่มหญ้า)
   buildFloorAndDecor(z) {
-    if (z.town) return;
-    if (this.walkMask) { this.setStageMap(z); return; }   // ภาพมีของตกแต่งอยู่แล้ว ไม่ต้องโรย deco
-
     // พื้น: แทนที่ grid เดิมที่ loadStage สร้างไว้ (stageObjs[0]) ด้วย tileSprite
     if (this.textures.exists(FLOOR_KEY) && this.stageObjs) {
       const old = this.stageObjs[0];
@@ -360,7 +271,7 @@ Object.assign(Main.prototype, {
   },
 
   // ---------- เส้นทาง / แนวยิง ----------
-  // ตารางเดินได้ (ช่องละ 40px) ขยายขอบหินออก 20px ให้ตัวละครเดินไม่เฉี่ยว + ช่องที่เดินไม่ได้ตามรูปแผนที่
+  // ตารางเดินได้ (ช่องละ 40px) ขยายขอบหินออก 20px ให้ตัวละครเดินไม่เฉี่ยว
   buildNavGrid() {
     const cell = 40, cols = Math.ceil(WORLD_W / cell), rows = Math.ceil(WORLD_H / cell), m = 20;
     const blocked = new Uint8Array(cols * rows);
@@ -369,12 +280,6 @@ Object.assign(Main.prototype, {
       const r0 = Math.max(0, Math.floor((r.y - r.h / 2 - m) / cell)), r1 = Math.min(rows - 1, Math.floor((r.y + r.h / 2 + m) / cell));
       for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) blocked[rr * cols + cc] = 1;
     });
-    if (this.walkMask) {                                  // MAP_MASK_CELL = 40 = cell
-      for (let rr = 0; rr < rows; rr++) for (let cc = 0; cc < cols; cc++) {
-        const row = this.walkMask[rr];
-        if (!row || row.charCodeAt(cc) !== 49) blocked[rr * cols + cc] = 1;
-      }
-    }
     this.navGrid = { cols, rows, cell, blocked };
   },
 
@@ -403,18 +308,10 @@ Object.assign(Main.prototype, {
     return best;
   },
 
-  // เส้นทางเดินถูกขวางหรือไม่ (หิน + บ่อน้ำ + นอกพื้นที่เดินได้ของรูปแผนที่)
+  // เส้นทางเดินถูกขวางหรือไม่ (หิน + บ่อน้ำ)
   segmentBlocked(x1, y1, x2, y2, margin) {
-    if (this.rayHitRock(x1, y1, x2, y2, margin) !== null ||
-        this._rayHitRects(this.pondRects, x1, y1, x2, y2, margin) !== null) return true;
-    if (this.walkMask) {
-      const len = Math.hypot(x2 - x1, y2 - y1), n = Math.max(1, Math.ceil(len / 30));
-      for (let i = 1; i <= n; i++) {
-        const t = i / n;
-        if (!this.walkableAt(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t)) return true;
-      }
-    }
-    return false;
+    return this.rayHitRock(x1, y1, x2, y2, margin) !== null ||
+           this._rayHitRects(this.pondRects, x1, y1, x2, y2, margin) !== null;
   },
 
   // A* หาทางเดินอ้อมหิน คืนรายการจุด [{x,y}...] (ปลายทางคือจุดเป้าหมายจริง) หรือ null ถ้าหาไม่เจอ
@@ -502,10 +399,8 @@ Object.assign(Main.prototype, {
     return out;
   },
 
-  // จุดนี้ติดหิน/บ่อ/นอกพื้นที่เดินได้หรือไม่ (ใช้ตอนสุ่มจุดเกิดมอน + วางของตกแต่ง)
   pointInRock(x, y, margin) {
     const m = margin || 0;
-    if (this.walkMask && !this.walkableAt(x, y)) return true;
     return (this.rockRects || []).concat(this.pondRects || []).some(r => Math.abs(x - r.x) < r.w / 2 + m && Math.abs(y - r.y) < r.h / 2 + m);
   },
 
@@ -590,11 +485,6 @@ Object.assign(Main.prototype, {
         }
       }
       if (!hit) break;
-    }
-    // ของดรอปตกนอกพื้นที่เดินได้ของรูปแผนที่ -> ย้ายไปที่ผู้เล่น (กันเก็บไม่ได้)
-    if (this.walkMask && !this.walkableAt(it.x, it.y) && this.player) {
-      it.setPosition(this.player.x, this.player.y);
-      moved = true;
     }
     if (!moved) return;
     it.setPosition(Phaser.Math.Clamp(it.x, 20, WORLD_W - 20), Phaser.Math.Clamp(it.y, 20, WORLD_H - 20));
