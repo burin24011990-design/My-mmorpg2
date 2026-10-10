@@ -1,5 +1,5 @@
-/* perfHud.js (v4) — แผงวัดความลื่น (โชว์เฉพาะเมื่อเปิดเกมด้วย ?perf=1)
- * ติดตั้ง: วางที่ js/systems/perfHud.js แล้วเปลี่ยนใน index.html เป็น  perfHud.js?v=4
+/* perfHud.js (v6) — แผงวัดความลื่น (โชว์เฉพาะเมื่อเปิดเกมด้วย ?perf=1)
+ * ติดตั้ง: วางที่ js/systems/perfHud.js แล้วเปลี่ยนใน index.html เป็น  perfHud.js?v=6
  *
  * ของใหม่ใน v4:
  *   upd X ms   = เวลาที่โค้ดเกม (Main.update) ใช้ต่อเฟรม  -> สูง = ตรรกะ/AI/เอฟเฟกต์ที่คำนวณหนัก
@@ -8,6 +8,11 @@
  *   types      = ชนิดวัตถุที่มีมากสุดในฉาก,  add = จำนวนที่เป็น additive blend
  *   objMax     = จำนวน obj สูงสุดตั้งแต่เปิด  (หยุดสู้แล้ว obj ไม่ลดกลับ = วัตถุรั่ว)
  *   ปุ่ม "กราฟิก" = ซ่อน Graphics / อนุภาค / รูปทรง (กดซ้ำเพื่อเปิดกลับ)
+ *
+ * ของใหม่ใน v6:
+ *   step = เวลารวมทุกอย่างต่อเฟรมฝั่งเกม (phys = ฟิสิกส์, tw = tween) | oth = เวลาที่เหลือ (GPU/เบราว์เซอร์/หน้าเว็บ)
+ *   longtask = จำนวนครั้งที่เกมค้างเกิน 50ms | heap = หน่วยความจำ JS (ขึ้นแล้วตกฮวบเป็นรอบ = GC)
+ *   upd-ls = จำนวน listener ที่ทำงานทุกเฟรม
  */
 (function () {
   if (!/[?&]perf=1/.test(location.search)) return;
@@ -21,7 +26,7 @@
   var box = document.createElement('div');
   box.id = 'perf-box';
   box.style.cssText = 'position:fixed;right:6px;top:6px;z-index:99998;background:rgba(0,0,0,.8);color:#8f8;' +
-    'font:11px/1.35 monospace;padding:4px 6px;border-radius:6px;max-width:260px';
+    'font:11px/1.35 monospace;padding:4px 6px;border-radius:6px;max-width:340px';
   var stat = document.createElement('div');
   stat.style.cssText = 'white-space:pre;pointer-events:none';
   stat.textContent = 'perf: รอเฟรมแรก...';
@@ -88,11 +93,23 @@
   // ---------- วัดเฟรม ----------
   var last = 0, lastShow = 0, n = 0, sum = 0, max = 0, spikes = 0;
   var tUpd = 0, tRen = 0, rStart = 0, objMax = 0;
+  var tStep = 0, sStart = 0, tPhys = 0, tTw = 0, ltCount = 0, ltMax = 0;
+
+  // ครอบ listener 'update' ของระบบ (ฟิสิกส์/tween) เพื่อจับเวลา โดยไม่เปลี่ยนพฤติกรรม
+  function wrapUpd(ev, fn, ctx, add) {
+    var before = ev.listenerCount('update');
+    ev.off('update', fn, ctx);
+    var after = ev.listenerCount('update');
+    if (after !== before - 1) { for (var i = 0; i < before - after; i++) ev.on('update', fn, ctx); return; }
+    ev.on('update', function (t, d) { var s0 = performance.now(); fn.call(ctx, t, d); add(performance.now() - s0); });
+  }
 
   function show(sc) {
     var fps = n, avg = n ? sum / n : 0, mx = max, sp = spikes;
     var upd = n ? tUpd / n : 0, ren = n ? tRen / n : 0;
-    n = 0; sum = 0; max = 0; spikes = 0; tUpd = 0; tRen = 0;
+    var stp = n ? tStep / n : 0, phy = n ? tPhys / n : 0, twn = n ? tTw / n : 0;
+    var lt = ltCount, ltm = ltMax;
+    n = 0; sum = 0; max = 0; spikes = 0; tUpd = 0; tRen = 0; tStep = 0; tPhys = 0; tTw = 0; ltCount = 0; ltMax = 0;
     var head = '', info = '';
     try {
       var rt = sc.game && sc.game.renderer ? sc.game.renderer.type : 0;
@@ -125,6 +142,11 @@
       gl.sort(function (a, b) { return b.c - a.c; });
       info += '\nGfx ' + gl.length + ' cmd ' + gTotal + '  top ' +
               gl.slice(0, 3).map(function (g) { return 'd' + g.d + ':' + g.c; }).join(' ');
+      var other = Math.max(0, avg - stp - ren);
+      info += '\nstep ' + stp.toFixed(1) + ' phys ' + phy.toFixed(1) + ' tw ' + twn.toFixed(1) + ' oth ' + other.toFixed(1) + 'ms' +
+              '\nlongtask ' + lt + ' (max ' + ltm.toFixed(0) + 'ms)  heap ' +
+              (performance.memory ? (performance.memory.usedJSHeapSize / 1048576).toFixed(0) + 'MB' : '?') +
+              '  upd-ls ' + (sc.events && sc.events.listenerCount ? sc.events.listenerCount('update') : '?');
     } catch (e) { /* ไม่ให้แผงวัดทำเกมพัง */ }
     stat.style.color = fps >= 50 ? '#8f8' : (fps >= 30 ? '#ff8' : '#f88');
     stat.textContent = head + 'FPS ' + fps + '\navg ' + avg.toFixed(1) + 'ms  max ' + mx.toFixed(0) + 'ms  spike ' + sp + info;
@@ -139,6 +161,18 @@
         hooked = true;
         this.game.events.on('prerender', function () { rStart = performance.now(); });
         this.game.events.on('postrender', function () { tRen += performance.now() - rStart; });
+        this.game.events.on('prestep', function () { sStart = performance.now(); });
+        this.game.events.on('poststep', function () { tStep += performance.now() - sStart; });
+        try {
+          var ev = this.sys.events, w = this.physics && this.physics.world, tm = this.tweens;
+          if (w) wrapUpd(ev, w.update, w, function (d) { tPhys += d; });
+          if (tm) wrapUpd(ev, tm.update, tm, function (d) { tTw += d; });
+        } catch (e) { /* ignore */ }
+        try {
+          new PerformanceObserver(function (l) {
+            l.getEntries().forEach(function (e) { ltCount++; if (e.duration > ltMax) ltMax = e.duration; });
+          }).observe({ entryTypes: ['longtask'] });
+        } catch (e) { /* ไม่รองรับ */ }
       }
       if (last) {
         var d = now - last;
