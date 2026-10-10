@@ -79,6 +79,7 @@
       if (o !== sc.player && (o.type === 'Sprite' || o.type === 'Image') && o.depth >= 60 && o.depth <= 75 && o.visible) o.setVisible(false);
     });
     if (F.gfx) each(sc.children.list, function (o) {
+      if (o.input) return;                                  // ปุ่มสกิล/ปุ่มกดได้ ห้ามซ่อน (ไม่งั้นกดไม่ได้)
       if (GFX_TYPES.indexOf(o.type) >= 0 && o.visible) { o.setVisible(false); hiddenGfx.push(o); }
     });
     if (hiddenGfx.length > 3000) hiddenGfx = hiddenGfx.slice(-1500);   // กันลิสต์โตไม่หยุด
