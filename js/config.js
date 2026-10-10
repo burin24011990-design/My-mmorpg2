@@ -4,7 +4,9 @@ const PORTRAIT = window.innerHeight > window.innerWidth;
 // แนวตั้ง: ความสูงปรับตามสัดส่วนจอจริง (ต่ำสุด 900 สูงสุด 1200) เพื่อไม่ให้เหลือแถบดำบน/ล่าง
 const W = PORTRAIT ? 540 : 1280;
 const H = PORTRAIT ? Math.max(900, Math.min(1200, Math.round(540 * window.innerHeight / window.innerWidth))) : 600;
-const WORLD_W = 3600, WORLD_H = 2250; // ขนาดแผนที่ของแต่ละด่าน (ใหญ่ขึ้นราว 5 เท่าของพื้นที่เดิม)
+// ขนาดแผนที่ของแต่ละด่าน: สัดส่วน 2800:2560 ให้ตรงกับรูปแผนที่ (assets/maps/*.webp) | เมืองอยู่กลางโลกนี้
+// ถ้าแก้ตัวเลขนี้ ต้องสร้างรูป/พื้นที่เดินได้ (mapMasks.js) ใหม่ให้สัดส่วนเดียวกัน
+const WORLD_W = 2800, WORLD_H = 2560;
 const TARGET_RANGE = 600;           // ระยะที่ล็อกเป้ามอนอัตโนมัติ
 const BOSS_COUNT = 1;               // จำนวนมินิบอสต่อด่าน
 const BOSS_MULT = 20;               // มินิบอสแรงกว่ามอนธรรมดา (HP / ดาเมจ / EXP / ทอง)
