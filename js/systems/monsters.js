@@ -38,7 +38,7 @@ const NAME_SIZE_NORMAL = '15px';   // ขนาดชื่อมอนธรร
 const NAME_SIZE_EPIC = '17px';     // ขนาดชื่อ Epic
 const NAME_SIZE_BOSS = '19px';     // ขนาดชื่อมินิบอส
 const NAME_TEXT_RES = 1;           // ความคมของชื่อ (1 = เร็วสุด, 1.5 = คมขึ้นแต่หนักขึ้น)
-const HPBAR_ONLY_WHEN_HURT = false; // true = โชว์หลอดเลือดเฉพาะตอนมอนเสียเลือดแล้ว
+const HPBAR_ONLY_WHEN_HURT = true; // true = โชว์หลอดเลือดเฉพาะตอนมอนเสียเลือดแล้ว
 const HPBAR_W_NORMAL = 50, HPBAR_W_EPIC = 66, HPBAR_W_BOSS = 90;   // ความกว้างหลอด (px)
 // ขนาดของที่ดรอปบนพื้น (px) เมื่อใช้รูปใหม่จาก assets/items/
 const LOOT_DISPLAY_SIZE = 30;
