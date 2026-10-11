@@ -12,6 +12,7 @@
   const P = Main.prototype;
   const DIR = 'img/skillimg/';   // โฟลเดอร์เก็บภาพใหม่ (ย้ายที่อยู่แก้ตรงนี้ที่เดียว)
   const MAX_FX = 8;   // เอฟเฟกต์ดาบพร้อมกันสูงสุด (กันแลคบนมือถือ)
+  const FLIP_FIX = true;   // true = หันซ้ายแล้วพลิกภาพแบบกระจกซ้าย-ขวา (บนยังอยู่บน) | false = หมุน 180 องศาแบบเดิม (ภาพจะกลับหัว)
 
   const IMG = {
     sw_slash: { tex: 'swi_slash', file: DIR + 'sw_slash_i.png', ox: 0.984, oy: 0.736, rotate: true,
@@ -25,6 +26,18 @@
     'ดาบสังหาร': { tex: 'swi_ult', file: DIR + 'sw_ult_i.png',  ox: 0.986, oy: 0.552, rotate: true,
                 w: d => d.range * 1.25, dist: d => d.range,        anim: 'wave', times: 'shots', every: 'shotGap' },
   };
+
+  // ปิดกรอบสี่เหลี่ยมโปร่งใสที่โผล่รอบสกิล: sword.js วาดกรอบ "พื้นที่โดนดาเมจ" ทุกครั้ง ถ้าไม่มี window.SwordVFX
+  // เราลงทะเบียน SwordVFX แบบว่างเปล่า (ภาพจริงใช้ swordImgFx แทน) กรอบกับวงแฟลชสีเรียบๆ จึงไม่ถูกวาด
+  // ยังคงจอสั่นตอนอัลติไว้ | ถ้าไฟล์อื่นมี SwordVFX ของจริงอยู่แล้ว จะไม่ทับ
+  const noop = function () {};
+  const VFX = window.SwordVFX = window.SwordVFX || {};
+  ['slash', 'spin', 'hit', 'dash', 'guard', 'block'].forEach(k => { if (typeof VFX[k] !== 'function') VFX[k] = noop; });
+  if (typeof VFX.ultimate !== 'function') {
+    VFX.ultimate = function (scene, x, y, ux, uy, len, hw, shot) {
+      if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(shot > 1 ? 220 : 160, shot > 1 ? 0.006 : 0.004);
+    };
+  }
 
   // ปิดเอฟเฟกต์สไปรต์ชีตเดิมของดาบใน skillFx.js (ไม่ให้เล่นซ้อน)
   if (window.SkillFx && window.SkillFx.FX) {
@@ -62,7 +75,10 @@
     const d = c.dist(def);
     const s = scene.add.image(p.x + ux * d, p.y + uy * d, c.tex)
       .setOrigin(c.ox, c.oy).setDepth(70).setBlendMode(Phaser.BlendModes.ADD).setScale(sc);
-    if (c.rotate) s.setRotation(ang);
+    if (c.rotate) {
+      s.setRotation(ang);
+      if (FLIP_FIX && ux < 0) s.setFlipY(true);   // หันซ้าย: พลิกแนวตั้ง + หมุน = กระจกซ้าย-ขวา (ไม่กลับหัว)
+    }
     scene._swFxN = (scene._swFxN || 0) + 1;
     s.once('destroy', () => { scene._swFxN = Math.max(0, (scene._swFxN || 1) - 1); });
     const done = () => { if (s.active) s.destroy(); };
