@@ -16,10 +16,10 @@
 
   const IMG = {
     bolt: { file: 'mg_bolt_i.png', ox: 0.02,  oy: 0.484 },   // สายฟ้า: จุดกำเนิดอยู่ซ้ายสุด ยืดตามระยะสกิล
-    nova: { file: 'mg_nova_i.png', ox: 0.511, oy: 0.553 },   // วงเวทวาป (กลางวง)
-    fire: { file: 'mg_fire_i.png', ox: 0.524, oy: 0.575 },   // ระเบิดลูกไฟ (กลางแสง)
-    ice:  { file: 'mg_ice_i.png',  ox: 0.499, oy: 0.72  },   // น้ำแข็งผุด: ยึดที่กลางวงฐาน ผลึกพุ่งขึ้นด้านบน
-    ult:  { file: 'mg_ult_i.png',  ox: 0.514, oy: 0.529 },   // อัลติระเบิด (กลางแสง)
+    nova: { file: 'mg_nova_i.png', ox: 0.505, oy: 0.547 },   // วงเวทวาป (กลางวง)
+    fire: { file: 'mg_fire_i.png', ox: 0.538, oy: 0.575 },   // ระเบิดลูกไฟ (กลางแสง)
+    ice:  { file: 'mg_ice_i.png',  ox: 0.5,   oy: 0.78  },   // น้ำแข็งผุด: ยึดที่กลางวงฐาน ผลึกพุ่งขึ้นด้านบน
+    ult:  { file: 'mg_ult_i.png',  ox: 0.509, oy: 0.54  },   // อัลติระเบิด (กลางแสง)
   };
 
   // ปิดเอฟเฟกต์สไปรต์ชีตเดิมของเมจใน skillFx.js (ไม่ให้เล่นซ้อน)
@@ -32,7 +32,7 @@
     Object.keys(IMG).forEach(k => {
       const t = 'mgi_' + k;
       if (scene.textures.exists(t)) return;
-      scene.load.image(t, DIR + IMG[k].file + '?v=1');
+      scene.load.image(t, DIR + IMG[k].file + '?v=2');
       need = true;
     });
     if (!need) return;
