@@ -1,17 +1,20 @@
 // ===== ข้อมูลด่าน (แต่ละด่านเป็นแผนที่แยกกัน) =====
-// x,y = จุดเกิดของผู้เล่น (กลางแผนที่) / count = มอนธรรมดา / rangedCount = มอนยิงไกล (สุ่มกระจายทั่วแผนที่)
+// x,y = จุดเกิดของผู้เล่น (กลางแผนที่ คำนวณจาก WORLD_W / WORLD_H ใน config.js อัตโนมัติ) / count = มอนธรรมดา / rangedCount = มอนยิงไกล (สุ่มกระจายทั่วแผนที่)
 // มินิบอสตั้งค่าที่ config.js (BOSS_COUNT, BOSS_MULT, BOSS_RESPAWN_*)
 // bg,line = สีพื้นและสีเส้นตารางของด่านนั้น
+// แผนที่ใหญ่ขึ้น 2 เท่า (กว้าง+สูง = พื้นที่ 4 เท่า) ถ้ามอนดูโหรงเกินไป เพิ่ม count / rangedCount ได้ตรงนี้
+const ZONE_CX = WORLD_W / 2, ZONE_CY = WORLD_H / 2;
+
 const ZONES = [
-  { id: 1, name: 'ด่าน 1', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 1, minLv: 1, maxLv: 10, boxLevel: 1, bg: 0x2b3a2b, line: 0x1f2b1f },
-  { id: 2, name: 'ด่าน 2', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 11, minLv: 11, maxLv: 20, boxLevel: 10, bg: 0x2b3a3a, line: 0x1f2b2b },
-  { id: 3, name: 'ด่าน 3', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 21, minLv: 21, maxLv: 30, boxLevel: 20, bg: 0x3a3a2b, line: 0x2b2b1f },
-  { id: 4, name: 'ด่าน 4', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 31, minLv: 31, maxLv: 40, boxLevel: 30, bg: 0x3a2f2b, line: 0x2b211f },
-  { id: 5, name: 'ด่าน 5', x: 1800, y: 1125, count: 60, rangedCount: 20, reqLv: 41, minLv: 41, maxLv: 50, boxLevel: 40, bg: 0x2b2b3a, line: 0x1f1f2b },
-  { id: 6, name: 'ด่าน 6', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 51, minLv: 51, maxLv: 60, boxLevel: 50, bg: 0x3a2b3a, line: 0x2b1f2b },
-  { id: 7, name: 'ด่าน 7', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 61, minLv: 61, maxLv: 70, boxLevel: 60, bg: 0x3a2b2b, line: 0x2b1f1f },
-  { id: 8, name: 'ด่าน 8', x: 1800, y: 1125, count: 45, rangedCount: 15, reqLv: 71, minLv: 71, maxLv: 80, boxLevel: 70, bg: 0x33363b, line: 0x24272b },
-  { id: 9, name: 'ด่าน 9', x: 1800, y: 1125, count: 60, rangedCount: 20, reqLv: 81, minLv: 81, maxLv: 90, boxLevel: 80, bg: 0x2b2b2b, line: 0x1a1a1a },
+  { id: 1, name: 'ด่าน 1', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 1, minLv: 1, maxLv: 10, boxLevel: 1, bg: 0x2b3a2b, line: 0x1f2b1f },
+  { id: 2, name: 'ด่าน 2', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 11, minLv: 11, maxLv: 20, boxLevel: 10, bg: 0x2b3a3a, line: 0x1f2b2b },
+  { id: 3, name: 'ด่าน 3', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 21, minLv: 21, maxLv: 30, boxLevel: 20, bg: 0x3a3a2b, line: 0x2b2b1f },
+  { id: 4, name: 'ด่าน 4', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 31, minLv: 31, maxLv: 40, boxLevel: 30, bg: 0x3a2f2b, line: 0x2b211f },
+  { id: 5, name: 'ด่าน 5', x: ZONE_CX, y: ZONE_CY, count: 60, rangedCount: 20, reqLv: 41, minLv: 41, maxLv: 50, boxLevel: 40, bg: 0x2b2b3a, line: 0x1f1f2b },
+  { id: 6, name: 'ด่าน 6', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 51, minLv: 51, maxLv: 60, boxLevel: 50, bg: 0x3a2b3a, line: 0x2b1f2b },
+  { id: 7, name: 'ด่าน 7', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 61, minLv: 61, maxLv: 70, boxLevel: 60, bg: 0x3a2b2b, line: 0x2b1f1f },
+  { id: 8, name: 'ด่าน 8', x: ZONE_CX, y: ZONE_CY, count: 45, rangedCount: 15, reqLv: 71, minLv: 71, maxLv: 80, boxLevel: 70, bg: 0x33363b, line: 0x24272b },
+  { id: 9, name: 'ด่าน 9', x: ZONE_CX, y: ZONE_CY, count: 60, rangedCount: 20, reqLv: 81, minLv: 81, maxLv: 90, boxLevel: 80, bg: 0x2b2b2b, line: 0x1a1a1a },
 ];
 
 // ===== ด่านจุติ (ต้องจุติถึงขั้นที่กำหนดถึงเข้าได้) =====
@@ -30,7 +33,7 @@ const rzBoxLevel = r => (r >= 21 ? 100 : (r >= 11 ? 90 : 80));
 REBIRTH_ZONE_STEPS.forEach(function (r, i) {
   const lv = RZ_FIRST_LV + i * RZ_LV_STEP;
   const z = {
-    id: 10 + i, name: 'ด่านจุติ ' + r, x: 1800, y: 1125, count: 60, rangedCount: 20,
+    id: 10 + i, name: 'ด่านจุติ ' + r, x: ZONE_CX, y: ZONE_CY, count: 60, rangedCount: 20,
     minLv: lv, maxLv: lv + 4, boxLevel: rzBoxLevel(r),
     reqRebirth: r,                       // ขั้นจุติที่ต้องมี
     hpMul: RZ_HP_K * (r + 1), dmgMul: RZ_DMG_K * (r + 1),
@@ -56,7 +59,7 @@ REBIRTH_ZONE_STEPS.forEach(function (r, i) {
 // x,y = จุดเกิด (town.js ตั้งตำแหน่งเกิดเองตามผังเมืองอีกที)
 ZONES.push({
   id: 99, name: 'เมือง', town: true, safe: true, look: 0,
-  x: 1800, y: 1535, count: 0, rangedCount: 0,
+  x: ZONE_CX, y: 1535, count: 0, rangedCount: 0,
   reqLv: 1, minLv: 1, maxLv: 1, boxLevel: 1,
   bg: 0x1b241b, line: 0x1b241b,
 });
