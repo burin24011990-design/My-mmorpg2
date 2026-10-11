@@ -1,7 +1,7 @@
 // ===== เอฟเฟกต์สกิลดาบแบบ "ภาพนิ่ง + Phaser ขยับเอง" =====
 // วางต่อจาก skillFx.js ใน index.html (ก่อน main.js):
 //   <script src="js/systems/swordImgFx.js?v=1"></script>
-// ภาพอยู่ที่ img/fx/sw_*_i.png (หันขวา → ระบบหมุนตามทิศยิงเอง)
+// ภาพอยู่ที่ img/skillimg/sw_*_i.png (หันขวา → ระบบหมุนตามทิศยิงเอง)
 //
 // ox, oy = จุดยึดในภาพ (0-1)  tip = ปลายคม (ฟัน/พุ่ง/คลื่น), center = กลางภาพ (หมุน/ระเบิด)
 // w(def) = ความกว้างภาพที่แสดง (px) | dist(def) = จุดยึดอยู่ห่างตัวเท่าไหร่ตามทิศยิง
@@ -10,18 +10,19 @@
 // ถ้าภาพใหญ่/เล็กไป ปรับเลขใน w() | ถ้าตำแหน่งเลยตัว ปรับ dist()
 (function () {
   const P = Main.prototype;
+  const DIR = 'img/skillimg/';   // โฟลเดอร์เก็บภาพใหม่ (ย้ายที่อยู่แก้ตรงนี้ที่เดียว)
   const MAX_FX = 8;   // เอฟเฟกต์ดาบพร้อมกันสูงสุด (กันแลคบนมือถือ)
 
   const IMG = {
-    sw_slash: { tex: 'swi_slash', file: 'img/fx/sw_slash_i.png', ox: 0.984, oy: 0.736, rotate: true,
+    sw_slash: { tex: 'swi_slash', file: DIR + 'sw_slash_i.png', ox: 0.984, oy: 0.736, rotate: true,
                 w: d => d.range * 1.45, dist: d => d.range * 1.05, anim: 'sweep' },
-    sw_dash:  { tex: 'swi_dash',  file: 'img/fx/sw_dash_i.png',  ox: 0.986, oy: 0.544, rotate: true,
+    sw_dash:  { tex: 'swi_dash',  file: DIR + 'sw_dash_i.png',  ox: 0.986, oy: 0.544, rotate: true,
                 w: d => d.range * 1.35, dist: d => d.range,        anim: 'dash' },
-    sw_cross: { tex: 'swi_cross', file: 'img/fx/sw_cross_i.png', ox: 0.487, oy: 0.512, rotate: true,
+    sw_cross: { tex: 'swi_cross', file: DIR + 'sw_cross_i.png', ox: 0.487, oy: 0.512, rotate: true,
                 w: d => d.range * 1.0,  dist: d => d.range * 0.55, anim: 'burst' },
-    sw_spin:  { tex: 'swi_spin',  file: 'img/fx/sw_spin_i.png',  ox: 0.5,   oy: 0.5,   rotate: false,
+    sw_spin:  { tex: 'swi_spin',  file: DIR + 'sw_spin_i.png',  ox: 0.5,   oy: 0.5,   rotate: false,
                 w: d => d.range * 2.1,  dist: d => 0,              anim: 'spin' },
-    'ดาบสังหาร': { tex: 'swi_ult', file: 'img/fx/sw_ult_i.png',  ox: 0.986, oy: 0.552, rotate: true,
+    'ดาบสังหาร': { tex: 'swi_ult', file: DIR + 'sw_ult_i.png',  ox: 0.986, oy: 0.552, rotate: true,
                 w: d => d.range * 1.25, dist: d => d.range,        anim: 'wave', times: 'shots', every: 'shotGap' },
   };
 
