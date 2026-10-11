@@ -15,11 +15,11 @@
   const FLIP_FIX = true;   // true = หันซ้ายแล้วพลิกภาพแบบกระจกซ้าย-ขวา (บนยังอยู่บน) | false = หมุน 180 องศาแบบเดิม (ภาพจะกลับหัว)
 
   const IMG = {
-    sw_slash: { tex: 'swi_slash', file: DIR + 'sw_slash_i.png', ox: 0.984, oy: 0.736, rotate: true,
-                w: d => d.range * 1.45, dist: d => d.range * 1.05, anim: 'sweep' },
+    sw_slash: { tex: 'swi_slash', file: DIR + 'sw_slash_i.png', ox: 0.977, oy: 0.487, rotate: true,   // ภาพกลับด้านแล้ว: จุดยึด = ยอดโค้งด้านหน้า
+                w: d => d.range * 1.1,  dist: d => d.range,        anim: 'sweep' },
     sw_dash:  { tex: 'swi_dash',  file: DIR + 'sw_dash_i.png',  ox: 0.986, oy: 0.544, rotate: true,
                 w: d => d.range * 1.35, dist: d => d.range,        anim: 'dash' },
-    sw_cross: { tex: 'swi_cross', file: DIR + 'sw_cross_i.png', ox: 0.487, oy: 0.512, rotate: true,
+    sw_cross: { tex: 'swi_cross', file: DIR + 'sw_cross_i.png', ox: 0.513, oy: 0.512, rotate: true,
                 w: d => d.range * 1.0,  dist: d => d.range * 0.55, anim: 'burst' },
     sw_spin:  { tex: 'swi_spin',  file: DIR + 'sw_spin_i.png',  ox: 0.5,   oy: 0.5,   rotate: false,
                 w: d => d.range * 2.1,  dist: d => 0,              anim: 'spin' },
@@ -49,7 +49,7 @@
     Object.keys(IMG).forEach(k => {
       const c = IMG[k];
       if (scene.textures.exists(c.tex)) return;
-      scene.load.image(c.tex, c.file + '?v=1');
+      scene.load.image(c.tex, c.file + '?v=2');
       need = true;
     });
     if (!need) return;
