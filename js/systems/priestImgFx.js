@@ -1,13 +1,13 @@
 // ===== เอฟเฟกต์สกิลพระแบบ "ภาพนิ่ง + Phaser ขยับเอง" =====
 // วางหลัง priestFx.js ใน index.html (ก่อน main.js):
-//   <script src="js/systems/priestImgFx.js?v=1"></script>
+//   <script src="js/systems/priestImgFx.js?v=2"></script>
 // ภาพอยู่ที่ img/skillimg/pr_*_i.png
 //
 // เลือกเอฟเฟกต์ตามชนิดสกิล (def.type ใน priest.js) เหมือน priestFx.js เดิม
 //   healaoe = ฮีลหมู่ | holy = แสงพิพากษา (ค้างตลอด ticks x tickMs) | pulti = อัลติแสงสวรรค์
 //   haste = พรแห่งลม (ตามตัวตลอดบัพ) | lightbeam = พลังแห่งแสง (ลำแสง)
 // ox, oy = จุดยึดในภาพ (0-1) | w(def) = ความกว้างภาพที่แสดง (px) | sy = บีบความสูง (น้อย = เตี้ย)
-// ถ้าภาพใหญ่/เล็กไป แก้ตัวคูณใน w() | ภาพโหลดไม่ขึ้น = กลับไปใช้เอฟเฟกต์เดิมของ priestFx.js
+// ถ้าภาพโหลดไม่ขึ้น = กลับไปใช้เอฟเฟกต์เดิมของ priestFx.js
 (function () {
   const P = Main.prototype;
   const PF = window.PriestFx;
@@ -15,6 +15,12 @@
 
   const DIR = 'img/skillimg/';
   const MAX_FX = 10;   // เอฟเฟกต์พระพร้อมกันสูงสุด (กันแลคบนมือถือ)
+
+  // ===== ปรับขนาดแสงพิพากษาตรงนี้ =====
+  // SMITE_W_MUL = ความกว้างภาพ เทียบกับรัศมีสกิล (range) | ใหญ่ไป-เล็กไปแก้เลขนี้ เช่น 3.2 / 3.5
+  // SMITE_SY    = ความสูงภาพ (1 = สัดส่วนเดิมของภาพ, น้อยกว่า 1 = แบนลง)
+  const SMITE_W_MUL = 2.8;
+  const SMITE_SY = 0.85;
 
   const IMG = {
     mass:  { file: 'pr_mass_i.png',  ox: 0.509, oy: 0.816 },   // ฮีลหมู่ (กลางวงเวทพื้น)
@@ -25,10 +31,10 @@
   };
 
   const FX = {
-    healaoe: { img: 'mass',  at: 'ground', w: d => d.range * 1.85, sy: 0.6,  anim: 'once', life: 700 },
-    holy:    { img: 'smite', at: 'ground', w: d => d.range * 1.7,  sy: 0.6,  anim: 'lasting' },
-    pulti:   { img: 'ulti',  at: 'ground', w: d => d.range * 2.2,  sy: 1,    anim: 'once', life: 900 },
-    haste:   { img: 'haste', at: 'self',   w: d => 90,             sy: 0.8,  anim: 'aura', dy: 20 },
+    healaoe: { img: 'mass',  at: 'ground', w: d => d.range * 1.85,        sy: 0.6,      anim: 'once', life: 700 },
+    holy:    { img: 'smite', at: 'ground', w: d => d.range * SMITE_W_MUL, sy: SMITE_SY, anim: 'lasting' },
+    pulti:   { img: 'ulti',  at: 'ground', w: d => d.range * 2.2,         sy: 1,        anim: 'once', life: 900 },
+    haste:   { img: 'haste', at: 'self',   w: d => 90,                    sy: 0.8,      anim: 'aura', dy: 20 },
   };
 
   // เก็บเอฟเฟกต์เดิมของ priestFx.js ไว้ | ตอนภาพใหม่พร้อมใช้ จะซ่อนของเดิมชั่วคราวเฉพาะรอบนั้น (ไม่ให้เล่นซ้อน)
@@ -157,7 +163,7 @@
         if (def.type === 'lightbeam' && has(this, 'beam')) {
           const l = Math.hypot(fx || 0, fy || 0);
           const ux = l > 0.001 ? fx / l : this.facing.x, uy = l > 0.001 ? fy / l : this.facing.y;
-          this._prFxSkip = { x: p.x, y: p.y, until: this.time.now + 400 };   // ให้ priestFx.js ข้างล่างข้ามวงแฟลชสีเรียบๆ ของ priest.js
+          this._prFxSkip = { x: p.x, y: p.y, until: this.time.now + 400 };   // ให้ priestFx.js ข้ามวงแฟลชสีเรียบๆ ของ priest.js
           playBeam(this, def, p, ux, uy);
           hidden = 'beam';
         } else {
