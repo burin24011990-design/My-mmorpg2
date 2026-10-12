@@ -156,7 +156,7 @@
       const len = def.range, hw = def.halfW;
 
       // มีภาพลำแสง (priestFx.js: pr_beam.png) -> ไม่วาดแถบสี่เหลี่ยมซ้อน
-      if (!(scene.textures && scene.textures.exists('pr_beam'))) {
+      if (!(scene.textures && (scene.textures.exists('pr_beam') || scene.textures.exists('pri_beam')))) {
         const beam = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 2, GOLD, 0.4)
           .setRotation(Math.atan2(uy, ux)).setDepth(60);
         const core = scene.add.rectangle(p.x + ux * len / 2, p.y + uy * len / 2, len, hw * 0.4, 0xffffff, 0.9)
@@ -188,13 +188,19 @@
       });
     },
     // แสงพิพากษา: วงแสงต่อเนื่อง ticks ครั้ง | ทุกครั้งทำดาเมจ + ศัตรูในวงถูกลดความเร็วเดิน/พลังโจมตี/ความเร็วโจมตี
+    // มีภาพเอฟเฟกต์ (priestImgFx.js / priestFx.js) แล้ว -> ไม่วาดวงกลมเส้นขอบ/แฟลชซ้อน (ต้นเหตุเส้นวงใหญ่ไม่สวย)
+    // ถ้าภาพโหลดไม่ขึ้น จะใช้วงกลมเดิมเป็นตัวสำรอง
     holy(def, x, y, dmg) {
       const scene = this, ticks = def.ticks || 1, gap = def.tickMs || 1000;
-      const zone = scene.add.circle(x, y, def.range, GOLD, 0.12).setStrokeStyle(2, GOLD, 0.8).setDepth(40);
+      const tx = scene.textures;
+      const hasImg = !!(tx && (tx.exists('pri_smite') || tx.exists('pr_smite')));
+      const zone = hasImg ? null : scene.add.circle(x, y, def.range, GOLD, 0.12).setStrokeStyle(2, GOLD, 0.8).setDepth(40);
       for (let i = 0; i < ticks; i++) {
         scene.time.delayedCall(i * gap, () => {
-          scene.flash(x, y, def.range * 0.8, GOLD);
-          scene.tweens.add({ targets: zone, scale: 1.06, yoyo: true, duration: 120 });
+          if (!hasImg) {
+            scene.flash(x, y, def.range * 0.8, GOLD);
+            if (zone && zone.active) scene.tweens.add({ targets: zone, scale: 1.06, yoyo: true, duration: 120 });
+          }
           scene.enemies.getChildren().slice().forEach(e => {
             if (!e.active || Phaser.Math.Distance.Between(x, y, e.x, e.y) >= def.range) return;
             smiteDebuff(scene, e, def);
@@ -202,9 +208,12 @@
           });
         });
       }
-      scene.time.delayedCall(ticks * gap, () => {
-        scene.tweens.add({ targets: zone, alpha: 0, duration: 250, onComplete: () => zone.destroy() });
-      });
+      if (zone) {
+        scene.time.delayedCall(ticks * gap, () => {
+          if (!zone.active) return;
+          scene.tweens.add({ targets: zone, alpha: 0, duration: 250, onComplete: () => zone.destroy() });
+        });
+      }
     },
     haste(def, x, y, dmg) {
       const p = this.player;
