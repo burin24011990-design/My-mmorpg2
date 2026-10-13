@@ -1,0 +1,27 @@
+/* ===== ระบบบ้าน (ปุ่มใหญ่สำหรับมือถือ) ===== */
+.hs-card { text-align: center; }
+.hs-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.hs-tab {
+  flex: 1; min-height: 44px; font-family: inherit; font-size: 13px; border-radius: 10px;
+  border: 2px solid #8a6a32; background: #26090f; color: #ffe28a; touch-action: manipulation;
+}
+.hs-tab.on { background: #ffd45c; color: #26090f; border-color: #ffd45c; }
+.hs-tab.off { opacity: .45; }
+.hs-body { display: flex; flex-direction: column; gap: 10px; }
+.hs-msg { font-size: 16px; min-height: 24px; color: #fff; }
+.hs-res { font-size: 22px; min-height: 30px; color: #ffe28a; }
+.hs-stock { font-size: 13px; color: #cbbd9a; line-height: 1.6; }
+.hs-btn {
+  width: 100%; min-height: 56px; font-family: inherit; font-size: 18px; border-radius: 12px;
+  border: 2px solid #ffd45c; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.hs-main { background: #ffd45c; color: #26090f; font-size: 22px; min-height: 68px; }
+.hs-main:active { transform: scale(.98); }
+.hs-alt { background: #26090f; color: #ffe28a; font-size: 14px; min-height: 48px; }
+.hs-alt:disabled { opacity: .5; }
+.hs-bar {
+  position: relative; height: 34px; border-radius: 17px; background: #3a0d0d;
+  border: 2px solid #8a6a32; overflow: hidden;
+}
+.hs-zone { position: absolute; top: 0; bottom: 0; background: rgba(91, 227, 91, .75); }
+.hs-mark { position: absolute; top: 0; bottom: 0; width: 6px; margin-left: -3px; background: #fff; box-shadow: 0 0 6px #fff; }
