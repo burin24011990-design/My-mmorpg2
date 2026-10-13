@@ -87,17 +87,26 @@
   };
 
   // ชื่อ/ไอคอน/สีกรอบของวัตถุดิบในกระเป๋า
+  const MATICON_CV = {};   // mid -> canvas ไอคอนจริง (เติมตอนโหลดแผ่นภาพเสร็จ) | ไม่มี = ใช้อีโมจิ
   function matTex(mid) {
     const sc = window.__mainScene, d = MAT_DEFS[mid];
     if (!sc || !d) return 'box';
-    const key = 'mat_' + mid;
+    const ic = MATICON_CV[mid];
+    const key = (ic ? 'mati_' : 'mat_') + mid;
     if (sc.textures.exists(key)) return key;
-    const S = 48;
+    const S = ic ? 64 : 48;
     const t = sc.textures.createCanvas(key, S, S);
     const c = t.getContext();
     c.fillStyle = '#1d1d1d'; c.fillRect(0, 0, S, S);
-    c.font = '30px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText(d.icon, S / 2, S / 2 + 2);
+    if (ic) {
+      const k = Math.min((S - 4) / ic.width, (S - 4) / ic.height);
+      const w = ic.width * k, h = ic.height * k;
+      c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+      c.drawImage(ic, (S - w) / 2, (S - h) / 2, w, h);
+    } else {
+      c.font = '30px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(d.icon, S / 2, S / 2 + 2);
+    }
     t.refresh();
     return key;
   }
@@ -251,9 +260,20 @@
     function refresh() {
       baitBtn.textContent = (useBait ? '☑' : '☐') + ' ใช้เหยื่อ (มี ' + m.countMat('bait_basic') + ') ปลาหายากง่ายขึ้น';
       baitBtn.disabled = state !== 'idle';
-      const fs = [];
-      FISH_TABLE.forEach(function (f) { const n = m.countMat(f.id); if (n) fs.push(MAT_DEFS[f.id].icon + MAT_DEFS[f.id].name + ' x' + n); });
-      stock.textContent = (fs.length ? 'ปลาในกระเป๋า: ' + fs.join('   ') : 'ยังไม่มีปลาในกระเป๋า') + '   💧 น้ำ x' + m.countMat('water');
+      stock.textContent = '';
+      let anyFish = false;
+      FISH_TABLE.forEach(function (f) {
+        const n = m.countMat(f.id);
+        if (!n) return;
+        anyFish = true;
+        const sp = el('span', 'hs-ig', '');
+        sp.append(matIcon(f.id, 24), document.createTextNode(' x' + n + '   '));
+        stock.append(sp);
+      });
+      if (!anyFish) stock.append(document.createTextNode('ยังไม่มีปลาในกระเป๋า   '));
+      const wt = el('span', 'hs-ig', '');
+      wt.append(matIcon('water', 24), document.createTextNode(' x' + m.countMat('water')));
+      stock.append(wt);
     }
     function toIdle() {
       state = 'idle';
@@ -302,7 +322,8 @@
       if (left >= n) msg.textContent = '🎒 กระเป๋าเต็ม! ปลาหลุดมือ';
       else {
         msg.textContent = perfect ? '⭐ สุดยอด! จังหวะเป๊ะ' : '✅ ตกได้แล้ว!';
-        res.textContent = d.icon + ' ' + d.name + ' x' + (n - left);
+        res.textContent = '';
+        res.append(matIcon(fid, 44), document.createTextNode(' ' + d.name + ' x' + (n - left)));
         toast(m, 'ตกได้: ' + d.name + ' x' + (n - left));
       }
       if (m.saveSoon) m.saveSoon();
@@ -385,7 +406,9 @@
           any = true;
           const c = CROPS[seed], row = el('div', 'hs-row');
           const left = el('div', 'hs-nm');
-          left.append(el('div', '', MAT_DEFS[c.veg].icon + ' ' + MAT_DEFS[seed].name + ' (มี ' + own + ')'),
+          const sn = el('div', 'hs-ig', '');
+          sn.append(matIcon(seed, 30), document.createTextNode(' ' + MAT_DEFS[seed].name + (MAT_DEFS[seed].rarity ? ' [' + MAT_DEFS[seed].rarity + ']' : '') + ' (มี ' + own + ')'));
+          left.append(sn,
             el('div', 'hs-sub', 'โต ' + Math.round(c.growMs / 60000) + ' นาที • ได้ ' + c.yieldMin + '-' + c.yieldMax + ' ชิ้น'));
           const b = el('button', 'hs-mini', 'ปลูก');
           b.addEventListener('click', function () { if (plantSeed(m, picking, seed)) { picking = null; draw(); } });
@@ -513,7 +536,8 @@
         if (n < COOK_MAX_BOOKS) {
           const cost = costFor(r, n), ing = el('div', 'hs-ing');
           Object.keys(cost).forEach(function (id) {
-            const have = m.countMat(id), s = el('span', have >= cost[id] ? 'hs-ok' : 'hs-no', matName(id) + ' ' + have + '/' + cost[id]);
+            const have = m.countMat(id), s = el('span', (have >= cost[id] ? 'hs-ok' : 'hs-no') + ' hs-ig', '');
+            s.append(matIcon(id, 20), document.createTextNode(' ' + MAT_DEFS[id].name + ' ' + have + '/' + cost[id]));
             ing.append(s);
           });
           row.append(ing);
@@ -547,7 +571,9 @@
       ids.forEach(function (id) {
         const d = MAT_DEFS[id], row = el('div', 'hs-row'), left = el('div', 'hs-nm');
         const own = el('div', 'hs-sub', '');
-        left.append(el('div', '', d.icon + ' ' + d.name + '  🪙' + d.price), own);
+        const nmEl = el('div', 'hs-ig', '');
+        nmEl.append(matIcon(id, 28), document.createTextNode(' ' + d.name + '  🪙' + d.price));
+        left.append(nmEl, own);
         const bt = el('div', 'hs-bt');
         [1, 10].forEach(function (q) {
           const b = el('button', 'hs-mini', 'ซื้อ ×' + q);
@@ -799,6 +825,71 @@
       else { console.warn('house img: ไม่พบไฟล์', HOUSE_IMG_DIR + 'dishes_' + n + '.png'); settle('missing'); }
     };
     img.src = HOUSE_IMG_DIR + 'dishes_' + n + exts[0] + '?v=' + HOUSE_IMG_VER;
+  }
+
+  // ----- ไอคอนวัตถุดิบ: assets/house/{fish,drops,cooking,seeds,veggies}.png (แต่ละแผ่นเป็นตารางเรียงตามลำดับที่กำหนดด้านล่าง) -----
+  // เมล็ดผักใช้ไอคอนถุงตามความหายาก (เขียว/ฟ้า/ม่วง) | ไม่มีไฟล์ = ใช้อีโมจิเดิม
+  const MATICON_URL = {};
+  const MAT_SHEETS = [
+    { files: ['fish.png', 'fish.jpg', 'fish.webp'], cols: 5, rows: 2,
+      ids: ['fish_minnow', 'fish_carp', 'fish_catfish', 'fish_eel', 'fish_shrimp', 'fish_crab', 'fish_squid', 'fish_koi', 'fish_golden', 'fish_lobster'] },
+    { files: ['drops.png', 'drops.jpg', 'drops.webp'], cols: 4, rows: 2,
+      ids: ['meat_raw', 'bone', 'blood', 'monster_egg', 'herb', 'jelly', 'fang', 'hide'] },
+    { files: ['cooking.png', 'cooking.jpg', 'cooking.webp'], cols: 4, rows: 2,
+      ids: ['sp_salt', 'sp_sugar', 'sp_sauce', 'sp_spice', 'sp_oil', 'water', 'bait_basic'] },
+    { files: ['seeds.png', 'seeds.jpg', 'seeds.webp'], cols: 3, rows: 1, ids: ['@common', '@uncommon', '@rare'] },
+    { files: ['veggies.png', 'veggies.jpg', 'veggies.webp'], cols: 4, rows: 3,
+      ids: ['veg_cabbage', 'veg_carrot', 'veg_tomato', 'veg_corn', 'veg_potato', 'veg_pumpkin', 'veg_eggplant', 'veg_onion', 'veg_garlic', 'veg_mushroom', 'veg_chili', 'veg_rice'] },
+  ];
+  function matSheetLoad(sh) {
+    let t = 0;
+    const img = new Image();
+    img.onload = function () {
+      try {
+        const k = himgKey(img, 'white');
+        const cw = Math.floor(k.width / sh.cols), ch = Math.floor(k.height / sh.rows);
+        sh.ids.forEach(function (id, c) {
+          const b = himgBox(k, (c % sh.cols) * cw, Math.floor(c / sh.cols) * ch, cw, ch);
+          if (!b) return;
+          const sc = Math.min(1, 96 / Math.max(b.w, b.h));
+          const o = document.createElement('canvas');
+          o.width = Math.max(1, Math.round(b.w * sc));
+          o.height = Math.max(1, Math.round(b.h * sc));
+          const x = o.getContext('2d');
+          x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+          x.drawImage(k, b.x, b.y, b.w, b.h, 0, 0, o.width, o.height);
+          let targets = [id];
+          if (id.charAt(0) === '@') {   // ไอคอนถุงเมล็ดตามระดับความหายาก ใช้กับเมล็ดทุกชนิดในระดับนั้น
+            const tier = SEED_DROP.tiers.filter(function (z) { return z.key === id.slice(1); })[0];
+            targets = tier ? tier.seeds.map(function (sk) { return 'seed_' + sk; }) : [];
+          }
+          targets.forEach(function (tid) { MATICON_CV[tid] = o; delete MATICON_URL[tid]; });
+        });
+      } catch (e) { console.warn('mat sheet', sh.files[0], e); }
+    };
+    img.onerror = function () {
+      t++;
+      if (t < sh.files.length) img.src = HOUSE_IMG_DIR + sh.files[t] + '?v=' + HOUSE_IMG_VER;
+      else console.warn('house img: ไม่พบไฟล์', HOUSE_IMG_DIR + sh.files[0]);
+    };
+    img.src = HOUSE_IMG_DIR + sh.files[0] + '?v=' + HOUSE_IMG_VER;
+  }
+  MAT_SHEETS.forEach(matSheetLoad);
+
+  function matIconURL(id) {
+    if (MATICON_URL[id]) return MATICON_URL[id];
+    const cv = MATICON_CV[id];
+    return cv ? (MATICON_URL[id] = cv.toDataURL('image/png')) : null;
+  }
+  function matIcon(id, size) {   // ไอคอนวัตถุดิบสำหรับแผง DOM (ไม่มีภาพ = อีโมจิ)
+    const u = matIconURL(id);
+    if (u) {
+      const im = document.createElement('img');
+      im.src = u; im.alt = ''; im.className = 'hs-mi';
+      im.style.width = im.style.height = (size || 22) + 'px';
+      return im;
+    }
+    return el('span', '', MAT_DEFS[id] ? MAT_DEFS[id].icon : '');
   }
 
   function houseBuild(m, T) {
