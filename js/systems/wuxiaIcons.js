@@ -73,7 +73,9 @@
   function apply(btn, label, key) {
     btn.classList.add('wx-btn');
     btn.setAttribute('data-wx', key);
-    btn.style.setProperty('--wx-img', 'url("' + IMG_DIR + key + '.png?v=' + VER + '")');
+    var D = window.WX_ICON_DATA;
+    var src = (D && D[key]) ? D[key] : (IMG_DIR + key + '.png?v=' + VER);
+    btn.style.setProperty('--wx-img', 'url("' + src + '")');
     if (label) {
       label.classList.add('wx-label');
       markHidden(btn, label);
@@ -124,7 +126,7 @@
   else start();
 
   // พรีโหลดรูป
-  Object.keys(MAP).forEach(function (k) { var i = new Image(); i.src = IMG_DIR + MAP[k] + '.png?v=' + VER; });
+  if (!window.WX_ICON_DATA) Object.keys(MAP).forEach(function (k) { var i = new Image(); i.src = IMG_DIR + MAP[k] + '.png?v=' + VER; });
 
   window.WuxiaIcons = { rescan: scan };
 })();
