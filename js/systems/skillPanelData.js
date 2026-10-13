@@ -15,6 +15,7 @@
     ulti_priest: 'pr_ulti',
     ulti_rogue:  'rg_ult',
     // พระ
+    pr_heal:      'pr_beam',   // พลังแห่งแสง (ลำแสง)
     pr_mass_heal: 'pr_mass',
     pr_mass:      'pr_mass',
     pr_smite:     'pr_smite',
@@ -22,10 +23,10 @@
     pr_beam:      'pr_beam'
   };
 
-  // รหัสสกิลที่ "ไม่มีรูป" -> ใช้ไอคอนเดิมเลย (เช่น pr_heal ฮีลเดี่ยว ยังไม่มีไฟล์ภาพ)
+  // รหัสสกิลที่ "ไม่มีรูป" -> ใช้ไอคอนเดิมเลย
   var NO_IMG = {
     basic_sword: 1, basic_rogue: 1, basic_mage: 1, basic_archer: 1, basic_priest: 1,
-    dash: 1, pr_heal: 1
+    dash: 1
   };
 
   var CLS = {
