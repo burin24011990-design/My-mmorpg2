@@ -3,6 +3,7 @@
 // เหตุการณ์สำคัญ (เลเวลอัป/เปลี่ยนอุปกรณ์/เรียนสกิล/ตีบวก/รวมดาว ฯลฯ) จะสั่งอัปโหลดขึ้นคลาวด์เร็วขึ้นผ่าน CloudSave.soon()
 // ล้างเซฟ: เปิด Console แล้วพิมพ์ localStorage.removeItem('my_mmorpg_save_v1')
 // เซฟสกิลช่องพิเศษ (flex) ด้วย: ช่องอันติที่ใส่สกิลอะไรก็ได้เมื่อไม่มีคอมโบ (ดู flexSlot.js)
+// เซฟข้อมูลบ้าน (house) และวัตถุดิบ (kind:'material') ด้วย (ดู house.js / houseData.js)
 
 const SAVE_KEY = 'my_mmorpg_save_v1';
 
@@ -35,6 +36,7 @@ Object.assign(Main.prototype, {
         slots: this.slots,
         flex: this.flexSid || null,         // สกิลช่องพิเศษ (ช่องอันติเมื่อไม่มีคอมโบ)
         kills: this.kills,
+        house: this.house || null,          // ข้อมูลบ้าน (แปลงผัก ฯลฯ) ดู house.js
         stageIdx: this.stageIdx || 0,
         botCfg: this.botCfg || {},
         bossAt: (this.bossState || []).map(zs => zs.map(s => s.at)),
@@ -88,6 +90,8 @@ Object.assign(Main.prototype, {
         (it.kind === 'cleanstone' && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'potion' && POTIONS[it.pid] && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'optstone' && it.color && Number.isFinite(it.count) && it.count > 0) ||
+        // วัตถุดิบระบบบ้าน (ปลา เหยื่อ ผัก ฯลฯ) ดู houseData.js
+        (it.kind === 'material' && typeof MAT_DEFS !== 'undefined' && MAT_DEFS[it.mid] && Number.isFinite(it.count) && it.count > 0) ||
         (it.kind === 'equip' && STAT_GROWTH[it.baseSlot] && Number.isFinite(it.level) && Number.isFinite(it.star) &&
           (it.baseSlot !== 'weapon' || CLASSES[it.class]))
       );
@@ -105,6 +109,9 @@ Object.assign(Main.prototype, {
           if (it.kind === 'skillbook') it = { kind: 'skillbook', sid: it.sid, count: Math.min(MAX_SKILLBOOK_STACK, Math.floor(it.count)) };
           if ((it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone') && typeof MAX_STONE_STACK !== 'undefined') {
             it = { ...it, count: Math.min(MAX_STONE_STACK, Math.floor(it.count)) };
+          }
+          if (it.kind === 'material' && typeof MAX_MAT_STACK !== 'undefined') {
+            it = { kind: 'material', mid: it.mid, count: Math.min(MAX_MAT_STACK, Math.floor(it.count)) };
           }
           bag[i] = it;
         }
@@ -144,6 +151,7 @@ Object.assign(Main.prototype, {
       this.flexSid = (fx && SKILL_DEFS[fx] && this.learnedSkills.has(fx) && this.slots.indexOf(fx) < 0) ? fx : null;
 
       this.kills = Number.isFinite(d.kills) ? d.kills : 0;
+      this.house = (d.house && typeof d.house === 'object') ? d.house : null;   // ข้อมูลบ้าน (house.js ตรวจ/เติมค่าเริ่มต้นเอง)
       this.botCfg = d.botCfg && typeof d.botCfg === 'object' ? d.botCfg : {};
       this.bossState = ZONES.map((_, zi) => Array.from({ length: BOSS_COUNT }, (__, i) => {
         const at = d.bossAt && d.bossAt[zi] ? Number(d.bossAt[zi][i]) : 0;
