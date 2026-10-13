@@ -607,6 +607,7 @@
   const PLOT_IMG_W = 150;          // ความกว้างภาพแปลงตอนมีต้นผัก (px ในเกม)
   const PLOT_EMPTY_W = 135;        // ความกว้างภาพแปลงว่าง (ถ้าใช้ plot_empty.png ที่สไตล์เดียวกับ crops.png ตั้งเป็น 150)
   const HIMG = {};
+  const HIMG_MISSING = [];         // ไฟล์ที่หาไม่เจอ/ประมวลผลไม่ได้ (แจ้งเตือนตอนเข้าบ้าน)
 
   function himgKey(img, mode) {    // ลบพื้นหลังที่ติดขอบภาพ (ขาว/เทาอ่อน หรือม่วงแดง) ไม่ลบสีขาวที่อยู่ในตัวภาพ
     const w = img.naturalWidth, h = img.naturalHeight;
@@ -674,7 +675,9 @@
     c.drawImage(cv, 0, 0, o.width, o.height);
     return o;
   }
-  function himgLoad(name, file, mode, sheet) {
+  function himgLoad(name, files, mode, sheet) {   // files = ชื่อไฟล์เดียว หรือรายการชื่อสำรอง (ลองทีละชื่อ)
+    const list = Array.isArray(files) ? files : [files];
+    let tried = 0;
     const img = new Image();
     img.onload = function () {
       try {
@@ -695,9 +698,14 @@
           frames.push(o);
         }
         HIMG[name] = { frames: frames };
-      } catch (e) { console.warn('house img', name, e); }
+      } catch (e) { console.warn('house img', name, e); HIMG_MISSING.push(list[0] + ' (อ่านภาพไม่ได้)'); }
     };
-    img.src = HOUSE_IMG_DIR + file + '?v=' + HOUSE_IMG_VER;   // ไม่มีไฟล์ = เงียบ ใช้ภาพวาดด้วยโค้ดแทน
+    img.onerror = function () {
+      tried++;
+      if (tried < list.length) img.src = HOUSE_IMG_DIR + list[tried] + '?v=' + HOUSE_IMG_VER;
+      else { HIMG_MISSING.push(list[0]); console.warn('house img: ไม่พบไฟล์', HOUSE_IMG_DIR + list[0]); }
+    };
+    img.src = HOUSE_IMG_DIR + list[0] + '?v=' + HOUSE_IMG_VER;   // ไม่มีไฟล์ = ใช้ภาพวาดด้วยโค้ดแทน
   }
   // คืน { key, w, h } ของ texture (สร้างครั้งแรกที่ใช้) หรือ null ถ้ายังไม่มีภาพ
   function himgTex(m, name, idx, targetW) {
@@ -728,9 +736,12 @@
     }
     return out;
   }
-  [['cabin', 'cabin.png', 'white'], ['campfire', 'campfire.png', 'white'], ['pond', 'pond.png', 'magenta'],
-   ['plot', 'plot.png', 'white'], ['plot_empty', 'plot_empty.png', 'white']].forEach(function (r) { himgLoad(r[0], r[1], r[2], false); });
-  himgLoad('crops', 'crops.png', 'white', true);
+  [['cabin', ['cabin.png', 'house.png', 'home.png', 'cabin.jpg', 'cabin.webp'], 'white'],
+   ['campfire', ['campfire.png', 'fire.png', 'campfire.jpg', 'campfire.webp'], 'white'],
+   ['pond', ['pond.png', 'fishing_pond.png', 'pond.jpg', 'pond.webp'], 'magenta'],
+   ['plot', ['plot.png', 'plot.jpg', 'plot.webp'], 'white'],
+   ['plot_empty', ['plot_empty.png'], 'white']].forEach(function (r) { himgLoad(r[0], r[1], r[2], false); });
+  himgLoad('crops', ['crops.png', 'crop.png', 'crops.jpg', 'crops.webp'], 'white', true);
   HOUSE_CROP_IMAGES.forEach(function (k) { himgLoad('crop_' + k, 'crop_' + k + '.png', 'white', true); });
 
   function houseBuild(m, T) {
@@ -1013,6 +1024,11 @@
     H.lx = H.spawn.x; H.ly = H.spawn.y;
     m.houseState();
     refreshPlots(m);
+    const miss = HIMG_MISSING.filter(function (f) { return f !== 'plot_empty.png' && f.indexOf('crop_') !== 0; });
+    if (miss.length && !window._houseMissToast) {
+      window._houseMissToast = 1;
+      toast(m, 'ไม่พบไฟล์ภาพใน assets/house/ : ' + miss.join(', '));
+    }
   }
 
   function houseExit(m, silent) {
