@@ -19,6 +19,17 @@ const ROV = {
 };
 const rs = n => Math.round(n * ROV.s);   // ย่อขนาดตามแนวจอ (แนวนอน = ค่าเดิม)
 
+// ===== กรอบตกแต่งปุ่มสกิล/อัลติ (PNG โปร่งใส วางทับปุ่ม) =====
+// ไฟล์รูป: img/skill-frame.png (สกิลทั่วไป) และ img/skill-frame-ulti.png (อัลติ)
+// สัดส่วนรูวงกลมกลางกรอบ: ลดเลข = กรอบใหญ่ขึ้น, เพิ่มเลข = กรอบเล็กลง
+// เปลี่ยนรูปแล้วมือถือยังโชว์ของเก่า ให้เพิ่มเลข FRAME_VER
+const FRAME_VER = '1';
+const FRAME_SKILL_FILE = 'img/skill-frame.png';
+const FRAME_ULTI_FILE = 'img/skill-frame-ulti.png';
+const FRAME_SKILL_HOLE = 0.5;
+const FRAME_ULTI_HOLE = 0.48;
+const FRAME_DEPTH = 101.5;     // อยู่เหนือไอคอนสกิล (101) แต่ใต้ตัวเลขคูลดาวน์ (102)
+
 // ===== รูปไอคอนสกิลบนปุ่ม: ใช้ชุดเดียวกับเอฟเฟกต์/หน้าต่างสกิล (img/skillimg/<ชื่อไฟล์>_i.png) =====
 const SKILL_IMG_DIR = 'img/skillimg/';
 const SKILL_ICON_VER = '1';   // ตรงกับ IMG_VER ใน skillPanelData.js (เปลี่ยนรูปแล้วมือถือยังโชว์ของเก่า ให้เพิ่มเลขทั้งสองที่)
@@ -91,6 +102,28 @@ Main.prototype.rovPos = function (i) {
   return { x: ROV.ax + ROV.ring * Math.cos(a), y: ROV.ay + ROV.ring * Math.sin(a) };
 };
 
+// วางกรอบตกแต่งทับปุ่มสกิล 4 ปุ่ม + ปุ่มอัลติ (โหลดรูปครั้งแรกแล้วค่อยวาง)
+// ถ้าไฟล์รูปไม่มี/โหลดไม่ได้ จะข้ามไปเงียบๆ ปุ่มยังใช้งานได้ปกติ
+Main.prototype.addSkillFrames = function () {
+  const place = () => {
+    if (this.skillFrames) return;
+    if (!this.textures.exists('frame_skill') || !this.textures.exists('frame_ulti')) return;
+    this.skillFrames = [];
+    const mk = (key, b, r, hole) => {
+      const size = 2 * r / hole;
+      const f = this.add.image(b.c.x, b.c.y, key).setScrollFactor(0).setDepth(FRAME_DEPTH).setDisplaySize(size, size);
+      this.skillFrames.push(f);
+    };
+    (this.slotBtns || []).forEach(b => mk('frame_skill', b, ROV.skillR, FRAME_SKILL_HOLE));
+    if (this.ultiBtn) mk('frame_ulti', this.ultiBtn, ROV.ultiR, FRAME_ULTI_HOLE);
+  };
+  if (this.textures.exists('frame_skill') && this.textures.exists('frame_ulti')) { place(); return; }
+  if (!this.textures.exists('frame_skill')) this.load.image('frame_skill', FRAME_SKILL_FILE + '?v=' + FRAME_VER);
+  if (!this.textures.exists('frame_ulti')) this.load.image('frame_ulti', FRAME_ULTI_FILE + '?v=' + FRAME_VER);
+  this.load.once('complete', place);
+  if (!this.load.isLoading()) this.load.start();
+};
+
 Main.prototype.setupButtons = function () {
   // แถบโค้งจาง ๆ รองใต้ปุ่มทั้งหมด
   const deco = this.add.graphics().setScrollFactor(0).setDepth(99);
@@ -108,6 +141,7 @@ Main.prototype.setupButtons = function () {
   this.setupTopBar();
   this.loadSkillIcons();
   this.makeActionIcons();
+  this.addSkillFrames();   // กรอบตกแต่งปุ่มสกิล/อัลติ
   // รูปบนปุ่มโจมตีปกติ: ชื่อปุ่มย้ายลงล่าง ตัวเล็กลง
   this.attackIcon = this.add.image(ROV.ax, ROV.ay - rs(8), 'atk_sword').setScrollFactor(0).setDepth(100.6);
   this.attackBtn.t.setPosition(ROV.ax, ROV.ay + ROV.attackR * 0.58).setFontSize(rs(14));
