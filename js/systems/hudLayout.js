@@ -19,6 +19,21 @@ const ROV = {
 };
 const rs = n => Math.round(n * ROV.s);   // ย่อขนาดตามแนวจอ (แนวนอน = ค่าเดิม)
 
+// ===== รูปไอคอนสกิลบนปุ่ม: ใช้ชุดเดียวกับเอฟเฟกต์/หน้าต่างสกิล (img/skillimg/<ชื่อไฟล์>_i.png) =====
+const SKILL_IMG_DIR = 'img/skillimg/';
+const SKILL_ICON_VER = '1';   // ตรงกับ IMG_VER ใน skillPanelData.js (เปลี่ยนรูปแล้วมือถือยังโชว์ของเก่า ให้เพิ่มเลขทั้งสองที่)
+const ICON_ADD_BLEND = false; // true = ผสมสีแบบเรืองแสง (ใช้ถ้ารูปมีพื้นหลังดำโผล่เป็นกล่อง)
+// รหัสสกิล -> ชื่อไฟล์ (ถ้าไม่อยู่ในตาราง ใช้รหัสสกิลเป็นชื่อไฟล์ตรงๆ)
+const SKILL_IMG_FILE = {
+  pr_heal: 'pr_beam', pr_mass_heal: 'pr_mass', pr_smite: 'pr_smite', pr_haste: 'pr_haste'
+};
+// อัลติตามอาชีพ
+const ULTI_IMG_FILE = {
+  sword: 'sw_ult', mage: 'mg_ult', archer: 'ar_ult', priest: 'pr_ulti', rogue: 'rg_ult'
+};
+// ปรับรูปให้พอดีกรอบสี่เหลี่ยม size x size โดยไม่บิดสัดส่วน
+const fitIcon = (img, size) => img.setScale(size / Math.max(img.width, img.height, 1));
+
 // ปุ่มโจมตีใหญ่ + วงในตกแต่ง
 Main.prototype.makeCircleBtn = function (x, y, r, color, label, onClick) {
   const c = this.add.circle(x, y, r, color, 0.9).setScrollFactor(0).setDepth(100).setInteractive();
@@ -99,8 +114,6 @@ Main.prototype.setupButtons = function () {
 };
 
 // ไอคอนโจมตีปกติ (ดาบ/คทา/ธนู/พระ/โจร) และแดช: วาดเอง ไม่ต้องมีไฟล์รูป
-// ถ้าต้องการรูปของตัวเอง ใส่ไฟล์ที่ assets/skills/basic_<อาชีพ>.png (เช่น basic_sword.png) และ assets/skills/dash.png
-// แล้วลบชื่อนั้นออกจากรายการ SKIP ในฟังก์ชัน loadSkillIcons ด้านล่าง
 Main.prototype.makeActionIcons = function () {
   if (this.textures.exists('atk_sword')) return;
   const g = this.make.graphics({ x: 0, y: 0, add: false });
@@ -154,28 +167,21 @@ Main.prototype.makeActionIcons = function () {
   g.destroy();
 };
 
-// โหลดรูปสกิลจาก assets/skills/<รหัสสกิล>.png (ไฟล์เดียวกับหน้าต่างสกิล) มาใช้บนปุ่มกด
+// โหลดรูปสกิลจาก img/skillimg/<ชื่อไฟล์>_i.png มาใช้บนปุ่มกด (texture key: sk_<รหัสสกิล> / sk_ulti_<อาชีพ>)
 // ถ้าไฟล์ไหนไม่มี จะใช้ไอคอนเดิมของปุ่มแทนอัตโนมัติ
-const SKILL_ICON_VER = '1';   // ตรงกับ IMG_VER ใน skillPanelData.js (เปลี่ยนรูปแล้วมือถือยังโชว์ของเก่า ให้เพิ่มเลขทั้งสองที่)
 Main.prototype.loadSkillIcons = function () {
-  // รูปที่ "ไม่มีในรีโป" ไม่ต้องโหลด ใช้ไอคอนวาดเองแทน (พออัปโหลดรูปแล้ว ลบชื่อออกจากรายการนี้)
-  const SKIP = { dash: 1, basic_sword: 1, basic_mage: 1, basic_archer: 1, basic_priest: 1, basic_rogue: 1 };
-  const SKIP_ULTI = {};   // ถ้ารูปอัลติบางอาชีพไม่มี ใส่ชื่ออาชีพตรงนี้ เช่น { sword: 1 }
   let n = 0;
+  const add = (key, file) => {
+    if (this.textures.exists(key)) return;
+    this.load.image(key, SKILL_IMG_DIR + file + '_i.png?v=' + SKILL_ICON_VER);
+    n++;
+  };
   Object.keys(SKILL_DEFS).forEach(id => {
-    const k = 'sk_' + id;
-    if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/' + id + '.png?v=' + SKILL_ICON_VER); n++; }
+    if (id === 'dash' || id.indexOf('basic_') === 0) return;   // ไม่มีรูป ใช้ไอคอนที่วาดเอง
+    add('sk_' + id, SKILL_IMG_FILE[id] || id);
   });
-  Object.keys(BASIC_ATTACKS).forEach(cls => {       // โจมตีปกติ: assets/skills/basic_<อาชีพ>.png (ไม่มีไฟล์ = ใช้ไอคอนที่วาดเอง)
-    if (SKIP['basic_' + cls]) return;
-    const k = 'sk_basic_' + cls;
-    if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/basic_' + cls + '.png?v=' + SKILL_ICON_VER); n++; }
-  });
-  if (!SKIP.dash && !this.textures.exists('sk_dash')) { this.load.image('sk_dash', 'assets/skills/dash.png?v=' + SKILL_ICON_VER); n++; }   // แดช
-  Object.keys(ULTI_DEFS).forEach(cls => {          // อัลติ: assets/skills/ulti_<อาชีพ>.png
-    if (SKIP_ULTI[cls]) return;
-    const k = 'sk_ulti_' + cls;
-    if (!this.textures.exists(k)) { this.load.image(k, 'assets/skills/ulti_' + cls + '.png?v=' + SKILL_ICON_VER); n++; }
+  Object.keys(ULTI_DEFS).forEach(cls => {
+    add('sk_ulti_' + cls, ULTI_IMG_FILE[cls] || ('ulti_' + cls));
   });
   if (n) this.load.start();
 };
@@ -196,6 +202,7 @@ Main.prototype.loadSkillIcons = function () {
   const _updateSkillButtons = Main.prototype.updateSkillButtons;
   Main.prototype.updateSkillButtons = function (time) {
     _updateSkillButtons.call(this, time);
+    const blend = ICON_ADD_BLEND ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL;
     // ปุ่มสกิล: ใช้รูปเดียวกับหน้าต่างสกิล ขนาดเล็กลง (ICON_SIZE) ถ้าไม่มีรูปใช้ไอคอนเดิม
     const ICON_SIZE = rs(46);
     (this.slots || []).forEach((sid, i) => {
@@ -205,8 +212,9 @@ Main.prototype.loadSkillIcons = function () {
       if (!this.textures.exists(key)) return;
       const def = SKILL_DEFS[sid];
       const busy = (this.cdEnd['slot' + i] || 0) > time || this.stats.mp < def.mp;
-      b.icon.setTexture(key).setDisplaySize(ICON_SIZE, ICON_SIZE).setPosition(b.c.x, b.c.y - rs(6))
-        .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setVisible(true);
+      b.icon.setTexture(key).setPosition(b.c.x, b.c.y - rs(6))
+        .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setBlendMode(blend).setVisible(true);
+      fitIcon(b.icon, ICON_SIZE);
       b.t.setPosition(b.c.x, b.c.y + rs(27)).setFontSize(Math.max(8, rs(10)));
     });
     // ปุ่มโจมตีปกติ: รูปตามอาชีพที่ถืออยู่ตอนนี้
@@ -217,7 +225,7 @@ Main.prototype.loadSkillIcons = function () {
       const cdLeft = (this.cdEnd.basic || 0) - time;
       this.attackIcon.setTexture(k).setDisplaySize(rs(58), rs(58)).setPosition(ROV.ax, ROV.ay - rs(8)).setAlpha(cdLeft > 0 ? 0.5 : 1);
     }
-    // ปุ่มแดช: ใช้ assets/skills/dash.png ถ้ามี ไม่มีใช้ไอคอนที่วาดเอง
+    // ปุ่มแดช: ใช้ sk_dash ถ้ามี ไม่มีใช้ไอคอนที่วาดเอง
     const dB = this.dashBtn;
     if (dB && dB.icon) {
       const k = this.textures.exists('sk_dash') ? 'sk_dash' : 'gen_dash';
@@ -225,13 +233,14 @@ Main.prototype.loadSkillIcons = function () {
       dB.icon.setTexture(k).setDisplaySize(rs(38), rs(38)).setPosition(dB.c.x, dB.c.y - rs(6)).setAlpha(dl > 0 ? 0.45 : 1);
     }
     const u = this.ultiBtn;
-    // ปุ่มอัลติ: ใช้รูป ulti_<อาชีพ>.png (ไม่มีรูปก็ใช้ปุ่มทองเดิม)
+    // ปุ่มอัลติ: ใช้รูปอัลติของอาชีพ (ไม่มีรูปก็ใช้ปุ่มทองเดิม)
     if (u && u.icon) {
       const ukey = this.ultiClass && ('sk_ulti_' + this.ultiClass);
       if (ukey && this.textures.exists(ukey)) {
         const busy = (this.cdEnd.ulti || 0) > time || this.stats.mp < ULTI_DEFS[this.ultiClass].mp;
-        u.icon.setTexture(ukey).setDisplaySize(rs(54), rs(54)).setPosition(u.c.x, u.c.y - rs(4))
-          .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setVisible(true);
+        u.icon.setTexture(ukey).setPosition(u.c.x, u.c.y - rs(4))
+          .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setBlendMode(blend).setVisible(true);
+        fitIcon(u.icon, rs(54));
         u.t.setPosition(u.c.x, u.c.y + rs(28)).setFontSize(Math.max(8, rs(9)));
         if (u.label) u.label.setVisible(false);
       } else u.icon.setVisible(false);
