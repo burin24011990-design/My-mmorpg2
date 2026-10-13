@@ -41,7 +41,8 @@
 .hs-dish { background: #3a1018; border-radius: 10px; padding: 8px 10px; text-align: left; border: 1px solid #5a2028; }
 .hs-dish.max { border-color: #5ee08a; }
 .hs-dh { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
-.hs-dn { font-size: 15px; color: #ffe28a; }
+.hs-dn { font-size: 15px; color: #ffe28a; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hs-ico { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
 .hs-dc { font-size: 12px; color: #fff; white-space: nowrap; }
 .hs-ing { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; margin: 6px 0; }
 .hs-ok { color: #7ee79a; }
