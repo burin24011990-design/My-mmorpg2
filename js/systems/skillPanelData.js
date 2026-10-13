@@ -1,26 +1,31 @@
 // ===== เติมรูป / สีประจำอาชีพ / ข้อความเลเวลถัดไป ให้สกิลในหน้าต่างสกิล =====
 // ต้องโหลดหลังไฟล์ hook ตัวอื่นทั้งหมด (stats.js, skillLevelPatch.js, priest.js ฯลฯ) และก่อน main.js
-// รูปไอคอนใช้ชุดเดียวกับเอฟเฟกต์สกิล: img/skillimg/<รหัสสกิล>_i.png  เช่น img/skillimg/sw_slash_i.png
-// (อัลติใช้ชื่อไฟล์ตามตาราง ULTI_FILE ด้านล่าง)
-// สกิลไหนไม่มีรูป จะใช้ไอคอนเดิมแทนอัตโนมัติ
+// รูปไอคอนใช้ชุดเดียวกับเอฟเฟกต์สกิล: img/skillimg/<ชื่อไฟล์>_i.png
+// ระบบจะ "ลองโหลดรูปเงียบๆ ก่อน" ถ้าไม่มีไฟล์ = ใช้ไอคอนอีโมจิเดิม และไม่ขึ้นกล่องแดง
 (function () {
   var IMG_DIR = 'img/skillimg/';
   var IMG_VER = '1';   // ถ้าเปลี่ยนรูปแล้วมือถือยังโชว์รูปเก่า ให้เพิ่มเลขนี้
 
-  // อัลติ: ชื่อไฟล์ไม่ตรงกับรหัสสกิล -> แมปตรงนี้
-  var ULTI_FILE = {
+  // รหัสสกิล -> ชื่อไฟล์ (ไม่ต้องใส่ _i.png) | ใช้เมื่อชื่อไฟล์ไม่ตรงกับรหัสสกิล
+  var FILE = {
+    // อัลติ
     ulti_sword:  'sw_ult',
     ulti_mage:   'mg_ult',
     ulti_archer: 'ar_ult',
     ulti_priest: 'pr_ulti',
-    ulti_rogue:  'rg_ult'
+    ulti_rogue:  'rg_ult',
+    // พระ
+    pr_mass_heal: 'pr_mass',
+    pr_mass:      'pr_mass',
+    pr_smite:     'pr_smite',
+    pr_haste:     'pr_haste',
+    pr_beam:      'pr_beam'
   };
 
-  // รหัสสกิลที่ "ยังไม่มีรูป" -> ไม่พยายามโหลด ใช้ไอคอนเดิม
-  // พออัปโหลดรูปแล้ว ให้ลบชื่อนั้นออกจากรายการนี้
+  // รหัสสกิลที่ "ไม่มีรูป" -> ใช้ไอคอนเดิมเลย (เช่น pr_heal ฮีลเดี่ยว ยังไม่มีไฟล์ภาพ)
   var NO_IMG = {
     basic_sword: 1, basic_rogue: 1, basic_mage: 1, basic_archer: 1, basic_priest: 1,
-    dash: 1
+    dash: 1, pr_heal: 1
   };
 
   var CLS = {
@@ -30,6 +35,20 @@
     priest: { label: 'พระ',  color: '#f5d76e' },
     rogue:  { label: 'โจร',  color: '#b98cff' }
   };
+
+  // ---- ตรวจว่าไฟล์รูปมีจริงไหม (เงียบ ไม่ขึ้นกล่องแดง) ----
+  var probe = {};   // url -> 'ok' | 'bad' | 'wait'
+  function imgOk(url) {
+    var st = probe[url];
+    if (st === 'ok') return true;
+    if (st) return false;          // 'bad' หรือ 'wait'
+    probe[url] = 'wait';
+    var im = new Image();
+    im.onload = function () { probe[url] = 'ok'; };
+    im.onerror = function () { probe[url] = 'bad'; };
+    im.src = url;
+    return false;                  // รอบแรกยังไม่รู้ -> ใช้ไอคอนเดิมก่อน รอบรีเฟรชถัดไปจะได้รูป
+  }
 
   function sidOf(s) {
     var sid = s.sid;
@@ -60,7 +79,10 @@
     var def = defOf(sid);
     var cls = def && def.class && CLS[def.class];
     var out = Object.assign({}, s);
-    if (!hasNoImg(sid)) out.img = IMG_DIR + (ULTI_FILE[sid] || sid) + '_i.png?v=' + IMG_VER;
+    if (!hasNoImg(sid)) {
+      var url = IMG_DIR + (FILE[sid] || sid) + '_i.png?v=' + IMG_VER;
+      if (imgOk(url)) out.img = url;
+    }
     if (cls) { out.accent = cls.color; out.clsLabel = cls.label; }
 
     if (def && def.dmg > 0 && !s.maxed && typeof s.lv === 'number' && s.maxLv && typeof skillLvMul === 'function') {
