@@ -598,6 +598,141 @@
   // ================= แมพบ้านส่วนตัว =================
   const hasFrame = function (m, k) { return m.textures.exists('town') && !!m.textures.getFrame('town', k); };
 
+  // ================= ภาพจริงของบ้าน (assets/house/*.png) =================
+  // ไม่มีไฟล์ = ใช้ภาพที่วาดด้วยโค้ดแทนอัตโนมัติ | ไฟล์ที่พื้นหลังเป็นสีขาว/ม่วงแดง ระบบลบพื้นหลังให้เองตอนโหลด (ไม่ต้องทำโปร่งใสก่อน)
+  const HOUSE_IMG_DIR = 'assets/house/';
+  const HOUSE_IMG_VER = 1;
+  const HOUSE_CROP_IMAGES = [];    // ถ้ามีภาพพืชเฉพาะชนิด ใส่ key ที่นี่ เช่น ['cabbage','carrot'] แล้วมีไฟล์ crop_cabbage.png (ใช้โครงเดียวกับ crops.png)
+  const HOUSE_CROP_FRAMES = 4;     // crops.png = 4 เฟรมเท่ากันเรียงซ้าย->ขวา: งอก / โตเล็ก / โตใหญ่ / สุก
+  const PLOT_IMG_W = 150;          // ความกว้างภาพแปลงตอนมีต้นผัก (px ในเกม)
+  const PLOT_EMPTY_W = 135;        // ความกว้างภาพแปลงว่าง (ถ้าใช้ plot_empty.png ที่สไตล์เดียวกับ crops.png ตั้งเป็น 150)
+  const HIMG = {};
+
+  function himgKey(img, mode) {    // ลบพื้นหลังที่ติดขอบภาพ (ขาว/เทาอ่อน หรือม่วงแดง) ไม่ลบสีขาวที่อยู่ในตัวภาพ
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0);
+    const d = x.getImageData(0, 0, w, h), p = d.data;
+    const isBg = function (i) {
+      const r = p[i], g = p[i + 1], b = p[i + 2];
+      if (p[i + 3] < 10) return true;
+      if (mode === 'magenta') return r > 170 && b > 170 && g < 120;
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      return mn > 205 && (mx - mn) < 28;
+    };
+    const seen = new Uint8Array(w * h), stack = new Int32Array(w * h);
+    let sp = 0;
+    const tryPush = function (i) { if (!seen[i]) { seen[i] = 1; if (isBg(i * 4)) stack[sp++] = i; } };
+    for (let i = 0; i < w; i++) { tryPush(i); tryPush((h - 1) * w + i); }
+    for (let j = 0; j < h; j++) { tryPush(j * w); tryPush(j * w + w - 1); }
+    while (sp > 0) {
+      const i = stack[--sp];
+      p[i * 4 + 3] = 0;
+      const px = i % w, py = (i / w) | 0;
+      if (px > 0) tryPush(i - 1);
+      if (px < w - 1) tryPush(i + 1);
+      if (py > 0) tryPush(i - w);
+      if (py < h - 1) tryPush(i + w);
+    }
+    if (mode === 'magenta') {      // ขอบที่เหลือสีชมพูอมม่วง
+      for (let i = 0; i < w * h; i++) {
+        const o = i * 4;
+        if (p[o + 3] && p[o] > 170 && p[o + 2] > 170 && p[o + 1] < 120) p[o + 3] = 0;
+      }
+    }
+    x.putImageData(d, 0, 0);
+    return c;
+  }
+  function himgBox(c, x0, y0, w, h) {
+    const d = c.getContext('2d').getImageData(x0, y0, w, h).data;
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (d[(y * w + x) * 4 + 3] > 16) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+    return maxX < 0 ? null : { x: x0 + minX, y: y0 + minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+  }
+  function himgTrim(c) {
+    const b = himgBox(c, 0, 0, c.width, c.height);
+    if (!b) return c;
+    const o = document.createElement('canvas');
+    o.width = b.w; o.height = b.h;
+    o.getContext('2d').drawImage(c, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+    return o;
+  }
+  function himgScale(cv, w) {      // ย่อภาพให้ใกล้ขนาดที่โชว์จริง (เป็น 2 เท่า) ภาพไม่แตกและกินแรมน้อยลง
+    const tw = Math.max(1, Math.round(w));
+    if (cv.width <= tw) return cv;
+    const o = document.createElement('canvas');
+    o.width = tw; o.height = Math.max(1, Math.round(cv.height * tw / cv.width));
+    const c = o.getContext('2d');
+    c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    c.drawImage(cv, 0, 0, o.width, o.height);
+    return o;
+  }
+  function himgLoad(name, file, mode, sheet) {
+    const img = new Image();
+    img.onload = function () {
+      try {
+        const k = himgKey(img, mode);
+        if (!sheet) { HIMG[name] = himgTrim(k); return; }
+        const n = HOUSE_CROP_FRAMES, fw = Math.floor(k.width / n);
+        let top = k.height, bot = -1;
+        for (let i = 0; i < n; i++) {
+          const b = himgBox(k, i * fw, 0, fw, k.height);
+          if (b) { top = Math.min(top, b.y); bot = Math.max(bot, b.y + b.h); }
+        }
+        if (bot < 0) return;
+        const frames = [];
+        for (let i = 0; i < n; i++) {
+          const o = document.createElement('canvas');
+          o.width = fw; o.height = bot - top;
+          o.getContext('2d').drawImage(k, i * fw, top, fw, bot - top, 0, 0, fw, bot - top);
+          frames.push(o);
+        }
+        HIMG[name] = { frames: frames };
+      } catch (e) { console.warn('house img', name, e); }
+    };
+    img.src = HOUSE_IMG_DIR + file + '?v=' + HOUSE_IMG_VER;   // ไม่มีไฟล์ = เงียบ ใช้ภาพวาดด้วยโค้ดแทน
+  }
+  // คืน { key, w, h } ของ texture (สร้างครั้งแรกที่ใช้) หรือ null ถ้ายังไม่มีภาพ
+  function himgTex(m, name, idx, targetW) {
+    const e = HIMG[name];
+    if (!e) return null;
+    const cv = (idx === null || idx === undefined) ? e : (e.frames && e.frames[idx]);
+    if (!cv) return null;
+    const key = 'hi_' + name + ((idx === null || idx === undefined) ? '' : '_' + idx);
+    let w = cv.width, h = cv.height;
+    if (!m.textures.exists(key)) {
+      const sc = himgScale(cv, (targetW || cv.width) * 2);
+      m.textures.addCanvas(key, sc);
+      w = sc.width; h = sc.height;
+    } else {
+      const f = m.textures.get(key).getSourceImage();
+      w = f.width; h = f.height;
+    }
+    return { key: key, w: w, h: h };
+  }
+  function cropFrames(m, seedKey) {
+    const name = HIMG['crop_' + seedKey] ? 'crop_' + seedKey : 'crops';
+    if (!HIMG[name] || !HIMG[name].frames) return null;
+    const out = [];
+    for (let i = 0; i < HOUSE_CROP_FRAMES; i++) {
+      const t = himgTex(m, name, i, PLOT_IMG_W);
+      if (!t) return null;
+      out.push(t);
+    }
+    return out;
+  }
+  [['cabin', 'cabin.png', 'white'], ['campfire', 'campfire.png', 'white'], ['pond', 'pond.png', 'magenta'],
+   ['plot', 'plot.png', 'white'], ['plot_empty', 'plot_empty.png', 'white']].forEach(function (r) { himgLoad(r[0], r[1], r[2], false); });
+  himgLoad('crops', 'crops.png', 'white', true);
+  HOUSE_CROP_IMAGES.forEach(function (k) { himgLoad('crop_' + k, 'crop_' + k + '.png', 'white', true); });
+
   function houseBuild(m, T) {
     const wb = m.physics.world.bounds;
     const L = Math.round(T.ox + TOWN.w / 2 - HOUSE.w / 2), Tp = Math.round(T.oy + TOWN.h / 2 - HOUSE.h / 2);
@@ -636,7 +771,14 @@
     label(cx, Tp + 34, '🏡 บ้านของฉัน', 30);
 
     // กระท่อม (ตกแต่ง)
-    const cabY = Tp + 250, cab = add(m.add.graphics().setDepth(townDepth(cabY)));
+    const cabY = Tp + 320, cabImg = himgTex(m, 'cabin', null, 400);
+    if (cabImg) {
+      const CW = 400, CH = Math.round(CW * cabImg.h / cabImg.w), cabX = L + 710;
+      add(m.add.image(cabX, cabY, cabImg.key).setOrigin(0.5, 0.94).setDisplaySize(CW, CH).setDepth(townDepth(cabY)));
+      blockers.push({ x0: cabX - CW * 0.42, y0: cabY - CH * 0.45, x1: cabX + CW * 0.42, y1: cabY });
+    }
+    const cab = add(m.add.graphics().setDepth(townDepth(cabY)));
+    if (cabImg) cab.setVisible(false);
     cab.fillStyle(0x000000, 0.3).fillEllipse(cx, cabY + 4, 340, 30);
     cab.fillStyle(0xc9a16a, 1).fillRect(cx - 140, cabY - 110, 280, 110);
     cab.lineStyle(4, 0x6a4a2a, 1).strokeRect(cx - 140, cabY - 110, 280, 110);
@@ -644,11 +786,20 @@
     cab.fillStyle(0x5a3a1a, 1).fillRect(cx - 28, cabY - 76, 56, 76);
     cab.fillStyle(0x8fd0ff, 1).fillRect(cx - 115, cabY - 85, 48, 40).fillRect(cx + 67, cabY - 85, 48, 40);
     cab.lineStyle(3, 0x6a4a2a, 1).strokeRect(cx - 115, cabY - 85, 48, 40).strokeRect(cx + 67, cabY - 85, 48, 40);
-    blockers.push({ x0: cx - 150, y0: cabY - 100, x1: cx + 150, y1: cabY });
+    if (!cabImg) blockers.push({ x0: cx - 150, y0: cabY - 100, x1: cx + 150, y1: cabY });
 
     // บ่อตกปลา
-    const pX = L + 260, pY = Tp + 270, rx = 200, ry = 120;
+    const pondImg = himgTex(m, 'pond', null, 480);
+    const pX = L + 270, pY = Tp + 260;
+    let rx = 200, ry = 120;
+    if (pondImg) {
+      const PW = 480, PH = Math.round(PW * pondImg.h / pondImg.w);
+      add(m.add.image(pX, pY, pondImg.key).setDisplaySize(PW, PH).setDepth(1.3));
+      rx = PW / 2; ry = PH / 2 * 0.9;
+      blockers.push({ x0: pX - rx * 0.8, y0: pY - ry * 0.75, x1: pX + rx * 0.8, y1: pY + ry * 0.45 });
+    }
     const pg = add(m.add.graphics().setDepth(1.3));
+    if (pondImg) pg.setVisible(false);
     pg.fillStyle(0x8a7a5a, 1).fillEllipse(pX, pY, rx * 2 + 24, ry * 2 + 24);
     pg.fillStyle(0x2f6fa8, 1).fillEllipse(pX, pY, rx * 2, ry * 2);
     pg.fillStyle(0x4a95d0, 0.55).fillEllipse(pX - 20, pY - 14, rx * 1.4, ry * 1.2);
@@ -656,14 +807,23 @@
     pg.lineStyle(2, 0x5a3a1f, 1);
     for (let k = 0; k < 5; k++) pg.lineBetween(pX - 36, pY + ry - 70 + k * 20, pX + 36, pY + ry - 70 + k * 20);
     const rip = add(m.add.ellipse(pX + 60, pY - 30, 60, 22).setStrokeStyle(2, 0xffffff, 0.7).setDepth(1.35));
+    if (pondImg) rip.setVisible(false);
     tween({ targets: rip, scaleX: 1.6, scaleY: 1.6, alpha: 0, duration: 1800, repeat: -1 });
-    blockers.push({ x0: pX - rx * 0.85, y0: pY - ry * 0.8, x1: pX + rx * 0.85, y1: pY + ry * 0.55 });
+    if (!pondImg) blockers.push({ x0: pX - rx * 0.85, y0: pY - ry * 0.8, x1: pX + rx * 0.85, y1: pY + ry * 0.55 });
     label(pX, pY - ry - 26, '🎣 บ่อตกปลา / ตักน้ำ', 18);
     zone(pX, pY + 30, rx * 2, ry * 2 + 100, function () { houseApproach(m, { kind: 'pond' }, pX, pY + ry + 60); });
 
     // กองไฟ
-    const fX = L + 1020, fY = Tp + 300;
+    const fX = L + 1040, fY = Tp + 330, fireImg = himgTex(m, 'campfire', null, 210);
+    let fH = 120;
+    if (fireImg) {
+      const FW = 210;
+      fH = Math.round(FW * fireImg.h / fireImg.w);
+      add(m.add.image(fX, fY + 20, fireImg.key).setOrigin(0.5, 1).setDisplaySize(FW, fH).setDepth(townDepth(fY + 20)));
+      blockers.push({ x0: fX - 60, y0: fY - 30, x1: fX + 60, y1: fY + 20 });
+    }
     const fg2 = add(m.add.graphics().setDepth(townDepth(fY)));
+    if (fireImg) fg2.setVisible(false);
     fg2.fillStyle(0x000000, 0.3).fillEllipse(fX, fY + 4, 120, 22);
     fg2.fillStyle(0x6a4a2a, 1).fillRoundedRect(fX - 50, fY - 14, 100, 16, 6);
     fg2.fillStyle(0x7a5230, 1).fillRoundedRect(fX - 40, fY - 24, 80, 14, 6);
@@ -672,25 +832,34 @@
     const glow = add(m.add.circle(fX, fY - 30, 70, 0xffa040, 0.18).setDepth(1.4));
     tween({ targets: glow, alpha: 0.32, scale: 1.15, yoyo: true, repeat: -1, duration: 600 });
     const flame = add(m.add.text(fX, fY - 8, '🔥', { fontSize: '52px' }).setOrigin(0.5, 1).setDepth(townDepth(fY) + 0.1));
+    if (fireImg) flame.setVisible(false);
     tween({ targets: flame, scaleX: 1.12, scaleY: 1.18, yoyo: true, repeat: -1, duration: 380 });
-    blockers.push({ x0: fX - 55, y0: fY - 26, x1: fX + 55, y1: fY });
-    label(fX, fY - 100, '🍳 กองไฟ (ทำอาหาร)', 18);
-    zone(fX, fY - 30, 150, 140, function () { houseApproach(m, { kind: 'fire' }, fX, fY + 80); });
+    if (!fireImg) blockers.push({ x0: fX - 55, y0: fY - 26, x1: fX + 55, y1: fY });
+    label(fX, fY + 20 - (fireImg ? fH : 120) - 18, '🍳 กองไฟ (ทำอาหาร)', 18);
+    zone(fX, fY + 20 - (fireImg ? fH / 2 : 50), 180, fireImg ? fH : 140, function () { houseApproach(m, { kind: 'fire' }, fX, fY + 90); });
 
     // แปลงผัก
+    const plotE = himgTex(m, 'plot_empty', null, 300) || himgTex(m, 'plot', null, 300);
     for (let i = 0; i < PLOT_COUNT; i++) {
       const col = i % 3, row = Math.floor(i / 3);
       const x = L + 170 + col * 150, y = Tp + 640 + row * 140;
       const g = add(m.add.graphics().setDepth(1.3));
+      if (plotE) g.setVisible(false);
       g.fillStyle(0x5a3a1f, 1).fillRoundedRect(x - 64, y - 49, 128, 98, 10);
       g.fillStyle(0x6b4a2a, 1).fillRoundedRect(x - 60, y - 45, 120, 90, 8);
       g.lineStyle(3, 0x4a2e16, 1);
       for (let k = -1; k <= 1; k++) g.lineBetween(x - 54, y + k * 26, x + 54, y + k * 26);
-      const plant = add(m.add.text(x, y + 14, '', { fontSize: '34px' }).setOrigin(0.5, 1).setDepth(1.8));
-      const tx = add(m.add.text(x, y + 56, '', { fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(1.9));
+      const plant = add(m.add.text(x, y + 14, '', { fontSize: '34px' }).setOrigin(0.5, 1).setDepth(plotE ? townDepth(y + 34) + 0.05 : 1.8));
+      const tx = add(m.add.text(x, y + 56, '', { fontFamily: 'Mitr, sans-serif', fontSize: '14px', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(45));
       add(m.add.text(x - 52, y - 44, String(i + 1), { fontFamily: 'Mitr, sans-serif', fontSize: '13px', color: '#d8c08a' }).setOrigin(0.5).setDepth(1.9));
-      H.plots.push({ plant: plant, tx: tx, sig: '', tw: null, x: x, y: y });
-      zone(x, y, 130, 112, function () { houseApproach(m, { kind: 'plot', idx: i }, x, y + 70); });
+      let pImg = null;
+      if (plotE) {
+        pImg = add(m.add.image(x, y + 34, plotE.key).setOrigin(0.5, 1)
+          .setDisplaySize(PLOT_EMPTY_W, Math.round(PLOT_EMPTY_W * plotE.h / plotE.w)).setDepth(townDepth(y + 34)));
+        blockers.push({ x0: x - 62, y0: y - 26, x1: x + 62, y1: y + 34 });
+      }
+      H.plots.push({ plant: plant, tx: tx, img: pImg, emptyT: plotE, sig: '', tw: null, x: x, y: y });
+      zone(x, y - 10, 150, 130, function () { houseApproach(m, { kind: 'plot', idx: i }, x, y + 70); });
     }
     label(L + 320, Tp + 540, '🥬 แปลงผัก', 18);
 
@@ -735,7 +904,19 @@
       pl.sig = sig;
       pl.plant.setText(icon).setFontSize(size).setScale(1);
       if (pl.tw) { pl.tw.remove(); pl.tw = null; }
-      if (stage === 'r') pl.tw = m.tweens.add({ targets: pl.plant, scale: 1.18, yoyo: true, repeat: -1, duration: 480 });
+      let fr = null;   // ภาพต้นผักจริง 4 ระยะ (ถ้ามี crops.png) | ไม่มี = ใช้อีโมจิบนภาพแปลง
+      if (pl.img) {
+        fr = (stage !== 'e') ? cropFrames(m, h.plots[i].seed.slice(5)) : null;
+        const fi = stage === 's1' ? 0 : (stage === 's2' ? 1 : (stage === 's3' ? 2 : 3));
+        const t = fr ? fr[fi] : pl.emptyT;
+        if (t) {
+          const W = (t === pl.emptyT) ? PLOT_EMPTY_W : PLOT_IMG_W;
+          pl.img.setTexture(t.key);
+          pl.img.setDisplaySize(W, Math.round(W * t.h / t.w));
+        }
+        pl.plant.setVisible(!fr);
+      }
+      if (stage === 'r' && !fr) pl.tw = m.tweens.add({ targets: pl.plant, scale: 1.18, yoyo: true, repeat: -1, duration: 480 });
     });
   }
 
