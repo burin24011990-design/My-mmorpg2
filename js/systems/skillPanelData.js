@@ -1,12 +1,22 @@
 // ===== เติมรูป / สีประจำอาชีพ / ข้อความเลเวลถัดไป ให้สกิลในหน้าต่างสกิล =====
 // ต้องโหลดหลังไฟล์ hook ตัวอื่นทั้งหมด (stats.js, skillLevelPatch.js, priest.js ฯลฯ) และก่อน main.js
-// รูปอยู่ที่ assets/skills/<รหัสสกิล>.png  เช่น assets/skills/sw_slash.png  (อัลติ = ulti_sword.png ฯลฯ)
+// รูปไอคอนใช้ชุดเดียวกับเอฟเฟกต์สกิล: img/skillimg/<รหัสสกิล>_i.png  เช่น img/skillimg/sw_slash_i.png
+// (อัลติใช้ชื่อไฟล์ตามตาราง ULTI_FILE ด้านล่าง)
 // สกิลไหนไม่มีรูป จะใช้ไอคอนเดิมแทนอัตโนมัติ
 (function () {
-  var IMG_DIR = 'assets/skills/';
+  var IMG_DIR = 'img/skillimg/';
   var IMG_VER = '1';   // ถ้าเปลี่ยนรูปแล้วมือถือยังโชว์รูปเก่า ให้เพิ่มเลขนี้
 
-  // รหัสสกิลที่ "ยังไม่มีรูป" ในรีโป -> ไม่พยายามโหลด ใช้ไอคอนเดิม
+  // อัลติ: ชื่อไฟล์ไม่ตรงกับรหัสสกิล -> แมปตรงนี้
+  var ULTI_FILE = {
+    ulti_sword:  'sw_ult',
+    ulti_mage:   'mg_ult',
+    ulti_archer: 'ar_ult',
+    ulti_priest: 'pr_ulti',
+    ulti_rogue:  'rg_ult'
+  };
+
+  // รหัสสกิลที่ "ยังไม่มีรูป" -> ไม่พยายามโหลด ใช้ไอคอนเดิม
   // พออัปโหลดรูปแล้ว ให้ลบชื่อนั้นออกจากรายการนี้
   var NO_IMG = {
     basic_sword: 1, basic_rogue: 1, basic_mage: 1, basic_archer: 1, basic_priest: 1,
@@ -50,7 +60,7 @@
     var def = defOf(sid);
     var cls = def && def.class && CLS[def.class];
     var out = Object.assign({}, s);
-    if (!hasNoImg(sid)) out.img = IMG_DIR + sid + '.png?v=' + IMG_VER;
+    if (!hasNoImg(sid)) out.img = IMG_DIR + (ULTI_FILE[sid] || sid) + '_i.png?v=' + IMG_VER;
     if (cls) { out.accent = cls.color; out.clsLabel = cls.label; }
 
     if (def && def.dmg > 0 && !s.maxed && typeof s.lv === 'number' && s.maxLv && typeof skillLvMul === 'function') {
