@@ -486,17 +486,27 @@
     }
     function draw() {
       summary(); drawTabs();
+      [(tier - 1) * 2 + 1, (tier - 1) * 2 + 2].forEach(function (sn) {   // โหลดแผ่นไอคอนของระดับนี้ (เสร็จแล้ววาดใหม่ให้โชว์รูป)
+        dishLoadSheet(sn, function () { if (document.body.contains(card)) draw(); });
+      });
       filt.textContent = (onlyCan ? '☑' : '☐') + ' แสดงเฉพาะที่ทำได้ตอนนี้';
       list.innerHTML = '';
       let shown = 0;
-      COOK_RECIPES.forEach(function (r) {
+      COOK_RECIPES.forEach(function (r, ri) {
         if (r.tier !== tier) return;
         const n = h.cookbook[r.id] || 0, can = canCook(r);
         if (onlyCan && !can) return;
         shown++;
         const row = el('div', 'hs-dish' + (n >= COOK_MAX_BOOKS ? ' max' : ''));
         const head = el('div', 'hs-dh');
-        head.append(el('span', 'hs-dn', r.icon + ' ' + r.name), el('span', 'hs-dc', 'เล่ม ' + n + '/' + COOK_MAX_BOOKS));
+        const dn = el('span', 'hs-dn', '');
+        if (DISH_ICONS[ri]) {
+          const im = el('img', 'hs-ico');
+          im.src = DISH_ICONS[ri];
+          im.alt = '';
+          dn.append(im, el('span', '', r.name));
+        } else dn.textContent = r.icon + ' ' + r.name;
+        head.append(dn, el('span', 'hs-dc', 'เล่ม ' + n + '/' + COOK_MAX_BOOKS));
         const eff = el('div', 'hs-sub', 'ต่อเล่ม: ' + Object.keys(r.bonus).map(function (k) { return fmtVal(k, r.bonus[k]); }).join(' · ')
           + (n > 0 ? '  (รวมแล้ว ' + Object.keys(r.bonus).map(function (k) { return fmtVal(k, r.bonus[k] * n); }).join(' · ') + ')' : ''));
         row.append(head, eff);
@@ -743,6 +753,53 @@
    ['plot_empty', ['plot_empty.png'], 'white']].forEach(function (r) { himgLoad(r[0], r[1], r[2], false); });
   himgLoad('crops', ['crops.png', 'crop.png', 'crops.jpg', 'crops.webp'], 'white', true);
   HOUSE_CROP_IMAGES.forEach(function (k) { himgLoad('crop_' + k, 'crop_' + k + '.png', 'white', true); });
+
+  // ----- ไอคอนอาหาร 100 เมนู: assets/house/dishes_1.png ... dishes_10.png (แผ่นละ 10 เมนู ตาราง 5 คอลัมน์ x 2 แถว เรียงตามลำดับเมนู) -----
+  // โหลดทีละแผ่นเมื่อเปิดแท็บทำอาหารระดับนั้น แล้วตัดเป็นไอคอนเล็ก (ไม่เก็บภาพใหญ่ไว้ ประหยัดแรม) | ไม่มีไฟล์ = ใช้อีโมจิเดิม
+  const DISH_ICONS = {};   // ดัชนีเมนู 0-99 -> data URL
+  const DISH_STATE = {};   // เลขแผ่น -> 'loading' | 'done' | 'missing'
+  const DISH_CBS = {};
+  function dishLoadSheet(n, cb) {   // แผ่นที่โหลดเสร็จ/ไม่มีไฟล์แล้ว = ไม่ทำอะไร | ยังไม่เสร็จ = รอแล้วเรียก cb
+    const st = DISH_STATE[n];
+    if (st === 'done' || st === 'missing') return;
+    (DISH_CBS[n] = DISH_CBS[n] || []).push(cb);
+    if (st === 'loading') return;
+    DISH_STATE[n] = 'loading';
+    const exts = ['.png', '.jpg', '.webp'];
+    let t = 0;
+    const settle = function (s) {
+      DISH_STATE[n] = s;
+      const l = DISH_CBS[n] || [];
+      DISH_CBS[n] = [];
+      l.forEach(function (f) { try { f(); } catch (e) {} });
+    };
+    const img = new Image();
+    img.onload = function () {
+      try {
+        const k = himgKey(img, 'white');
+        const cw = Math.floor(k.width / 5), ch = Math.floor(k.height / 2);
+        for (let c = 0; c < 10; c++) {
+          const b = himgBox(k, (c % 5) * cw, Math.floor(c / 5) * ch, cw, ch);
+          if (!b) continue;
+          const s = Math.min(1, 128 / Math.max(b.w, b.h));
+          const o = document.createElement('canvas');
+          o.width = Math.max(1, Math.round(b.w * s));
+          o.height = Math.max(1, Math.round(b.h * s));
+          const x = o.getContext('2d');
+          x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+          x.drawImage(k, b.x, b.y, b.w, b.h, 0, 0, o.width, o.height);
+          DISH_ICONS[(n - 1) * 10 + c] = o.toDataURL('image/png');
+        }
+        settle('done');
+      } catch (e) { console.warn('dish sheet', n, e); settle('missing'); }
+    };
+    img.onerror = function () {
+      t++;
+      if (t < exts.length) img.src = HOUSE_IMG_DIR + 'dishes_' + n + exts[t] + '?v=' + HOUSE_IMG_VER;
+      else { console.warn('house img: ไม่พบไฟล์', HOUSE_IMG_DIR + 'dishes_' + n + '.png'); settle('missing'); }
+    };
+    img.src = HOUSE_IMG_DIR + 'dishes_' + n + exts[0] + '?v=' + HOUSE_IMG_VER;
+  }
 
   function houseBuild(m, T) {
     const wb = m.physics.world.bounds;
