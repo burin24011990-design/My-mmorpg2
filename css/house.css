@@ -43,6 +43,9 @@
 .hs-dh { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
 .hs-dn { font-size: 15px; color: #ffe28a; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .hs-ico { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
+.hs-mi { object-fit: contain; flex: 0 0 auto; vertical-align: middle; }
+.hs-ig { display: inline-flex; align-items: center; gap: 4px; }
+.hs-res { display: flex; align-items: center; justify-content: center; }
 .hs-dc { font-size: 12px; color: #fff; white-space: nowrap; }
 .hs-ing { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; margin: 6px 0; }
 .hs-ok { color: #7ee79a; }
