@@ -36,6 +36,13 @@
   const DASH_MS = 160;
   const READY_COL = 0x5dff7a; // สีลูกศรเมื่อสกิลพร้อมใช้ (เขียว)
 
+  // ตำแหน่ง/ขนาดปุ่มแดช (ย่อตามแนวจอ: แนวตั้ง = ROV.s)  ปรับได้ตรงนี้
+  // DASH_BTN_R = รัศมีปุ่ม | DASH_OFF_X = ห่างจากปุ่มโจมตีไปทางซ้าย | DASH_OFF_Y = ต่ำลงจากปุ่มโจมตี
+  // อยากให้ห่างจากปุ่มโจมตี/ปุ่มสกิลมากขึ้น: เพิ่ม DASH_OFF_X | ปุ่มชิดขอบล่างเกิน: ลด DASH_OFF_Y
+  const DASH_BTN_R = 32;
+  const DASH_OFF_X = 105;
+  const DASH_OFF_Y_PORTRAIT = 78, DASH_OFF_Y_LANDSCAPE = 68;
+
   const dist = (a, b) => Phaser.Math.Distance.Between(a.x, a.y, b.x, b.y);
   const isDirOnly = sid => !!(sid && DIR_CFG[sid] && !GROUND_CFG[sid]);
 
@@ -378,14 +385,18 @@
   P.setupButtons = function () {
     _setupButtons.call(this);
     this.initAim();
-    const base = (typeof ROV !== 'undefined') ? ROV : { ax: W - 96, ay: H - 92 };
-    const x = base.ax - 95, y = base.ay + 68, r = 32;   // ใต้-ซ้ายของปุ่มโจมตี (r = ขนาดปุ่มแดช)
-    const c = this.add.circle(x, y, r, 0x3a7bd5, 0.9).setScrollFactor(0).setDepth(100).setInteractive();
+    const base = (typeof ROV !== 'undefined') ? ROV : { ax: W - 96, ay: H - 92, s: 1 };
+    const s = base.s || 1;                                   // แนวตั้ง = ย่อตาม ROV.s
+    const r = Math.round(DASH_BTN_R * s);                    // รัศมีปุ่มแดช
+    const x = base.ax - Math.round(DASH_OFF_X * s);          // ใต้-ซ้ายของปุ่มโจมตี
+    const y = base.ay + Math.round((s < 1 ? DASH_OFF_Y_PORTRAIT : DASH_OFF_Y_LANDSCAPE) * s);
+    const c = this.add.circle(x, y, r, 0x3a7bd5, 0.9).setScrollFactor(0).setDepth(100)
+      .setInteractive(new Phaser.Geom.Circle(r, r, Math.round(r * 1.35)), Phaser.Geom.Circle.Contains);   // พื้นที่แตะกว้างกว่าปุ่มนิด
     c.setStrokeStyle(3, 0xffffff, 0.85);
-    const icon = this.add.image(x, y - 7, 'ic_dash').setDisplaySize(26, 26).setScrollFactor(0).setDepth(101);
-    const t = this.add.text(x, y + 16, 'แดช', { fontSize: '12px', color: '#fff', stroke: '#000', strokeThickness: 3 })
+    const icon = this.add.image(x, y - Math.round(r * 0.22), 'ic_dash').setDisplaySize(Math.round(r * 0.8), Math.round(r * 0.8)).setScrollFactor(0).setDepth(101);
+    const t = this.add.text(x, y + Math.round(r * 0.5), 'แดช', { fontSize: Math.max(9, Math.round(r * 0.38)) + 'px', color: '#fff', stroke: '#000', strokeThickness: 3 })
       .setOrigin(0.5).setScrollFactor(0).setDepth(101);
-    const cd = this.add.text(x, y, '', { fontSize: '22px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
+    const cd = this.add.text(x, y, '', { fontSize: Math.round(r * 0.7) + 'px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
       .setOrigin(0.5).setScrollFactor(0).setDepth(102);
     // กดค้างแล้วลากเลือกทิศ | แตะเฉยๆ = แดชแบบเดิม
     c.on('pointerdown', pointer => {
