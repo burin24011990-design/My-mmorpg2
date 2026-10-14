@@ -24,7 +24,22 @@ const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
 // มอนสเตอร์ Epic
 const EPIC_COUNT = 15;             // จำนวนต่อแผนที่ (ยังแลคอยู่ -> ลดเหลือ 15-20)
 const EPIC_MULT = 2;               // Epic แรงกว่ามอนฐาน (HP / ดาเมจ / EXP / ทอง)
-const EPIC_RED_BOX_CHANCE = 0.02;  // โอกาสดรอปกล่องแดง (2%)
+const EPIC_RED_BOX_CHANCE = 0.004; // โอกาสดรอปกล่องแดง (0.4%) | v44: ลดจาก 2% ให้หายากขึ้นมาก
+// v44: สีของกล่องที่ดรอป (สุ่มตั้งแต่ตอนดรอป) | กล่องสีฟ้าขึ้นไปหายากมาก ที่เหลือเป็นสีขาวเสมอ
+// ค่าเป็นโอกาสต่อกล่อง 1 ใบ (0.015 = 1.5%) | อยากให้ยากขึ้น/ง่ายขึ้นปรับตรงนี้
+const BOX_TIER_ODDS_NORMAL = { gold: 0.0001, red: 0.0015, blue: 0.015 };   // มอนธรรมดา/Epic
+const BOX_TIER_ODDS_BOSS   = { gold: 0.001,  red: 0.01,   blue: 0.08 };    // มินิบอส (กล่องละ 3 ใบ)
+function rollBoxTier(isBoss) {
+  const odds = isBoss ? BOX_TIER_ODDS_BOSS : BOX_TIER_ODDS_NORMAL;
+  const r = Math.random();
+  let acc = 0;
+  const order = ['gold', 'red', 'blue'];
+  for (let i = 0; i < order.length; i++) {
+    acc += odds[order[i]];
+    if (r < acc) return order[i];
+  }
+  return 'white';
+}
 // มอนธรรมดา + ยิงไกล
 const NORMAL_HP_MULT = 1;          // เลือดเพิ่ม 1 เท่า (x2)
 const NORMAL_DMG_MULT = 0.5;       // พลังโจมตีเพิ่ม 50%
@@ -465,7 +480,7 @@ Object.assign(Main.prototype, {
     if (isBoss) {
       for (let i = 0; i < 3; i++) {
         const it = this.makeLoot(x + 20 + i * 18, y + 14, 'box');
-        it.setData('kind', 'box'); it.setData('level', boxLevel);
+        it.setData('kind', 'box'); it.setData('level', boxLevel); it.setData('tier', rollBoxTier(true));   // lootOptions.js อ่าน tier ตอนเก็บ
       }
       // หนังสือสกิล: มินิบอสโอกาส BOSS_SKILL_DROP_CHANCE (60%) สุ่มสกิลใดสกิลหนึ่ง
       if (Math.random() < BOSS_SKILL_DROP_CHANCE) {
@@ -479,7 +494,7 @@ Object.assign(Main.prototype, {
     // มอนธรรมดา/Epic: กล่อง ~15% (เท่าโอกาสเดิม 28% x 55%) และหนังสือสกิล 5% (สุ่มแยกกัน)
     if (Phaser.Math.Between(1, 100) <= 15) {
       const it = this.makeLoot(x + 14, y, 'box');
-      it.setData('kind', 'box'); it.setData('level', boxLevel);
+      it.setData('kind', 'box'); it.setData('level', boxLevel); it.setData('tier', rollBoxTier(false));
     }
     if (Math.random() < NORMAL_SKILL_DROP_CHANCE) {
       const sid = Phaser.Utils.Array.GetRandom(Object.keys(SKILL_DEFS));
