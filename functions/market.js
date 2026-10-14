@@ -1,4 +1,5 @@
-// functions/market.js — ตลาดกลาง v4  (บันทึกไว้เป็น functions/market.js)
+// functions/market.js — ตลาดกลาง v5  (บันทึกไว้เป็น functions/market.js)
+// v5: รองรับ "การ์ด" (kind:'card') และ "กุญแจถอดการ์ด" (kind:'cardkey') + อุปกรณ์ที่ฝังการ์ดไว้ (sockets) | ดู cards.js ในเกม
 // ใน functions/index.js ต้องมี:  Object.assign(exports, require('./market'));
 //
 // ของเดิม v3 (ยังอยู่ครบ): ตั๋วลงขาย, โควตา, เพดาน/ขั้นต่ำราคา, ผู้ขายนิรนาม, audit, คืนของหมดอายุ,
@@ -47,6 +48,8 @@ const STONE_STACK = 9999;                    // ต้องตรงกับ M
 const MAX_ITEM_LEVEL = 100;                  // กล่องจากด่านจุติขั้น 21+ เป็นเลเวล 100 (rzBoxLevel ใน zones.js) จึงต้องรับถึง 100 | ถ้าแก้ zones.js ให้แก้ค่านี้ตาม
 const MAX_STAR = 99;                         // ต้องตรงกับ MAX_STAR ในเกม (config.js)
 const MAX_PLUS = 99;                         // ต้องตรงกับ MAX_PLUS ในเกม (enhance.js)
+const MAX_CARD_COUNT = 999;                  // ต้องตรงกับ MAX_CARD_STACK ใน cards.js
+const MAX_SOCKETS = 4;                       // ต้องตรงกับ TIER_SOCKETS สูงสุด (ทอง 4 ช่อง) ใน cards.js
 const MAX_BOX_COUNT = 999;                   // ต้องตรงกับ MAX_BOX_STACK ในเกม (config.js)
 const IP_SALT = 'x7Kq2mVd9RtLp4Zw8NcB1yHs5Fg3JaUe';   // <-- แก้เป็นค่าสุ่มของคุณเอง (ถ้า repo เป็น public ควรเปลี่ยน/ย้ายไปเป็น secret)
 const ADMIN_UIDS = [];                       // ใส่ uid ของคุณ เพื่อใช้ adminGrantTickets / adminBan
@@ -62,6 +65,9 @@ const CAP = {
   equip: { white: 500000, blue: 1500000, red: 4000000, gold: 9999999 },
   equipPlusBonus: 0.10, equipStarBonus: 0.15,
   optstone: 150000, cleanstone: 200000,
+  card: { mon: 200000, boss: 800000 },      // การ์ดมอน / การ์ดบอส (ราคาต่อใบ)
+  cardkey: 300000,                          // กุญแจถอดการ์ด (ราคาต่อชิ้น)
+  equipSocketBonus: 0.10,                   // อุปกรณ์ที่ฝังการ์ดไว้: เพดานราคา +10% ต่อการ์ด 1 ใบ
   stone: 1000,
   book: 3000000
 };
@@ -78,7 +84,9 @@ function authOnly(req) {
 }
 function tierOfItem(it) { return TIERS.indexOf(it.tier) >= 0 ? it.tier : 'white'; }
 function ticketFor(price) { return price <= TICKET_MAX[1] ? 1 : (price <= TICKET_MAX[2] ? 2 : 3); }
-function sig(it) { return [it.kind, it.tier || '', it.level || '', it.baseSlot || it.color || it.sid || ''].join(':'); }
+function sig(it) { return [it.kind, it.tier || '', it.level || '', it.baseSlot || it.color || it.sid || it.cid || ''].join(':'); }
+const CID_RE = /^[mnb]\d{1,3}$/;           // รหัสการ์ด: m/n = การ์ดมอน, b = การ์ดบอส + เลขด่าน
+function filledSockets(it) { return Array.isArray(it.sockets) ? it.sockets.filter(function (c) { return typeof c === 'string'; }).length : 0; }
 function audit(tx, rec) { tx.set(db.collection('market_audit').doc(), Object.assign({ at: Date.now() }, rec)); }
 function sum(a) { return a.reduce(function (x, y) { return x + y.amt; }, 0); }
 function cleanReq(v) { const s = String(v || ''); return /^[A-Za-z0-9_-]{8,64}$/.test(s) ? s : ''; }
@@ -161,6 +169,17 @@ function validateItem(raw) {
       if (it.plus !== undefined && !int(it.plus, 0, MAX_PLUS)) bad('อุปกรณ์ไม่ถูกต้อง');
       if (it.baseSlot === 'weapon' && WEAPON_CLASSES.indexOf(it.class) < 0) bad('อุปกรณ์ไม่ถูกต้อง');
       if (it.count !== undefined) bad('อุปกรณ์ไม่ถูกต้อง');
+      if (it.sockets !== undefined) {   // ช่องการ์ด: array ยาวไม่เกิน 4 ช่อง แต่ละช่องเป็น null หรือรหัสการ์ดที่ถูกต้อง
+        if (!Array.isArray(it.sockets) || it.sockets.length > MAX_SOCKETS) bad('อุปกรณ์ไม่ถูกต้อง');
+        it.sockets.forEach(function (c) { if (c !== null && !(typeof c === 'string' && CID_RE.test(c))) bad('อุปกรณ์ไม่ถูกต้อง'); });
+      }
+      break;
+    case 'card':
+      if (typeof it.cid !== 'string' || !CID_RE.test(it.cid) || !int(it.count, 1, MAX_CARD_COUNT)) bad('การ์ดไม่ถูกต้อง');
+      if (it.tier !== undefined || it.level !== undefined) bad('การ์ดไม่ถูกต้อง');
+      break;
+    case 'cardkey':
+      if (!int(it.count, 1, MAX_CARD_COUNT)) bad('จำนวนไม่ถูกต้อง');
       break;
     case 'box':
       if (!int(it.level, 1, MAX_ITEM_LEVEL) || !int(it.count, 1, MAX_BOX_COUNT)) bad('กล่องไม่ถูกต้อง');
@@ -188,7 +207,9 @@ function maxUnitPrice(it) {
   const t = tierOfItem(it);
   let c;
   if (it.kind === 'box') c = CAP.box[t];
-  else if (it.kind === 'equip') c = CAP.equip[t] * (1 + CAP.equipPlusBonus * (it.plus || 0) + CAP.equipStarBonus * (it.star || 0));
+  else if (it.kind === 'equip') c = CAP.equip[t] * (1 + CAP.equipPlusBonus * (it.plus || 0) + CAP.equipStarBonus * (it.star || 0) + CAP.equipSocketBonus * filledSockets(it));
+  else if (it.kind === 'card') c = it.cid.charAt(0) === 'b' ? CAP.card.boss : CAP.card.mon;
+  else if (it.kind === 'cardkey') c = CAP.cardkey;
   else if (it.kind === 'optstone') c = CAP.optstone;
   else if (it.kind === 'cleanstone') c = CAP.cleanstone;
   else if (it.kind === 'stone') c = CAP.stone;
