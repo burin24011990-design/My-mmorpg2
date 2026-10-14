@@ -1,9 +1,10 @@
-// ===== ตลาดกลาง (js/market.js) v7 — ผูกกับ NPC id 'market' ใน town.js =====
+// ===== ตลาดกลาง (js/market.js) v8 — ผูกกับ NPC id 'market' ใน town.js =====
 // ต้องโหลดหลัง town.js, หลัง goldSync.js และหลัง firebase-functions-compat.js
 // ฟีเจอร์: หมวดหมู่ + ค้นหา + เรียงราคา | ขายได้เฉพาะของแรร์ | ตั๋วลงขาย (เก็บที่เซิร์ฟเวอร์) | ผู้ขายนิรนาม
 // v7: ซื้อของ = เซิร์ฟเวอร์หักทองเอง (ผ่าน GoldSync.tx) | รับทองจากกล่อง = เซิร์ฟเวอร์เติมให้ (GoldSync.credit)
 //     ส่ง reqId + ลองใหม่เมื่อเน็ตสะดุด (ซื้อ/ลงขาย/รับของ ไม่ซ้ำ ไม่หาย) | เก็บรายการลงขายที่ค้างไว้ตรวจใหม่ตอนเปิดตลาด
 //     แก้บั๊ก: รับของหลายชิ้นตอนกระเป๋าใกล้เต็มแล้วของหาย
+// v8: ขายการ์ด/กุญแจถอดการ์ดได้ (หมวด 🃏 การ์ด) + อุปกรณ์ที่ฝังการ์ดขายได้ (เพดานราคา +ตามจำนวนการ์ดที่ฝัง) | ต้องใช้คู่กับ functions/market.js v5
 (function () {
   const REGION = 'asia-southeast1';   // ต้องตรงกับ functions/market.js
   const SHOW_LIMIT = 100;             // แสดงสูงสุดกี่รายการในหน้าซื้อ
@@ -18,6 +19,7 @@
     { id: 'equip', name: '⚔️ อุปกรณ์' },
     { id: 'gem', name: '💎 อัญมณี' },
     { id: 'stone', name: '🪨 หินตีบวก' },
+    { id: 'card', name: '🃏 การ์ด' },
     { id: 'book', name: '📖 สมุดสกิล' },
     { id: 'other', name: 'อื่นๆ' }
   ];
@@ -28,6 +30,7 @@
     if (it.kind === 'optstone' || it.kind === 'cleanstone') return 'gem';   // หินสุ่มออฟ / หินลบออฟ = อัญมณี
     if (it.kind === 'stone') return 'stone';
     if (it.kind === 'skillbook') return 'book';
+    if (it.kind === 'card' || it.kind === 'cardkey') return 'card';   // การ์ด + กุญแจถอดการ์ด
     return 'other';
   }
 
@@ -36,15 +39,18 @@
   function sellBlock(it, R) {          // เหตุผลที่ขายไม่ได้ หรือ '' ถ้าขายได้
     if (!it) return 'ขายไม่ได้';
     if (it.kind === 'box' || it.kind === 'equip') return TIER_RANK.indexOf(tierKey(it)) >= 2 ? '' : 'ขายได้เฉพาะสีแดงขึ้นไป';
-    if (it.kind === 'optstone' || it.kind === 'cleanstone' || it.kind === 'skillbook') return '';
+    if (it.kind === 'optstone' || it.kind === 'cleanstone' || it.kind === 'skillbook' || it.kind === 'card' || it.kind === 'cardkey') return '';
     if (it.kind === 'stone') return (it.count || 1) >= R.stoneStack ? '' : 'หินตีบวกต้องเป็นกองเต็ม ' + R.stoneStack.toLocaleString() + ' ก้อน';
     return 'ไอเทมชนิดนี้ขายในตลาดไม่ได้';
   }
+  function filledSockets(it) { return Array.isArray(it.sockets) ? it.sockets.filter(function (c) { return typeof c === 'string'; }).length : 0; }
   function maxUnitPrice(it, R) {
     const C = R.cap, t = tierKey(it);
     let c;
     if (it.kind === 'box') c = C.box[t];
-    else if (it.kind === 'equip') c = C.equip[t] * (1 + C.equipPlusBonus * (it.plus || 0) + C.equipStarBonus * (it.star || 0));
+    else if (it.kind === 'equip') c = C.equip[t] * (1 + C.equipPlusBonus * (it.plus || 0) + C.equipStarBonus * (it.star || 0) + (C.equipSocketBonus || 0) * filledSockets(it));
+    else if (it.kind === 'card') c = String(it.cid).charAt(0) === 'b' ? C.card.boss : C.card.mon;
+    else if (it.kind === 'cardkey') c = C.cardkey;
     else if (it.kind === 'optstone') c = C.optstone;
     else if (it.kind === 'cleanstone') c = C.cleanstone;
     else if (it.kind === 'stone') c = C.stone;
@@ -86,7 +92,8 @@
     if (it.kind === 'skillbook' && typeof MAX_SKILLBOOK_STACK !== 'undefined') return MAX_SKILLBOOK_STACK;
     return 999;
   }
-  function key(it) { const c = Object.assign({}, it); delete c.count; return JSON.stringify(c); }
+  // เรียงคีย์ก่อนเทียบ: Firestore คืนคีย์เรียงตัวอักษร (cid มาก่อน kind) ถ้าไม่เรียงการ์ดที่รับจากตลาดจะไม่ซ้อนกับของเดิมในกระเป๋า
+  function key(it) { const c = Object.assign({}, it); delete c.count; return JSON.stringify(Object.keys(c).sort().map(function (k) { return [k, c[k]]; })); }
   function canAdd(m, it) {
     if (it.count === undefined) return m.bag.some(function (s) { return s === null; });
     const cap = capOf(it), k = key(it);
@@ -176,7 +183,7 @@
       const im = document.createElement('img');
       im.src = src; im.style.cssText = 'width:36px;height:36px;image-rendering:pixelated;object-fit:contain';
       w.appendChild(im);
-    } else { w.textContent = it.kind === 'ticket' ? '🎫' : (it.kind === 'skillbook' ? '📖' : '📦'); w.style.fontSize = '22px'; }
+    } else { w.textContent = it.kind === 'ticket' ? '🎫' : (it.kind === 'skillbook' ? '📖' : (it.kind === 'card' ? '🃏' : (it.kind === 'cardkey' ? '🗝️' : '📦'))); w.style.fontSize = '22px'; }
     if (it.count > 1) {
       const c = document.createElement('span');
       c.textContent = 'x' + it.count;
@@ -589,7 +596,7 @@
         body.innerHTML = '';
         const hint = document.createElement('div');
         hint.style.cssText = 'font-size:12px;color:#bbb;margin-bottom:6px;line-height:1.5';
-        hint.innerHTML = 'ขายได้เฉพาะ: กล่อง/อุปกรณ์สีแดงขึ้นไป • หินออฟ • หินตีบวกกองเต็ม ' + R.stoneStack.toLocaleString() + ' • สมุดสกิล<br>' +
+        hint.innerHTML = 'ขายได้เฉพาะ: กล่อง/อุปกรณ์สีแดงขึ้นไป (อุปกรณ์ที่ฝังการ์ดไว้ขายพร้อมการ์ด) • การ์ด • กุญแจถอดการ์ด • หินออฟ • หินตีบวกกองเต็ม ' + R.stoneStack.toLocaleString() + ' • สมุดสกิล<br>' +
           'แตะไอเทมที่ต้องการขาย • ลงวันนี้ ' + w.listedToday + '/' + w.dailyLimit + ' • อยู่ ' + R.listHours + ' ชม.<br>' +
           '🎫 ตั๋วที่มี: ' + [1, 2, 3].map(function (n) { return 'ระดับ ' + n + ' ×' + (tk[n] || 0); }).join(' | ');
         const grid = document.createElement('div');
