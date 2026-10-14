@@ -693,6 +693,62 @@
     }
     return maxX < 0 ? null : { x: x0 + minX, y: y0 + minY, w: maxX - minX + 1, h: maxY - minY + 1 };
   }
+  // แบ่งแผ่นไอคอนเป็นแถว/คอลัมน์จาก "ช่องว่างจริงระหว่างไอคอน" (ไม่หารตารางเท่ากัน จึงไม่ตัดไอคอนที่ล้ำช่อง)
+  // rowCounts = จำนวนไอคอนในแต่ละแถว เช่น [4, 3] | คืนกล่องของไอคอนเรียงซ้าย->ขวา บน->ล่าง หรือ null ถ้าแบ่งไม่ได้ (ให้ใช้การหารเท่ากันแทน)
+  function himgSegs(occ, n, minGap) {
+    let segs = [], s = -1;
+    for (let i = 0; i <= occ.length; i++) {
+      const on = i < occ.length && occ[i];
+      if (on && s < 0) s = i;
+      if (!on && s >= 0) { segs.push([s, i]); s = -1; }
+    }
+    const merged = [];
+    segs.forEach(function (sg) {
+      const last = merged[merged.length - 1];
+      if (last && sg[0] - last[1] < minGap) last[1] = sg[1]; else merged.push([sg[0], sg[1]]);
+    });
+    segs = merged;
+    while (segs.length > n) {   // เกินจำนวน = ผสานคู่ที่ช่องว่างแคบที่สุด
+      let bi = 0, bg = 1e9;
+      for (let i = 0; i < segs.length - 1; i++) {
+        const g = segs[i + 1][0] - segs[i][1];
+        if (g < bg) { bg = g; bi = i; }
+      }
+      segs.splice(bi, 2, [segs[bi][0], segs[bi + 1][1]]);
+    }
+    return segs.length === n ? segs : null;
+  }
+  function himgGrid(k, rowCounts) {
+    try {
+      const w = k.width, h = k.height;
+      const d = k.getContext('2d').getImageData(0, 0, w, h).data;
+      const rowOcc = new Uint8Array(h);
+      for (let y = 0; y < h; y++) {
+        let c = 0;
+        for (let x = 0; x < w && c < 2; x++) if (d[(y * w + x) * 4 + 3] > 16) c++;
+        rowOcc[y] = c >= 2 ? 1 : 0;
+      }
+      const rows = himgSegs(rowOcc, rowCounts.length, 20);
+      if (!rows) return null;
+      const boxes = [];
+      for (let r = 0; r < rows.length; r++) {
+        const y0 = rows[r][0], y1 = rows[r][1];
+        const colOcc = new Uint8Array(w);
+        for (let x = 0; x < w; x++) {
+          let c = 0;
+          for (let y = y0; y < y1 && c < 2; y++) if (d[(y * w + x) * 4 + 3] > 16) c++;
+          colOcc[x] = c >= 2 ? 1 : 0;
+        }
+        const cols = himgSegs(colOcc, rowCounts[r], 12);
+        if (!cols) return null;
+        for (let c = 0; c < cols.length; c++) {
+          const b = himgBox(k, cols[c][0], y0, cols[c][1] - cols[c][0], y1 - y0);
+          boxes.push(b);
+        }
+      }
+      return boxes;
+    } catch (e) { return null; }
+  }
   function himgTrim(c) {
     const b = himgBox(c, 0, 0, c.width, c.height);
     if (!b) return c;
@@ -804,8 +860,9 @@
       try {
         const k = himgKey(img, 'white');
         const cw = Math.floor(k.width / 5), ch = Math.floor(k.height / 2);
+        const boxes = himgGrid(k, [5, 5]);
         for (let c = 0; c < 10; c++) {
-          const b = himgBox(k, (c % 5) * cw, Math.floor(c / 5) * ch, cw, ch);
+          const b = boxes ? boxes[c] : himgBox(k, (c % 5) * cw, Math.floor(c / 5) * ch, cw, ch);
           if (!b) continue;
           const s = Math.min(1, 128 / Math.max(b.w, b.h));
           const o = document.createElement('canvas');
@@ -841,6 +898,7 @@
     { files: ['veggies.png', 'veggies.jpg', 'veggies.webp'], cols: 4, rows: 3,
       ids: ['veg_cabbage', 'veg_carrot', 'veg_tomato', 'veg_corn', 'veg_potato', 'veg_pumpkin', 'veg_eggplant', 'veg_onion', 'veg_garlic', 'veg_mushroom', 'veg_chili', 'veg_rice'] },
   ];
+  [[5, 5], [4, 4], [4, 3], [3], [4, 4, 4]].forEach(function (rc, i) { MAT_SHEETS[i].rowCounts = rc; });   // จำนวนไอคอนต่อแถวของแต่ละแผ่น
   function matSheetLoad(sh) {
     let t = 0;
     const img = new Image();
@@ -848,8 +906,9 @@
       try {
         const k = himgKey(img, 'white');
         const cw = Math.floor(k.width / sh.cols), ch = Math.floor(k.height / sh.rows);
+        const boxes = himgGrid(k, sh.rowCounts);
         sh.ids.forEach(function (id, c) {
-          const b = himgBox(k, (c % sh.cols) * cw, Math.floor(c / sh.cols) * ch, cw, ch);
+          const b = boxes ? boxes[c] : himgBox(k, (c % sh.cols) * cw, Math.floor(c / sh.cols) * ch, cw, ch);
           if (!b) return;
           const sc = Math.min(1, 96 / Math.max(b.w, b.h));
           const o = document.createElement('canvas');
