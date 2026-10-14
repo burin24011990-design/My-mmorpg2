@@ -9,13 +9,22 @@ const PORTRAIT_SCALE = 0.8;
 const ROV_PORTRAIT = (typeof PORTRAIT !== 'undefined' && !!PORTRAIT) || (W < H);
 const ROV_S = ROV_PORTRAIT ? PORTRAIT_SCALE : 1;
 
+// ขนาด/ตำแหน่งปุ่ม (หน่วยพิกเซลของเกม) -- ปรับตรงนี้ได้
+// แนวตั้ง: ปุ่มเล็กลง จัดวางห่างกันพอดีไม่ให้กรอบทับกัน | แนวนอน: ใช้ขนาดใกล้เคียงเดิม
+//  skillR/ultiR = รัศมีปุ่ม (วงนอกของกรอบจะใหญ่กว่านี้ ~ 1.45 เท่า + พู่ห้อยยื่นลงอีกนิด) | ring = รัศมีโค้งจากปุ่มโจมตี
+//  กฎกันกรอบทับกัน: ระยะระหว่างปุ่มข้างเคียง = 2 x ring x sin(ครึ่งหนึ่งของระยะห่างมุม) ต้องมากกว่า skillR x 2.9 อย่างน้อยเล็กน้อย
+//  angles = มุมของปุ่ม 5 ปุ่ม (4 สกิล + อัลติ) 180° = ซ้ายสุด, 270° = ตรงขึ้นด้านบน
+//  ต้องการให้ปุ่มห่างขึ้น: เพิ่ม ring หรือเพิ่มระยะห่างระหว่างมุม | ต้องการเล็กลงอีก: ลด skillR/ultiR
 const ROV = {
   s: ROV_S,                      // ตัวคูณขนาด (ไฟล์อื่นใช้ได้ เช่น flexSlot.js)
-  // ศูนย์กลางปุ่มโจมตี (ยิ่งลบมาก ยิ่งเข้ามาจากขอบขวา/ล่าง) | แนวตั้งชิดขวามากขึ้น (W - 90) ปรับเลข 90 ได้ แต่ไม่ควรน้อยกว่า ~85 ไม่งั้นปุ่มอัลติจะล้นขอบ
-  ax: W - (ROV_PORTRAIT ? 90 : 150), ay: H - 120,
-  attackR: Math.round(62 * ROV_S), skillR: Math.round(38 * ROV_S), ultiR: Math.round(38 * ROV_S),   // ปุ่มสกิลกับอัลติขนาดเท่ากัน
-  ring: Math.round(185 * ROV_S), // รัศมีโค้ง (ยิ่งมากปุ่มยิ่งห่างกัน)
-  startDeg: 170, stepDeg: 30,    // ปุ่มแรกที่ 170° แล้วไล่ขึ้นด้านบนทีละ 30°
+  // ศูนย์กลางปุ่มโจมตี (แนวตั้ง W - 104: เผื่อที่ให้ปุ่มอัลติไม่ล้นขอบขวา)
+  ax: W - (ROV_PORTRAIT ? 104 : 150), ay: H - 120,
+  attackR: Math.round(62 * ROV_S),
+  skillR: ROV_PORTRAIT ? 21 : 28,
+  ultiR: ROV_PORTRAIT ? 21 : 28,
+  ring: ROV_PORTRAIT ? 176 : 185,
+  angles: ROV_PORTRAIT ? [181, 208, 235, 262, 289] : [170, 200, 230, 260, 290],
+  startDeg: ROV_PORTRAIT ? 181 : 170, stepDeg: ROV_PORTRAIT ? 27 : 30,   // (เก็บไว้ให้ไฟล์อื่นอ้างอิง)
 };
 const rs = n => Math.round(n * ROV.s);   // ย่อขนาดตามแนวจอ (แนวนอน = ค่าเดิม)
 
@@ -28,7 +37,7 @@ const FRAME_SKILL_FILE = 'img/skill-frame.png';
 const FRAME_ULTI_FILE = 'img/skill-frame-ulti.png';
 const FRAME_SKILL_HOLE = 0.5;
 const FRAME_ULTI_HOLE = 0.48;
-const FRAME_DEPTH = 101.5;     // อยู่เหนือไอคอนสกิล (101) แต่ใต้ตัวเลขคูลดาวน์ (102)
+const FRAME_DEPTH = 101.5;     // อยู่เหนือไอคอนสกิล (101) ส่วนชื่อสกิล/ตัวเลขคูลดาวน์จะถูกยกให้อยู่เหนือกรอบอีกที
 
 // ===== รูปไอคอนสกิลบนปุ่ม: ใช้ชุดเดียวกับเอฟเฟกต์/หน้าต่างสกิล (img/skillimg/<ชื่อไฟล์>_i.png) =====
 const SKILL_IMG_DIR = 'img/skillimg/';
@@ -58,12 +67,13 @@ Main.prototype.makeCircleBtn = function (x, y, r, color, label, onClick) {
 
 // ปุ่มสกิล (ไอคอน 32px, ชื่อ 11px, ตัวเลขคูลดาวน์ 20px — ย่อตามแนวจอ)
 Main.prototype.makeSlotBtn = function (x, y, r, idx) {
-  const c = this.add.circle(x, y, r, 0x3a3a3a, 0.8).setScrollFactor(0).setDepth(100).setInteractive();
-  c.setStrokeStyle(rs(4), 0xffffff, 0.75);
-  const icon = this.add.image(x, y - rs(7), 'ic_melee').setDisplaySize(rs(32), rs(32)).setScrollFactor(0).setDepth(101).setVisible(false);
-  const t = this.add.text(x, y + rs(20), '', { fontSize: Math.max(8, rs(11)) + 'px', color: '#fff', align: 'center', stroke: '#000', strokeThickness: 3 })
+  const c = this.add.circle(x, y, r, 0x3a3a3a, 0.8).setScrollFactor(0).setDepth(100)
+    .setInteractive(new Phaser.Geom.Circle(r, r, Math.round(r * 1.4)), Phaser.Geom.Circle.Contains);   // พื้นที่แตะใหญ่เท่ากรอบ
+  c.setStrokeStyle(3, 0xffffff, 0.75);
+  const icon = this.add.image(x, y - r * 0.2, 'ic_melee').setDisplaySize(Math.round(r * 1.4), Math.round(r * 1.4)).setScrollFactor(0).setDepth(101).setVisible(false);
+  const t = this.add.text(x, y + r * 0.62, '', { fontSize: Math.max(8, Math.round(r * 0.34)) + 'px', color: '#fff', align: 'center', stroke: '#000', strokeThickness: 3 })
     .setOrigin(0.5).setScrollFactor(0).setDepth(101);
-  const cdText = this.add.text(x, y, '', { fontSize: rs(20) + 'px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
+  const cdText = this.add.text(x, y, '', { fontSize: Math.round(r * 0.75) + 'px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
     .setOrigin(0.5).setScrollFactor(0).setDepth(102);
   let heldTimer = null, longPressed = false;
   c.on('pointerdown', () => {
@@ -82,23 +92,25 @@ Main.prototype.makeSlotBtn = function (x, y, r, idx) {
 // ปุ่มอัลติ: ทอง + ขอบเรืองแสงเมื่อพร้อมใช้ + ตัวเลขคูลดาวน์ + วงจางๆ บอกตำแหน่งตอนยังไม่ปลดล็อก
 Main.prototype.makeUltiBtn = function (x, y, r) {
   const slotRing = this.add.circle(x, y, r).setStrokeStyle(3, 0xffffff, 0.22).setScrollFactor(0).setDepth(99);
-  const glow = this.add.circle(x, y, r + rs(8)).setStrokeStyle(4, 0xffe066, 0.85).setScrollFactor(0).setDepth(99).setVisible(false);
+  const glow = this.add.circle(x, y, r + 8).setStrokeStyle(4, 0xffe066, 0.85).setScrollFactor(0).setDepth(99).setVisible(false);
   this.tweens.add({ targets: glow, alpha: 0.25, scale: 1.12, yoyo: true, repeat: -1, duration: 700 });
-  const c = this.add.circle(x, y, r, 0xd4af37, 0.92).setScrollFactor(0).setDepth(100).setInteractive().setVisible(false);
-  c.setStrokeStyle(rs(5), 0xfff3c4, 0.95);
-  const icon = this.add.image(x, y - rs(4), 'ic_aoe').setScrollFactor(0).setDepth(100.5).setVisible(false);
-  const label = this.add.text(x, y - rs(15), '★ ULTI', { fontSize: Math.max(8, rs(10)) + 'px', color: '#3a2a00', fontStyle: 'bold' })
+  const c = this.add.circle(x, y, r, 0xd4af37, 0.92).setScrollFactor(0).setDepth(100)
+    .setInteractive(new Phaser.Geom.Circle(r, r, Math.round(r * 1.4)), Phaser.Geom.Circle.Contains).setVisible(false);
+  c.setStrokeStyle(3, 0xfff3c4, 0.95);
+  const icon = this.add.image(x, y - r * 0.1, 'ic_aoe').setScrollFactor(0).setDepth(100.5).setVisible(false);
+  const label = this.add.text(x, y - r * 0.5, '★ ULTI', { fontSize: Math.max(8, Math.round(r * 0.32)) + 'px', color: '#3a2a00', fontStyle: 'bold' })
     .setOrigin(0.5).setScrollFactor(0).setDepth(101).setVisible(false);
-  const t = this.add.text(x, y + rs(5), 'ULTI', { fontSize: Math.max(8, rs(11)) + 'px', color: '#3a2a00', fontStyle: 'bold', align: 'center' })
+  const t = this.add.text(x, y + r * 0.15, 'ULTI', { fontSize: Math.max(8, Math.round(r * 0.34)) + 'px', color: '#3a2a00', fontStyle: 'bold', align: 'center' })
     .setOrigin(0.5).setScrollFactor(0).setDepth(101).setVisible(false);
-  const cd = this.add.text(x, y, '', { fontSize: rs(24) + 'px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
+  const cd = this.add.text(x, y, '', { fontSize: Math.round(r * 0.85) + 'px', color: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 })
     .setOrigin(0.5).setScrollFactor(0).setDepth(102).setVisible(false);
   c.on('pointerdown', () => this.useUlti());
   return { c, t, label, cd, glow, slotRing, icon };
 };
 
 Main.prototype.rovPos = function (i) {
-  const a = Phaser.Math.DegToRad(ROV.startDeg + i * ROV.stepDeg);
+  const deg = ROV.angles ? ROV.angles[i] : (ROV.startDeg + i * ROV.stepDeg);
+  const a = Phaser.Math.DegToRad(deg);
   return { x: ROV.ax + ROV.ring * Math.cos(a), y: ROV.ay + ROV.ring * Math.sin(a) };
 };
 
@@ -114,8 +126,16 @@ Main.prototype.addSkillFrames = function () {
       const f = this.add.image(b.c.x, b.c.y, key).setScrollFactor(0).setDepth(FRAME_DEPTH).setDisplaySize(size, size);
       this.skillFrames.push(f);
     };
-    (this.slotBtns || []).forEach(b => mk('frame_skill', b, ROV.skillR, FRAME_SKILL_HOLE));
-    if (this.ultiBtn) mk('frame_ulti', this.ultiBtn, ROV.ultiR, FRAME_ULTI_HOLE);
+    (this.slotBtns || []).forEach(b => {
+      mk('frame_skill', b, ROV.skillR, FRAME_SKILL_HOLE);
+      if (b.t) b.t.setDepth(FRAME_DEPTH + 1);            // ชื่อสกิลอยู่เหนือกรอบ อ่านง่าย
+      if (b.cdText) b.cdText.setDepth(FRAME_DEPTH + 1);  // ตัวเลขคูลดาวน์อยู่เหนือกรอบ
+    });
+    if (this.ultiBtn) {
+      mk('frame_ulti', this.ultiBtn, ROV.ultiR, FRAME_ULTI_HOLE);
+      if (this.ultiBtn.t) this.ultiBtn.t.setDepth(FRAME_DEPTH + 1);
+      if (this.ultiBtn.cd) this.ultiBtn.cd.setDepth(FRAME_DEPTH + 1);
+    }
   };
   if (this.textures.exists('frame_skill') && this.textures.exists('frame_ulti')) { place(); return; }
   if (!this.textures.exists('frame_skill')) this.load.image('frame_skill', FRAME_SKILL_FILE + '?v=' + FRAME_VER);
@@ -127,9 +147,9 @@ Main.prototype.addSkillFrames = function () {
 Main.prototype.setupButtons = function () {
   // แถบโค้งจาง ๆ รองใต้ปุ่มทั้งหมด
   const deco = this.add.graphics().setScrollFactor(0).setDepth(99);
-  deco.lineStyle(rs(92), 0xffffff, 0.07);
+  deco.lineStyle(Math.round(ROV.skillR * 3.2), 0xffffff, 0.07);
   deco.beginPath();
-  deco.arc(ROV.ax, ROV.ay, ROV.ring, Phaser.Math.DegToRad(155), Phaser.Math.DegToRad(305), false);
+  deco.arc(ROV.ax, ROV.ay, ROV.ring, Phaser.Math.DegToRad(ROV.angles[0] - 15), Phaser.Math.DegToRad(ROV.angles[4] + 15), false);
   deco.strokePath();
 
   this.attackBtn = this.makeCircleBtn(ROV.ax, ROV.ay, ROV.attackR, 0xcf3d3d, 'โจมตี', () => this.useBasicAttack());
@@ -238,7 +258,7 @@ Main.prototype.loadSkillIcons = function () {
     _updateSkillButtons.call(this, time);
     const blend = ICON_ADD_BLEND ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL;
     // ปุ่มสกิล: ใช้รูปเดียวกับหน้าต่างสกิล ขนาดเล็กลง (ICON_SIZE) ถ้าไม่มีรูปใช้ไอคอนเดิม
-    const ICON_SIZE = rs(46);
+    const ICON_SIZE = Math.round(ROV.skillR * 1.7);
     (this.slots || []).forEach((sid, i) => {
       const b = this.slotBtns && this.slotBtns[i];
       if (!b || !sid || !SKILL_DEFS[sid]) return;
@@ -246,10 +266,10 @@ Main.prototype.loadSkillIcons = function () {
       if (!this.textures.exists(key)) return;
       const def = SKILL_DEFS[sid];
       const busy = (this.cdEnd['slot' + i] || 0) > time || this.stats.mp < def.mp;
-      b.icon.setTexture(key).setPosition(b.c.x, b.c.y - rs(6))
+      b.icon.setTexture(key).setPosition(b.c.x, b.c.y - ROV.skillR * 0.22)
         .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setBlendMode(blend).setVisible(true);
       fitIcon(b.icon, ICON_SIZE);
-      b.t.setPosition(b.c.x, b.c.y + rs(27)).setFontSize(Math.max(8, rs(10)));
+      b.t.setPosition(b.c.x, b.c.y + ROV.skillR * 0.7).setFontSize(Math.max(8, Math.round(ROV.skillR * 0.34)));
     });
     // ปุ่มโจมตีปกติ: รูปตามอาชีพที่ถืออยู่ตอนนี้
     if (this.attackIcon) {
@@ -272,10 +292,10 @@ Main.prototype.loadSkillIcons = function () {
       const ukey = this.ultiClass && ('sk_ulti_' + this.ultiClass);
       if (ukey && this.textures.exists(ukey)) {
         const busy = (this.cdEnd.ulti || 0) > time || this.stats.mp < ULTI_DEFS[this.ultiClass].mp;
-        u.icon.setTexture(ukey).setPosition(u.c.x, u.c.y - rs(4))
+        u.icon.setTexture(ukey).setPosition(u.c.x, u.c.y - ROV.ultiR * 0.12)
           .setTint(0xffffff).setAlpha(busy ? 0.45 : 1).setBlendMode(blend).setVisible(true);
-        fitIcon(u.icon, rs(54));
-        u.t.setPosition(u.c.x, u.c.y + rs(28)).setFontSize(Math.max(8, rs(9)));
+        fitIcon(u.icon, Math.round(ROV.ultiR * 1.7));
+        u.t.setPosition(u.c.x, u.c.y + ROV.ultiR * 0.7).setFontSize(Math.max(8, Math.round(ROV.ultiR * 0.34)));
         if (u.label) u.label.setVisible(false);
       } else u.icon.setVisible(false);
     }
