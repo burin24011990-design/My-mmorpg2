@@ -3,6 +3,17 @@
 // bigW / bigH = ขนาดปุ่ม "เลือกด่าน" (แนวนอนอยู่กลางจอ | แนวตั้งอยู่ในตารางปุ่ม)
 const TB = { w: 62, h: 58, gap: 6, top: 8, bigW: 88, bigH: 76 };
 
+// ===== ตัวหนังสือบนปุ่ม (ปรับตรงนี้) =====
+// ขนาดตัวอักษร (px) แยกตามชนิดปุ่ม | สีทอง + ขอบน้ำตาลเข้ม มองชัดทุกพื้นหลัง | ปุ่ม "บอท" เปลี่ยนสีตามสถานะ (เปิด = เขียว, ปิด = ส้มอ่อน)
+// ข้อความยาวเกินปุ่มจะถูกย่อให้พอดีอัตโนมัติ
+const TB_LABEL = {
+  sizeCompact: 12, sizeNormal: 14, sizeBig: 18,
+  color: '#ffe28a', colorBig: '#fff0b0', colorOn: '#9dff9d', colorOff: '#ffb59a',
+  stroke: '#2a1204',
+};
+// ตัวหนังสือบนปุ่ม DOM (เมือง / CH / สังคม / เสียง / จุติ ฯลฯ ที่ใช้คลาส .hb-t) ขยายตัวอักษร (เท่า) | 1 = ไม่ขยาย
+const TB_DOM_LABEL_SCALE = 1.3;
+
 // ===== แนวตั้ง: ปุ่มทุกอัน (ทั้งปุ่มในแคนวาสและปุ่ม DOM เมือง/CH/สังคม/เสียง/จุติ) จัดเป็นตารางเดียวกัน 7 คอลัมน์ x 2 แถว (ยกเว้นปุ่มเลือกด่าน) =====
 // อยู่ขวาของกรอบ HP/MP (ซ้ายบน) ไม่ทับกัน | ไฟล์ town.js / social.js / music.js / portraitTop.js ดึงตำแหน่งจากที่นี่
 // ปรับขนาด/ระยะ: w, h, gap, top (ระยะจากขอบบน), right (ระยะจากขอบขวา)
@@ -137,11 +148,33 @@ Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick
   };
   draw(false);
   const c = this.add.rectangle(cx, cy, w, h, color, 0.01).setScrollFactor(0).setDepth(99).setInteractive();
-  const isz = compact ? Math.round(h * 0.54) : (big ? 48 : 34);
-  const icon = this.add.image(cx, cy - (compact ? Math.round(h * 0.14) : (big ? 11 : 8)), iconKey).setDisplaySize(isz, isz).setScrollFactor(0).setDepth(101);
-  const t = this.add.text(cx, y + h - (compact ? 8 : (big ? 12 : 10)), label, {
-    fontFamily: 'Mitr, sans-serif', fontSize: compact ? '9px' : (big ? '15px' : '11px'), color: '#fff', stroke: '#000', strokeThickness: compact ? 2 : 3
+  const isz = compact ? Math.round(h * 0.5) : (big ? 48 : 34);
+  const icon = this.add.image(cx, cy - (compact ? Math.round(h * 0.17) : (big ? 12 : 9)), iconKey).setDisplaySize(isz, isz).setScrollFactor(0).setDepth(101);
+
+  // ตัวหนังสือบนปุ่ม: ใหญ่ ชัด สีทอง ขอบเข้ม | ปุ่มบอทเปลี่ยนสีตามสถานะ (ดูจากคำว่า เปิด/ปิด)
+  const isBot = /บอท/.test(label);
+  const colorOf = (txt) => isBot ? (/เปิด/.test(txt) ? TB_LABEL.colorOn : TB_LABEL.colorOff) : (big ? TB_LABEL.colorBig : TB_LABEL.color);
+  const fsz = compact ? TB_LABEL.sizeCompact : (big ? TB_LABEL.sizeBig : TB_LABEL.sizeNormal);
+  const t = this.add.text(cx, y + h - (compact ? 9 : (big ? 14 : 12)), label, {
+    fontFamily: 'Mitr, sans-serif', fontSize: fsz + 'px', fontStyle: 'bold',
+    color: colorOf(label), stroke: TB_LABEL.stroke, strokeThickness: compact ? 3 : 4
   }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
+  t.setShadow(0, 1, '#000000', 0, true, true);
+  t.setResolution(2);
+  const fitLabel = () => {   // ข้อความยาวเกินปุ่ม = ย่อให้พอดี
+    t.setScale(1);
+    const maxW = w - 4;
+    if (t.width > maxW) t.setScale(maxW / t.width);
+  };
+  const baseSetText = t.setText.bind(t);
+  t.setText = function (v) {   // ไฟล์อื่นเปลี่ยนข้อความปุ่มภายหลัง (เช่น บอท: เปิด/ปิด) ให้สีและขนาดตามไปด้วย
+    baseSetText(v);
+    t.setColor(colorOf(String(v)));
+    fitLabel();
+    return t;
+  };
+  fitLabel();
+
   c.on('pointerdown', () => { draw(true); onClick(); });
   c.on('pointerup', () => draw(false));
   c.on('pointerout', () => draw(false));
@@ -164,3 +197,14 @@ Main.prototype.setupTopBar = function () {
     this[it[4]] = this.makeTopBtn(s.x, s.y, s.w, s.h, it[0], it[1], it[2], it[3], s.big);
   });
 };
+
+// ตัวหนังสือบนปุ่ม DOM (.hb-t จาก town.js และไฟล์ที่ใช้รูปแบบเดียวกัน): สีทอง ขอบเข้ม ขยายขึ้น
+(function () {
+  if (document.getElementById('tb-label-style')) return;
+  const st = document.createElement('style');
+  st.id = 'tb-label-style';
+  const sh = '-1px 0 #2a1204,1px 0 #2a1204,0 -1px #2a1204,0 1px #2a1204,0 2px 3px #000';
+  st.textContent = '.hb-t{color:#ffe28a !important;font-weight:600 !important;text-shadow:' + sh + ' !important;' +
+    (TB_DOM_LABEL_SCALE !== 1 ? 'transform:scale(' + TB_DOM_LABEL_SCALE + ');transform-origin:50% 40%;' : '') + '}';
+  document.head.appendChild(st);
+})();
