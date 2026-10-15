@@ -1,4 +1,4 @@
-// ===== ตัวเลขดาเมจสวย ๆ (v4 — ลดแลค) =====
+// ===== ตัวเลขดาเมจสวย ๆ (v5 — ปรับขนาดได้ด้วย DAMAGE_SIZE_MUL) =====
 // showDamage(scene, x, y, จำนวน, ชนิด, opts)
 // ชนิด: 'normal' | 'crit' | 'player' (ผู้เล่นโดนตี) | 'heal' | 'regen' | 'skill'
 // opts (ไม่ใส่ก็ได้):
@@ -9,8 +9,13 @@
 //   (จะมีตัวเลขตัวอย่างเด้งขึ้นรอบตัวละครทุก 3 วินาที)
 //
 // v4 แก้จากเดิม: resolution 2 -> 1, ตัดเงา blur, จำกัดจำนวนตัวเลขบนจอ, ลดแรงสั่นจอตอนคริ
+// v5: เพิ่ม DAMAGE_SIZE_MUL (ตัวคูณขนาดตัวเลขดาเมจ/คริติคอล/ฮีล รวมดาวระเบิดและระยะลอย) + MIN_FONT (ขนาดตัวอักษรขั้นต่ำ)
 (function () {
   var SCALE = 1.0;   // ตัวคูณขนาดทั้งหมด (ยังเล็กไป -> 1.3 / 1.5)
+
+  // ===== ปรับขนาดตัวเลข (ปรับตรงนี้) =====
+  var DAMAGE_SIZE_MUL = 0.2;   // 1 = เดิม | 0.2 = ลดลง 80% | 0.5 = ครึ่งหนึ่ง | 0.8 = เหลือ 80%
+  var MIN_FONT = 12;           // ขนาดตัวอักษรขั้นต่ำ (px) กันตัวเลขเล็กจนอ่านไม่ออก (ตั้ง 1 = ไม่จำกัด)
 
   // ===== ตั้งค่าประสิทธิภาพ (ปรับตรงนี้) =====
   var TEXT_RES = 1;          // ความคมของตัวเลข: 1 = เร็วสุด | 1.5 = คมขึ้น หนักขึ้น | 2 = เดิม (หนักมาก)
@@ -78,6 +83,8 @@
   // ดาวระเบิดหลังตัวเลขคริติคอล (สไตล์ Ragnarok): กรอบนอกสีแดง + ดาวในสีส้ม/สีสกิล
   function drawCritStar(scene, R, innerHex) {
     var g = scene.add.graphics();
+    var line1 = Math.max(2, Math.round(5 * Math.max(DAMAGE_SIZE_MUL, 0.4)));   // ความหนาขอบดาวไม่บางเกินไปเมื่อย่อขนาด
+    var line2 = Math.max(1, Math.round(3 * Math.max(DAMAGE_SIZE_MUL, 0.4)));
     function star(radius, spikes, innerRatio, jitter) {
       var pts = [];
       for (var i = 0; i < spikes * 2; i++) {
@@ -89,11 +96,11 @@
     }
     // กรอบนอก (แดงเข้ม ขอบดำ)
     var outer = star(R, 12, 0.52, 0.12);
-    g.fillStyle(0xd80d0d, 0.95); g.lineStyle(5, 0x4a0000, 1);
+    g.fillStyle(0xd80d0d, 0.95); g.lineStyle(line1, 0x4a0000, 1);
     g.fillPoints(outer, true); g.strokePoints(outer, true);
     // ดาวใน (ส้ม/สีสกิล)
     var inner = star(R * 0.74, 12, 0.55, 0.06);
-    g.fillStyle(toInt(innerHex), 0.95); g.lineStyle(3, 0xa01010, 1);
+    g.fillStyle(toInt(innerHex), 0.95); g.lineStyle(line2, 0xa01010, 1);
     g.fillPoints(inner, true); g.strokePoints(inner, true);
     return g;
   }
@@ -117,7 +124,8 @@
     if (color && !isCrit) { fill = color; stroke = shade(color, 0.28); glow = color; }   // ดาเมจสกิล: สีสกิล
     if (isCrit && color) { glow = color; }
 
-    var size = Math.round(s.size * SCALE);
+    var size = Math.max(MIN_FONT, Math.round(s.size * SCALE * DAMAGE_SIZE_MUL));
+    var rise = Math.max(24, Math.round(s.rise * Math.max(DAMAGE_SIZE_MUL, 0.4)));   // ระยะลอยขึ้น ไม่สั้นจนตัวเลขทับกัน
     var txt = (kind === 'heal' || kind === 'regen' ? '+' : '') + Math.round(amount);
     if (isCrit) txt = txt + '!';
 
@@ -138,9 +146,9 @@
       fontStyle: '700',
       color: fill,
       stroke: stroke,
-      strokeThickness: Math.max(5, Math.round(size / 4.2))
+      strokeThickness: Math.max(2, Math.round(size / 4.2))
     }).setOrigin(0.5);
-    t.setShadow(0, 3, glow, 0, true, true);   // blur = 0 (เดิม 10 / 4 ซึ่งหนักบนมือถือ) เหลือแค่เงาเลื่อน
+    t.setShadow(0, 2, glow, 0, true, true);   // blur = 0 (เดิม 10 / 4 ซึ่งหนักบนมือถือ) เหลือแค่เงาเลื่อน
     t.setResolution(TEXT_RES);
     cont.add(t);
 
@@ -155,7 +163,7 @@
         onComplete: function () { if (cont.active) scene.tweens.add({ targets: cont, scale: 1.25, duration: 120 }); }
       });
       scene.tweens.add({ targets: star, alpha: 0, scale: 1.35, delay: 450, duration: 350 });
-      scene.tweens.add({ targets: cont, y: cont.y - s.rise, duration: 1200, ease: 'Cubic.easeOut' });
+      scene.tweens.add({ targets: cont, y: cont.y - rise, duration: 1200, ease: 'Cubic.easeOut' });
       scene.tweens.add({ targets: cont, alpha: 0, delay: 850, duration: 400, onComplete: function () { cont.destroy(); } });
     } else {
       scene.tweens.add({
@@ -163,7 +171,7 @@
         onComplete: function () { if (cont.active) scene.tweens.add({ targets: cont, scale: 1, duration: 100 }); }
       });
       scene.tweens.add({
-        targets: cont, y: cont.y - s.rise, x: cont.x + Phaser.Math.Between(-10, 10),
+        targets: cont, y: cont.y - rise, x: cont.x + Phaser.Math.Between(-10, 10),
         duration: 900, ease: 'Cubic.easeOut'
       });
       scene.tweens.add({ targets: cont, alpha: 0, delay: 550, duration: 400, onComplete: function () { cont.destroy(); } });
@@ -174,10 +182,10 @@
   // ===== ดักตัวเลขฮีล/รีเจนที่ไฟล์อื่นสร้างเอง (ข้อความรูปแบบ "+25") แล้วปรับให้ใหญ่ชัด =====
   // ถ้าไม่ต้องการ ตั้ง RESTYLE_PLUS_TEXT = false
   var RESTYLE_PLUS_TEXT = true;
-  var HEAL_SIZE = 40, HEAL_COLOR = '#8dffa5', HEAL_STROKE = '#06401a';
+  var HEAL_SIZE = Math.max(MIN_FONT, Math.round(40 * DAMAGE_SIZE_MUL)), HEAL_COLOR = '#8dffa5', HEAL_STROKE = '#06401a';
 
   // ชื่อตัวละครของเรา (ข้อความที่ตรงกับชื่อเราเป๊ะๆ จะถูกทำให้ใหญ่ ชัด มีขอบดำ)
-  var PLAYER_NAME_SIZE = 20;       // ขนาดชื่อตัวละคร (px) — ปรับตรงนี้
+  var PLAYER_NAME_SIZE = 20;       // ขนาดชื่อตัวละคร (px) — ปรับตรงนี้ (ไม่ถูกลดตาม DAMAGE_SIZE_MUL)
   var PLAYER_NAME_STROKE = 6;      // ความหนาขอบดำ
   var ownNames = null;
   function getOwnNames() {
@@ -216,8 +224,8 @@
             t.setFontSize(HEAL_SIZE);
             t.setFontStyle('700');
             t.setColor(HEAL_COLOR);
-            t.setStroke(HEAL_STROKE, 7);
-            t.setShadow(0, 3, '#000000', 0, true, true);
+            t.setStroke(HEAL_STROKE, Math.max(2, Math.round(HEAL_SIZE / 5.5)));
+            t.setShadow(0, 2, '#000000', 0, true, true);
             t.setResolution(TEXT_RES);
           } else if (!(style && style._fxOwn) && isOwnName(text)) {
             // ชื่อตัวละครของเรา: ใหญ่ขึ้น ขอบดำหนา เงา คมชัด (คงสีเดิมของเกมไว้)
