@@ -1261,6 +1261,40 @@
     }
   }
 
+  // ================= กัน "จัดกระเป๋า" ทำวัตถุดิบเพี้ยน =================
+  // sortBag เดิมไม่รู้จักไอเทมชนิด material (เคยรวมวัตถุดิบทุกชนิดเป็นกองเดียว) จึงถอดวัตถุดิบออกก่อนเรียง
+  // แล้วใส่กลับตามชนิดเดิม (รวมกองซ้ำให้ด้วย) ติดตั้งหลังโหลดทุกสคริปต์ครบ เผื่อ sortBag ถูกประกาศในไฟล์ที่โหลดทีหลัง
+  function installSortFix() {
+    const o = P.sortBag;
+    if (typeof o !== 'function' || o._houseWrapped) return;
+    P.sortBag = function () {
+      const tot = {};
+      for (let i = 0; i < this.bag.length; i++) {
+        const s = this.bag[i];
+        if (s && s.kind === 'material' && MAT_DEFS[s.mid]) {
+          tot[s.mid] = (tot[s.mid] || 0) + s.count;
+          this.bag[i] = null;
+        }
+      }
+      let r;
+      try { r = o.apply(this, arguments); }
+      finally {
+        const self = this;
+        Object.keys(MAT_DEFS).forEach(function (mid) {
+          if (tot[mid]) {
+            const left = self.addMat(mid, tot[mid]);
+            if (left > 0) console.warn('sortBag: วัตถุดิบเกินช่อง', mid, left);
+          }
+        });
+        if (this.saveSoon) this.saveSoon();
+      }
+      return r;
+    };
+    P.sortBag._houseWrapped = true;
+  }
+  if (document.readyState === 'complete') installSortFix();
+  else window.addEventListener('load', installSortFix);
+
   // ================= เชื่อมกับ town.js =================
   TOWN_NPCS.push({ id: 'house', name: 'ประตูบ้าน', title: 'บ้านของฉัน', x: 900, y: 1400, sprite: 'npc_house', color: 0x8bc34a, icon: '🏠' });
   TOWN_TEXT.house = 'บ้านของคุณ';
