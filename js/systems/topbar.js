@@ -161,6 +161,7 @@ Main.prototype.makeTopBtn = function (x, y, w, h, iconKey, label, color, onClick
   }).setOrigin(0.5).setScrollFactor(0).setDepth(101);
   t.setShadow(0, 1, '#000000', 0, true, true);
   t.setResolution(2);
+  t._tbOwn = true;   // ข้อความนี้จัดสไตล์เองแล้ว ให้ตัวสแกนด้านล่างข้ามไป
   const fitLabel = () => {   // ข้อความยาวเกินปุ่ม = ย่อให้พอดี
     t.setScale(1);
     const maxW = w - 4;
@@ -207,4 +208,58 @@ Main.prototype.setupTopBar = function () {
   st.textContent = '.hb-t{color:#ffe28a !important;font-weight:600 !important;text-shadow:' + sh + ' !important;' +
     (TB_DOM_LABEL_SCALE !== 1 ? 'transform:scale(' + TB_DOM_LABEL_SCALE + ');transform-origin:50% 40%;' : '') + '}';
   document.head.appendChild(st);
+})();
+
+// ===== จัดสไตล์ตัวหนังสือปุ่มแถบบนที่ไฟล์อื่นวาดเอง (shop.js / hudLayout.js ฯลฯ) =====
+// ปุ่มแถวบนในเกมจริงอาจไม่ได้สร้างจาก makeTopBtn ด้านบน จึงสแกนหาข้อความตามชื่อปุ่มแล้วปรับให้ใหญ่/สีทอง/ขอบเข้มเหมือนกัน
+// รวมข้อความชื่อด่านใต้มินิแมปและข้อความสถานะออนไลน์ | ปรับขนาด/สีที่ TB_LABEL ด้านบน
+(function () {
+  const NAMES = ['กระเป๋า', 'สกิล', 'บอท: ปิด', 'บอท: เปิด', 'บอท', 'ตั้งค่าบอท', 'อุปกรณ์', 'สเตตัส', 'ร้านค้า', 'ร้านแคช', 'เลือกด่าน'];
+  const FONT = 'Mitr, sans-serif';
+
+  function labelStyle(o, size, color, stroke, maxW) {
+    const sz = size + 'px';
+    if (o._tbSz !== sz) {
+      o.setFontFamily(FONT).setFontSize(sz).setFontStyle('bold').setStroke(TB_LABEL.stroke, stroke);
+      o.setShadow(0, 1, '#000000', 0, true, true);
+      if (o.setResolution) o.setResolution(2);
+      o._tbSz = sz;
+    }
+    if (o._tbCol !== color) { o.setColor(color); o._tbCol = color; }
+    if (maxW) {
+      o.setScale(1);
+      if (o.width > maxW) o.setScale(maxW / o.width);
+    }
+  }
+
+  function styleAll(sc) {
+    const list = sc.children && sc.children.list;
+    if (!list) return;
+    const portrait = tbIsPortrait();
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (!o || o.type !== 'Text' || !o.scene || o._tbOwn || o.scrollFactorX !== 0 || o.y > 300) continue;
+      const txt = String(o.text || '').trim();
+      if (NAMES.indexOf(txt) < 0) continue;
+      const big = txt === 'เลือกด่าน';
+      const isBot = txt.indexOf('บอท') === 0;
+      const size = portrait ? (big ? TB_LABEL.sizeBig - 2 : TB_LABEL.sizeCompact) : (big ? TB_LABEL.sizeBig : TB_LABEL.sizeNormal);
+      const maxW = portrait ? (big ? TBP_STAGE.w - 4 : TBP.w - 3) : (big ? TB.bigW - 4 : TB.w - 4);
+      const color = isBot ? (/เปิด/.test(txt) ? TB_LABEL.colorOn : TB_LABEL.colorOff) : (big ? TB_LABEL.colorBig : TB_LABEL.color);
+      labelStyle(o, size, color, portrait ? 3 : 4, maxW);
+    }
+    // ชื่อด่านใต้มินิแมป (เดิมเล็กและสีจาง)
+    if (sc.stageText && sc.stageText.scene) labelStyle(sc.stageText, 15, '#d4ffbe', 4, 0);
+    // ข้อความสถานะออนไลน์มุมล่างขวา
+    if (sc.statusText && sc.statusText.scene) labelStyle(sc.statusText, 13, '#ffe9a0', 3, 0);
+  }
+
+  const P = Main.prototype;
+  const oUpd = P.updateHud;
+  let frame = 0;
+  P.updateHud = function () {
+    const r = typeof oUpd === 'function' ? oUpd.apply(this, arguments) : undefined;
+    if ((frame++ % 20) === 0) { try { styleAll(this); } catch (e) { /* ไม่ให้ HUD ทำเกมค้าง */ } }
+    return r;
+  };
 })();
