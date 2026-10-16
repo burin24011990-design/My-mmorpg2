@@ -1,6 +1,6 @@
 // ===== หน้าต่างกระเป๋า / อุปกรณ์ (HTML ซ้อนบนแคนวาส) =====
 // แทนที่ openInventory เดิม แต่ใช้ข้อมูลและฟังก์ชันเดิมทั้งหมด
-// (this.bag, this.equipment, equipItem, unequipSlot ...)
+// (this.bag, this.equipment, equipItem, unequipSlot, mergeSingleItem, mergeAllInBag ...)
 // รองรับไอเทม "หนังสือสกิล" (kind: 'skillbook') ซ้อนได้ กดใช้เพื่อเรียนรู้/อัปสกิล
 // รองรับ "หินตีบวก" (kind: 'stone'), ตีบวก และย่อยอุปกรณ์ (ดู enhance.js)
 // ปุ่ม "ย่อยทั้งหมดตามสี" (ย่อยสีขาวทั้งหมด / สีฟ้าทั้งหมด ...) กด 2 ครั้งเพื่อยืนยัน
@@ -9,8 +9,9 @@
 //      รายละเอียดไอเทมเล็กลงและแคบลง | หัวเรื่อง+แท็บอยู่แถวเดียว | ปุ่มเปลี่ยนหน้ารวมอยู่ในแถบปุ่ม
 // v31: จอแนวตั้ง: หน้าต่างกว้างเกือบเต็มจอ ไม่ย่อ, ช่องไอเทมเป็นสี่เหลี่ยมจัตุรัส, รายละเอียดย้ายลงล่างตาราง
 //      (แนวนอนทำงานเหมือนเดิม) ปรับได้ที่ค่า PORTRAIT_* ด้านล่าง
-// v33: ตัดระบบรวมดาว/เลือกหลายชิ้นออก -> ใช้ช่องการ์ดแทน (cards.js: แตะช่อง ● ○ ในรายละเอียดอุปกรณ์เพื่อใส่/ถอดการ์ด)
-// ต้องโหลดหลัง fixes.js และก่อน main.js (cards.js ต้องโหลดก่อนไฟล์นี้หรือหลังก็ได้ เพราะเรียกผ่าน window.CardUI ตอนวาดเท่านั้น)
+// v32: รองรับวัตถุดิบระบบบ้าน (kind: 'material' ปลา/เหยื่อ/ผัก/อาหาร ดู houseData.js)
+//      แผงรายละเอียดของวัตถุดิบแยกเอง (ไม่ขึ้นปุ่มสวมใส่/รวมดาว/ย่อย) + ปุ่ม "กิน" สำหรับอาหาร + โชว์จำนวน xN บนช่อง
+// ต้องโหลดหลัง fixes.js และก่อน main.js
 (function () {
   // ใส่ไฟล์รูปจริงของไอคอนที่นี่ได้ ถ้าไม่ใส่จะใช้รูปที่เกมวาดไว้ตามเดิม
   // ตัวอย่าง: icon_sword: 'assets/icons/sword.png'
@@ -39,7 +40,7 @@
   const DISMANTLE_SKIP_PLUS = true;
 
   const iconCache = {};
-  const state = { tab: 'bag', page: 0, sel: null, msg: '', qty: 1, confirmTier: null };
+  const state = { tab: 'bag', page: 0, sel: null, msg: '', qty: 1, multi: false, ticks: new Set(), confirmTier: null };
   let root = null;
   let scene = null;
   let lastSig = '';
@@ -48,12 +49,24 @@
 
   // ---- ตัวช่วยรองรับหนังสือสกิล (ไม่ต้องแก้ items.js) ----
   const isBook = (it) => !!it && it.kind === 'skillbook';
-  const isCardKind = (it) => !!it && (it.kind === 'card' || it.kind === 'cardkey');   // การ์ด / กุญแจถอดการ์ด (cards.js)
   const itemIcon = (it) => isBook(it) ? itemImgKey('skillbook', skillIconKey(SKILL_DEFS[it.sid].type)) : iconKeyForItem(it);
   const itemColor = (it) => isBook(it)
     ? ((CLASSES[SKILL_DEFS[it.sid].class] || {}).color || 0xffffff)
     : rarityColor(it);
   const itemName = (it) => isBook(it) ? '📕 ' + SKILL_DEFS[it.sid].name : itemLabel(it);
+
+  // ---- ตัวช่วยรองรับวัตถุดิบระบบบ้าน (houseData.js / house.js) ----
+  const isMat = (it) => !!it && it.kind === 'material';
+  const matDef = (it) => (typeof MAT_DEFS !== 'undefined' && MAT_DEFS[it.mid]) || { name: String(it.mid), icon: '❔', cat: 'mat', color: 0x9a9a9a };
+  const MAT_CAT_LABEL = { bait: 'เหยื่อตกปลา', fish: 'ปลา', seed: 'เมล็ดพันธุ์', veg: 'ผัก', mat: 'วัตถุดิบจากมอนสเตอร์', food: 'อาหาร' };
+  const MAT_CAT_NOTE = {
+    bait: 'ใช้ตอนตกปลาที่บ้านเพื่อให้ได้ปลาหายากง่ายขึ้น',
+    fish: 'วัตถุดิบทำอาหาร ได้จากการตกปลาที่บ้าน',
+    seed: 'ใช้ปลูกในแปลงผักที่บ้าน',
+    veg: 'วัตถุดิบทำอาหาร ได้จากแปลงผักที่บ้าน',
+    mat: 'วัตถุดิบทำอาหาร ได้จากการล่ามอนสเตอร์',
+    food: 'กินเพื่อฟื้นพลังชีวิต',
+  };
 
   // แปลงเท็กซ์เจอร์ของ Phaser เป็นรูปที่ HTML ใช้ได้
   function iconSrc(key) {
@@ -153,6 +166,8 @@
       B + '.cell .lv{position:absolute!important;left:2px!important;bottom:1px!important;right:auto!important;top:auto!important;font-size:clamp(9px,26cqh,15px)!important;font-weight:700!important;line-height:1!important;color:#ffd45c!important;text-shadow:0 0 2px #000,0 0 2px #000,0 0 3px #000!important}',
       B + '.cell .pl{position:absolute;top:1px;left:2px;font-size:clamp(9px,26cqh,15px);line-height:1;color:#ff9a3c;font-weight:700;text-shadow:0 0 2px #000,0 0 2px #000}',
       B + '.cell .st{position:absolute;top:1px;right:2px;font-size:clamp(8px,22cqh,13px);line-height:1;color:#8fd0ff;text-shadow:0 0 2px #000,0 0 2px #000}',
+      B + '.cell .ck{position:absolute;right:2px;bottom:1px;font-size:clamp(10px,28cqh,16px);line-height:1;color:#5ee08a;background:rgba(0,0,0,.65);border-radius:3px;padding:0 2px}',
+      B + '.cell.tick{box-shadow:0 0 0 2px #5ee08a}',
 
       // ---- แถบปุ่มใต้ช่องไอเทม (รวมปุ่มเปลี่ยนหน้า) ----
       B + '.bag-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:4px;flex:0 0 auto}',
@@ -258,7 +273,7 @@
     const it = selBagItem();
     if (!it) return 1;
     if (it.kind === 'box' || it.kind === 'optstone') return Math.max(1, it.count || 1);
-    if (isCardKind(it)) return Math.max(1, it.count || 1);
+    if (it.kind === 'equip') return Math.max(1, Math.floor(scene.countMatches(state.sel.id) / 2));
     return 1;
   }
   // อ่านจำนวนที่พิมพ์ในช่องมาเก็บใน state.qty
@@ -307,12 +322,17 @@
   }
 
   // แถบปุ่มใต้ช่องไอเทม (รวมปุ่มเปลี่ยนหน้าไว้ในแถบเดียวกัน ประหยัดที่แนวตั้ง)
-  // v33: ตัดปุ่มรวมดาว/เลือกหลายชิ้นออกทั้งหมด (ระบบรวมดาวถูกแทนด้วยช่องการ์ด ดู cards.js)
   function toolbarHTML() {
+    const mergeLabel = state.multi
+      ? '🔗 รวมที่ติ๊ก (' + state.ticks.size + ')'
+      : '🔗 รวมที่เลือก <span class="ql">×' + state.qty + '</span>';
     let h = '<div class="bag-tools">'
       + '<span class="qty"><button data-act="qty" data-id="-1">−</button>'
       + '<input class="qty-in" type="text" inputmode="numeric" pattern="[0-9]*" value="' + state.qty + '" aria-label="จำนวน">'
       + '<button data-act="qty" data-id="1">+</button><button data-act="qty" data-id="max">MAX</button></span>'
+      + '<button data-act="multi" class="' + (state.multi ? 'on' : '') + '">' + (state.multi ? '☑' : '☐') + ' เลือกหลายชิ้น</button>'
+      + '<button data-act="merge-all">🔗 รวมทั้งหมด</button>'
+      + '<button data-act="merge-sel">' + mergeLabel + '</button>'
       + '<button data-act="sort-bag">🧹 จัดกระเป๋า</button>'
       + '<span class="bw-pg">'
       + '<button data-act="page" data-id="-1">◀</button>'
@@ -334,22 +354,19 @@
     return h + '</div>';
   }
 
-
   // ---------- ส่วนแสดงผล ----------
-  // sk = จุดช่องการ์ดของอุปกรณ์ (● ใส่แล้ว ○ ว่าง) มาจาก cards.js (CardUI.pips)
-  function cellHTML(it, act, id, selected) {
+  function cellHTML(it, act, id, selected, ticked) {
     if (!it) return '<button class="cell"></button>';
     const lv = it.kind === 'equip' ? 'Lv' + it.level : '';
     const pl = it.kind === 'equip' && it.plus > 0 ? '+' + it.plus : '';
     const st = it.kind === 'equip' && it.star > 0 ? it.star + '★' : '';
-    const sk = it.kind === 'equip' && window.CardUI ? window.CardUI.pips(it) : '';
-    const stackable = it.kind === 'box' || it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone' || isCardKind(it) || isBook(it);
+    const stackable = it.kind === 'box' || it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone' || isBook(it) || isMat(it);
     const cnt = stackable && it.count > 1 ? 'x' + it.count : '';
-    return '<button class="cell has' + (selected ? ' sel' : '') + '" style="--c:' + hex(itemColor(it)) + '" data-act="' + act + '" data-id="' + id + '">'
+    return '<button class="cell has' + (selected ? ' sel' : '') + (ticked ? ' tick' : '') + '" style="--c:' + hex(itemColor(it)) + '" data-act="' + act + '" data-id="' + id + '">'
       + '<img src="' + iconSrc(itemIcon(it)) + '" alt="">'
+      + (ticked ? '<span class="ck">✔</span>' : '')
       + (pl ? '<span class="pl">' + pl + '</span>' : '')
       + (st ? '<span class="st">' + st + '</span>' : '')
-      + (sk ? '<span class="sk">' + sk + '</span>' : '')
       + (lv ? '<span class="lv">' + lv + '</span>' : '')
       + (cnt ? '<span class="cnt">' + cnt + '</span>' : '')
       + '</button>';
@@ -362,7 +379,7 @@
     for (let i = 0; i < PAGE_SIZE; i++) {
       const idx = state.page * PAGE_SIZE + i;
       const sel = state.sel && state.sel.src === 'bag' && state.sel.id === idx;
-      h += cellHTML(s.bag[idx], 'sel-bag', idx, sel);
+      h += cellHTML(s.bag[idx], 'sel-bag', idx, sel, state.multi && state.ticks.has(idx));
     }
     h += '</div>';
     h += toolbarHTML();
@@ -379,18 +396,15 @@
       const name = SLOT_LABELS[baseSlotOf(key)] + (key === 'ring1' ? ' (ซ้าย)' : key === 'ring2' ? ' (ขวา)' : '');
       const sel = state.sel && state.sel.src === 'equip' && state.sel.id === key;
       const lv = it ? 'Lv' + it.level + (it.plus > 0 ? ' +' + it.plus : '') + (it.star > 0 ? ' ' + it.star + '★' : '') : '';
-      const sk = it && window.CardUI ? window.CardUI.pips(it) : '';
       h += '<button class="cell' + (it ? ' has' : '') + (sel ? ' sel' : '') + '"'
         + (it ? ' style="--c:' + hex(itemColor(it)) + '"' : '') + ' data-act="sel-equip" data-id="' + key + '">'
         + '<span class="slot-name">' + name + '</span>'
         + '<img src="' + iconSrc(it ? itemIcon(it) : emptyIcons[key]) + '" alt="">'
-        + (sk ? '<span class="sk">' + sk + '</span>' : '')
         + (lv ? '<span class="lv">' + lv + '</span>' : '')
         + '</button>';
     });
     return h + '</div>';
   }
-
 
   // รายละเอียด + ปุ่มใช้ของหนังสือสกิล
   function bookDetailHTML(it) {
@@ -426,11 +440,28 @@
     return h;
   }
 
+  // รายละเอียดวัตถุดิบระบบบ้าน (ปลา เหยื่อ เมล็ด ผัก ชิ้นส่วนมอน อาหาร)
+  function materialDetailHTML(it) {
+    const d = matDef(it);
+    const total = scene.countMat ? scene.countMat(it.mid) : (it.count || 1);
+    let h = '<div class="d-top" style="--c:' + hex(itemColor(it)) + '">'
+      + '<div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
+      + '<div><div class="d-name">' + d.icon + ' ' + d.name + '</div>'
+      + '<div class="d-type">' + (MAT_CAT_LABEL[d.cat] || 'วัตถุดิบ') + '</div></div></div>'
+      + '<div class="d-note">' + (MAT_CAT_NOTE[d.cat] || '') + '</div>'
+      + '<div class="d-row"><span>รวมในกระเป๋า</span><span>x' + total + '</span></div>';
+    if (d.cat === 'food') {
+      h += '<div class="d-row"><span>ฟื้น HP</span><span>+' + (d.heal || 0) + '</span></div>'
+        + '<div class="d-actions"><button class="btn ok" data-act="use-mat">🍴 กิน</button></div>';
+    }
+    return h;
+  }
+
   // รายละเอียดหินตีบวก
   function stoneDetailHTML(it) {
     return '<div class="d-top" style="--c:#6fc3ff"><div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
       + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">วัสดุตีบวก</div></div></div>'
-      + '<div class="d-note">ได้จากการย่อยอุปกรณ์ ใช้ตีบวก (เลือกอุปกรณ์แล้วกด 🔨 ตีบวก)</div>'
+      + '<div class="d-note">ได้จากการย่อยอุปกรณ์ ใช้ตีบวกที่ช่างตีเหล็กในเมือง</div>'
       + '<div class="d-row"><span>รวมในกระเป๋า</span><span>' + scene.countStones() + ' ก้อน</span></div>';
   }
 
@@ -438,7 +469,7 @@
   function cleanStoneDetailHTML(it) {
     return '<div class="d-top" style="--c:#dfe6ee"><div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
       + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">วัสดุลบออฟชั่น</div></div></div>'
-      + '<div class="d-note">เลือกอุปกรณ์ที่มีออฟชั่น แล้วกดปุ่ม 🧽 ลบออฟ ในหน้ารายละเอียดอุปกรณ์ ออฟทั้งหมดจะถูกลบ ทำให้รวมดาวได้อีกครั้ง (ถ้ายังไม่ตีบวก)</div>'
+      + '<div class="d-note">นำไปลบออฟที่ช่างตีเหล็กในเมือง (เลือกอุปกรณ์ที่มีออฟชั่นแล้วกด 🧽 ลบออฟ) ออฟทั้งหมดจะถูกลบ ทำให้รวมดาวได้อีกครั้ง (ถ้ายังไม่ตีบวก)</div>'
       + '<div class="d-row"><span>รวมในกระเป๋า</span><span>' + scene.bag.reduce((n, s) => n + (s && s.kind === 'cleanstone' ? s.count : 0), 0) + ' เม็ด</span></div>';
   }
 
@@ -449,7 +480,7 @@
     const q = Math.min(state.qty, it.count || 1);
     return '<div class="d-top" style="--c:' + hex(c.color) + '"><div class="d-icon"><img src="' + iconSrc(itemIcon(it)) + '" alt=""></div>'
       + '<div><div class="d-name">' + itemName(it) + '</div><div class="d-type">หินสุ่มออฟชั่น (สี' + c.name + ')</div></div></div>'
-      + '<div class="d-note">เลือกอุปกรณ์ แล้วกดปุ่ม 💎 ฝัง ในหน้ารายละเอียดอุปกรณ์ จะสุ่มได้ 1-2 ออฟ สุ่มซ้ำได้ไม่จำกัด (ออฟเดิมจะถูกแทนที่) ถ้าอยากลบออฟใช้หินลบออฟ</div>'
+      + '<div class="d-note">นำไปฝังที่ช่างตีเหล็กในเมือง (เลือกอุปกรณ์แล้วกด 💎 ฝัง) จะสุ่มได้ 1-2 ออฟ สุ่มซ้ำได้ไม่จำกัด (ออฟเดิมจะถูกแทนที่) ถ้าอยากลบออฟใช้หินลบออฟ</div>'
       + '<div class="d-row"><span>ออฟที่สุ่มได้</span><span>' + pool + '</span></div>'
       + '<div class="d-row"><span>ย่อยได้หินตีบวก</span><span>' + window.optStoneYield() + ' ก้อน/เม็ด</span></div>'
       + '<div class="d-row"><span>ขายได้</span><span>' + window.optStonePrice() + ' ทอง/เม็ด</span></div>'
@@ -458,18 +489,29 @@
       + '<button class="btn info" data-act="sell-opt">💰 ขาย <span class="ql">×' + q + '</span></button></div>';
   }
 
+  // โหมดเลือกหลายชิ้น: สรุปจำนวนที่ติ๊ก
+  function multiDetailHTML() {
+    const list = Array.from(state.ticks);
+    const can = list.length ? scene.mergeIndices(list, true) : 0;
+    return '<div class="d-empty">โหมดเลือกหลายชิ้น<br>แตะอุปกรณ์เพื่อติ๊ก (ข้ามหน้าได้)<br><br>'
+      + 'ติ๊กไว้ ' + list.length + ' ชิ้น<br>รวมดาวได้ ' + can + ' ครั้ง</div>'
+      + '<div class="d-actions"><button class="btn ok" data-act="merge-sel">🔗 รวมที่ติ๊ก</button>'
+      + '<button class="btn danger" data-act="tick-clear">ล้างที่ติ๊ก</button></div>';
+  }
+
   function detailHTML() {
     const s = scene;
     const sel = state.sel;
+    if (state.multi && state.tab === 'bag') return multiDetailHTML();
     if (!sel) return '<div class="d-empty">แตะไอเทมหรือช่องอุปกรณ์<br>เพื่อดูรายละเอียด</div>';
     const it = sel.src === 'bag' ? s.bag[sel.id] : s.equipment[sel.id];
     if (!it) return '<div class="d-empty">ช่องนี้ยังว่างอยู่</div>';
 
     if (isBook(it)) return bookDetailHTML(it);
+    if (isMat(it)) return materialDetailHTML(it);
     if (it.kind === 'stone') return stoneDetailHTML(it);
     if (it.kind === 'optstone') return optStoneDetailHTML(it);
     if (it.kind === 'cleanstone') return cleanStoneDetailHTML(it);
-    if (isCardKind(it) && window.CardUI) return window.CardUI.itemDetailHTML(it);
 
     const color = hex(itemColor(it));
     const typeLabel = it.kind === 'box' ? 'กล่องอุปกรณ์'
@@ -486,10 +528,10 @@
         ? '<div class="d-stats">' + keys.map((k) => '<div><span>' + (STAT_DEFS[k] ? STAT_DEFS[k].short : k) + '</span><span>+' + fmtStat(k, st[k]) + '</span></div>').join('') + '</div>'
         : '<div class="d-note">ไม่มีค่าพลังพิเศษ</div>';
       h += '<div class="d-row"><span>ระดับ</span><span>Lv.' + it.level + '</span></div>'
-        + (it.star > 0 ? '<div class="d-row"><span>ดาวเดิม (ระบบเก่า)</span><span>' + it.star + ' ★</span></div>' : '');
+        + '<div class="d-row"><span>ระดับดาว</span><span>' + (it.star > 0 ? it.star + ' ★ / ' + MAX_STAR : '- (ยังไม่อัพดาว)') + '</span></div>'
+        + '<div class="d-row"><span>อัพดาว</span><span>รวมของเหมือนกัน 2 ชิ้น</span></div>';
       h += window.enhanceInfoHTML(s, it);
       h += window.itemExtraInfoHTML(s, it);
-      if (window.CardUI) h += window.CardUI.socketsHTML(it);   // ช่องการ์ด (cards.js) แตะช่องเพื่อใส่/ถอด
     } else {
       h += '<div class="d-note">เปิดแล้วจะได้อุปกรณ์สุ่ม 1 ชิ้น สี' + TIER_DEFS[tierOf(it)].name + ' (เลเวล ' + it.level + ')</div>'
         + '<div class="d-row"><span>เลเวลกล่อง</span><span>Lv.' + it.level + '</span></div>'
@@ -506,30 +548,28 @@
         + '<button class="btn danger" data-act="dismantle-box">♻ ย่อยกล่อง <span class="ql">×' + q + '</span></button>';
     } else if (it.baseSlot === 'ring') {
       h += '<button class="btn ok" data-act="wear" data-id="ring1">ใส่แหวนซ้าย</button>'
-        + '<button class="btn ok" data-act="wear" data-id="ring2">ใส่แหวนขวา</button>';
+        + '<button class="btn ok" data-act="wear" data-id="ring2">ใส่แหวนขวา</button>'
+        + '<button class="btn info" data-act="merge">🔗 รวมดาว</button>';
     } else {
-      h += '<button class="btn ok" data-act="wear" data-id="' + it.baseSlot + '">สวมใส่</button>';
+      h += '<button class="btn ok" data-act="wear" data-id="' + it.baseSlot + '">สวมใส่</button>'
+        + '<button class="btn info" data-act="merge">🔗 รวมดาว</button>';
     }
     if (it.kind === 'equip') {
-      h += '<button class="btn info" data-act="enhance">🔨 ตีบวก</button>'
+      // ตีบวก / ฝังออฟ / ลบออฟ: โชว์เฉพาะตอนเปิดผ่านช่างตีเหล็กในเมือง (s.forgeMode ตั้งโดย forge.js)
+      h += (s.forgeMode ? '<button class="btn info" data-act="enhance">🔨 ตีบวก</button>' : '')
         + (sel.src === 'bag' ? '<button class="btn danger" data-act="dismantle">♻ ย่อย</button>' : '')
-        + window.itemEmbedButtonsHTML(s, it);
+        + (s.forgeMode ? window.itemEmbedButtonsHTML(s, it) : '<div class="d-note">🔨 ตีบวก / ฝังออฟ / ลบออฟ ทำได้ที่ช่างตีเหล็กในเมืองเท่านั้น</div>');
     }
     return h + '</div>';
   }
-
 
   // ลายเซ็นของกระเป๋า (จำนวนช่องที่มีของ + จำนวนรวม + ทอง) ไว้เช็กว่าต้องรีเฟรชหน้าต่างหรือไม่
   function bagSig() {
     const s = scene;
     let n = 0, c = 0;
-    // นับการ์ดที่ฝังอยู่ด้วย (ใส่/ถอดการ์ดแล้วหน้าต่างที่เปิดค้างจะรีเฟรชเอง)
-    const sockets = (it) => (it && Array.isArray(it.sockets) ? it.sockets.filter(Boolean).length * 7 : 0);
-    s.bag.forEach((it) => { if (it) { n++; c += (it.count || 1) + sockets(it); } });
-    EQUIP_SLOT_KEYS.forEach((k) => { c += sockets(s.equipment[k]); });
+    s.bag.forEach((it) => { if (it) { n++; c += (it.count || 1); } });
     return n + '|' + c + '|' + Math.floor(s.stats.gold);
   }
-
 
   function render() {
     const s = scene;
@@ -537,7 +577,7 @@
     clampQty();
     lastSig = bagSig();
     root.innerHTML =
-      '<div class="win-head"><span class="win-title">กระเป๋า</span>'
+      '<div class="win-head"><span class="win-title">' + (s.forgeMode ? '🔨 ช่างตีเหล็ก' : 'กระเป๋า') + '</span>'
       + '<div class="win-tabs">'
       + '<button class="win-tab' + (state.tab === 'bag' ? ' on' : '') + '" data-act="tab" data-id="bag">กระเป๋า</button>'
       + '<button class="win-tab' + (state.tab === 'equip' ? ' on' : '') + '" data-act="tab" data-id="equip">อุปกรณ์</button>'
@@ -575,9 +615,17 @@
     if (act !== 'dis-tier') state.confirmTier = null;   // กดอย่างอื่น = ยกเลิกการรอยืนยันย่อยทั้งหมด
 
     if (act === 'close') { s.closePanel(); return; }
-    if (act === 'tab') { state.tab = id; state.sel = null; state.qty = 1; }
+    if (act === 'tab') { state.tab = id; state.sel = null; state.qty = 1; state.ticks.clear(); }
     else if (act === 'page') { state.page = Math.max(0, Math.min(PAGES - 1, state.page + Number(id))); state.sel = null; state.qty = 1; }
-    else if (act === 'sel-bag') { state.sel = { src: 'bag', id: Number(id) }; state.qty = 1; }
+    else if (act === 'sel-bag') {
+      if (state.multi) {
+        const i = Number(id), cell = s.bag[i];
+        if (cell && cell.kind === 'equip') { if (state.ticks.has(i)) state.ticks.delete(i); else state.ticks.add(i); }
+        else if (cell) s.toastMsg('ติ๊กได้เฉพาะอุปกรณ์');
+      } else { state.sel = { src: 'bag', id: Number(id) }; state.qty = 1; }
+    }
+    else if (act === 'multi') { state.multi = !state.multi; state.ticks.clear(); state.sel = null; state.qty = 1; }
+    else if (act === 'tick-clear') { state.ticks.clear(); }
     else if (act === 'sel-equip') { state.sel = { src: 'equip', id: id }; state.qty = 1; }
     else if (act === 'qty') {
       state.qty = id === 'max' ? maxQty() : state.qty + Number(id);
@@ -589,14 +637,30 @@
       } else {
         state.confirmTier = null;                        // กดครั้งที่สอง: ย่อยจริง
         dismantleTier(id);
-        state.sel = null; state.qty = 1;
+        state.sel = null; state.qty = 1; state.ticks.clear();
       }
     }
-    else if (act === 'sort-bag') { s.sortBag(); state.sel = null; state.qty = 1; }
+    else if (act === 'merge-sel') {
+      if (state.multi) {
+        if (state.ticks.size) { s.mergeIndices(Array.from(state.ticks)); state.ticks.clear(); }
+        else s.toastMsg('ยังไม่ได้ติ๊กอุปกรณ์');
+      }
+      else if (sel && sel.src === 'bag') { if (s.mergeSelectedCount(sel.id, state.qty)) state.sel = null; }
+      else s.toastMsg('เลือกอุปกรณ์ในกระเป๋าก่อน');
+    }
+    else if (act === 'sort-bag') { s.sortBag(); state.sel = null; state.qty = 1; state.ticks.clear(); }
+    else if (act === 'merge-all') {
+      const n = s.mergeAllInBag();
+      s.toastMsg(n > 0 ? 'รวมอุปกรณ์สำเร็จ ' + n + ' ครั้ง' : 'ไม่มีของที่รวมกันได้');
+      state.sel = null;
+    }
     else if (act === 'wear' && sel && sel.src === 'bag') {
       const item = s.bag[sel.id];
       if (item) { s.bag[sel.id] = null; s.equipItem(id, item); s.toastMsg('สวมใส่: ' + itemLabel(item)); }
       state.sel = null;
+    }
+    else if (act === 'merge' && sel && sel.src === 'bag') {
+      if (s.mergeSingleItem(sel.id)) state.sel = null;
     }
     else if (act === 'open-box' && sel && sel.src === 'bag') {
       s.openBoxes(sel.id, state.qty);
@@ -612,8 +676,20 @@
       s.useSkillBook(sel.id);
       if (!s.bag[sel.id]) state.sel = null;   // หนังสือหมดกอง -> ยกเลิกการเลือก
     }
-    else if (act === 'sock' && sel && window.CardUI) {
-      window.CardUI.openSocket(s, sel.src, sel.id, Number(id));   // เปิดหน้าต่างใส่/ถอดการ์ดของช่องนี้ (cards.js)
+    else if (act === 'use-mat' && sel && sel.src === 'bag') {
+      // กินอาหาร: ฟื้น HP (วัตถุดิบอื่นไม่มีปุ่มนี้)
+      const cur = s.bag[sel.id];
+      const d = cur && isMat(cur) ? matDef(cur) : null;
+      if (d && d.cat === 'food') {
+        if (s.stats.hp >= s.maxHp()) s.toastMsg('HP เต็มอยู่แล้ว');
+        else if (s.takeMat(cur.mid, 1)) {
+          s.stats.hp = Math.min(s.maxHp(), s.stats.hp + (d.heal || 0));
+          s.toastMsg('🍴 กิน ' + d.name + ' ฟื้น HP +' + (d.heal || 0));
+          if (s.saveSoon) s.saveSoon();
+        }
+      }
+      const after = s.bag[sel.id];
+      if (!after || !isMat(after)) state.sel = null;   // หมดกอง -> ยกเลิกการเลือก
     }
     else if (act === 'enhance' && sel) { s.enhanceItem(sel.src, sel.id); }
     else if (act === 'dismantle' && sel && sel.src === 'bag') { if (s.dismantleBagItem(sel.id)) state.sel = null; }
@@ -636,7 +712,6 @@
     render();
   }
 
-
   // ---------- เชื่อมกับเกมเดิม ----------
   const origClosePanel = Main.prototype.closePanel;
 
@@ -657,12 +732,6 @@
     // ไม่ตั้ง this.panel = [] แล้ว (เดิมทำให้เกม/บอทหยุดตอนเปิดกระเป๋า) ใช้แฟลก bagOpen / window.BAG_OPEN แทน
     this.bagOpen = true;
     window.BAG_OPEN = true;
-  };
-
-  // ให้ cards.js สั่งวาดหน้าต่างกระเป๋าใหม่ทันทีหลังใส่/ถอดการ์ด
-  window.BagWindowRefresh = function () {
-    if (!root || !scene || root.style.display === 'none') return;
-    try { render(); } catch (e) { /* ignore */ }
   };
 
   Main.prototype.closePanel = function () {
