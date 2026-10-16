@@ -951,6 +951,9 @@
     return el('span', '', MAT_DEFS[id] ? MAT_DEFS[id].icon : '');
   }
 
+  // ให้ไฟล์อื่น (forge.js) ใช้ตัวลบพื้นหลัง/ตัดขอบภาพร่วมกัน
+  window.HouseImg = { key: himgKey, trim: himgTrim, scale: himgScale, DIR: HOUSE_IMG_DIR, VER: HOUSE_IMG_VER };
+
   function houseBuild(m, T) {
     const wb = m.physics.world.bounds;
     const L = Math.round(T.ox + TOWN.w / 2 - HOUSE.w / 2), Tp = Math.round(T.oy + TOWN.h / 2 - HOUSE.h / 2);
