@@ -4,6 +4,9 @@
 // ล้างเซฟ: เปิด Console แล้วพิมพ์ localStorage.removeItem('my_mmorpg_save_v1')
 // เซฟสกิลช่องพิเศษ (flex) ด้วย: ช่องอันติที่ใส่สกิลอะไรก็ได้เมื่อไม่มีคอมโบ (ดู flexSlot.js)
 // เซฟข้อมูลบ้าน (house) และวัตถุดิบ (kind:'material') ด้วย (ดู house.js / houseData.js)
+// v2: แก้ไอเทมหายหลังออกเกม -- เดิมตัวตรวจไอเทมตอนโหลดไม่รู้จัก การ์ด (card) / กุญแจถอดการ์ด (cardkey) / หินพลังวิเศษ (magicstone)
+//     จึงทิ้งทั้งหมด + ตรวจหินออฟ/หินลบออฟเข้มเกิน | ตอนนี้: รู้จักทุกชนิด, ตรวจแบบหลวมขึ้น (ซ่อมจำนวนให้เป็นจำนวนเต็ม),
+//     ชนิดที่ไม่รู้จักแต่หน้าตาเป็นไอเทมซ้อนได้ (มี kind + count) จะ "เก็บไว้" ไม่ทิ้ง, และถ้ามีของถูกข้ามจะแจ้งเตือนพร้อมชื่อชนิด
 
 const SAVE_KEY = 'my_mmorpg_save_v1';
 
@@ -82,19 +85,31 @@ Object.assign(Main.prototype, {
     if (!d || d.v !== 1) return null;
 
     try {
-      const validItem = it => it && typeof it === 'object' && (
-        (it.kind === 'box' && Number.isFinite(it.level) && Number.isFinite(it.count)) ||
-        (it.kind === 'skillbook' && SKILL_DEFS[it.sid] && Number.isFinite(it.count) && it.count > 0) ||
-        // หินตีบวก / หินออฟ / หินล้างออฟ (ของที่ซ้อนได้)
-        (it.kind === 'stone' && Number.isFinite(it.count) && it.count > 0) ||
-        (it.kind === 'cleanstone' && Number.isFinite(it.count) && it.count > 0) ||
-        (it.kind === 'potion' && POTIONS[it.pid] && Number.isFinite(it.count) && it.count > 0) ||
-        (it.kind === 'optstone' && it.color && Number.isFinite(it.count) && it.count > 0) ||
+      // ---- ตรวจไอเทมในกระเป๋า ----
+      // ชนิดที่ "ซ้อนกองได้และมีแค่ kind + count (+ ข้อมูลประจำชนิด)" ตรวจแบบหลวม แล้วซ่อมจำนวนให้เป็นจำนวนเต็มบวก
+      const STACK_KINDS = ['stone', 'cleanstone', 'optstone', 'card', 'cardkey', 'magicstone'];
+      const cntOf = it => Math.floor(Number(it.count));
+      const dropped = {};     // ชนิดที่ถูกข้าม (ไว้แจ้งเตือน)
+      const skip = kind => { dropped[kind] = (dropped[kind] || 0) + 1; return false; };
+
+      const validItem = it => {
+        if (!it || typeof it !== 'object') return false;
+        const k = it.kind;
+        if (k === 'box') return (Number.isFinite(it.level) && Number.isFinite(it.count)) || skip(k);
+        if (k === 'skillbook') return (SKILL_DEFS[it.sid] && Number.isFinite(it.count) && it.count > 0) || skip(k);
+        if (k === 'potion') return (POTIONS[it.pid] && Number.isFinite(it.count) && it.count > 0) || skip(k);
         // วัตถุดิบระบบบ้าน (ปลา เหยื่อ ผัก ฯลฯ) ดู houseData.js
-        (it.kind === 'material' && typeof MAT_DEFS !== 'undefined' && MAT_DEFS[it.mid] && Number.isFinite(it.count) && it.count > 0) ||
-        (it.kind === 'equip' && STAT_GROWTH[it.baseSlot] && Number.isFinite(it.level) && Number.isFinite(it.star) &&
-          (it.baseSlot !== 'weapon' || CLASSES[it.class]))
-      );
+        if (k === 'material') return (typeof MAT_DEFS !== 'undefined' && MAT_DEFS[it.mid] && Number.isFinite(it.count) && it.count > 0) || skip(k);
+        if (k === 'equip') {
+          return (STAT_GROWTH[it.baseSlot] && Number.isFinite(it.level) && Number.isFinite(it.star) &&
+            (it.baseSlot !== 'weapon' || CLASSES[it.class])) || skip(k);
+        }
+        // หิน / การ์ด / กุญแจ / หินพลังวิเศษ: ตรวจหลวม (จำนวนเป็นเลขบวกก็พอ)
+        if (STACK_KINDS.indexOf(k) >= 0) return cntOf(it) > 0 || skip(k);
+        // ชนิดที่ไม่รู้จัก (ไฟล์ระบบใหม่ๆ ที่ยังไม่ได้ใส่ที่นี่): ถ้าหน้าตาเป็นไอเทมซ้อนได้ (kind เป็นตัวอักษร + count เป็นเลขบวก) เก็บไว้ ไม่ทิ้ง
+        if (typeof k === 'string' && /^[a-z][a-z0-9_]{1,24}$/.test(k) && cntOf(it) > 0) return true;
+        return skip(String(k));
+      };
 
       const s = d.stats || {};
       ['level', 'exp', 'hp', 'mp', 'gold', 'maxHp', 'maxMp', 'baseAtk'].forEach(k => {
@@ -103,12 +118,18 @@ Object.assign(Main.prototype, {
       this.stats.level = Phaser.Math.Clamp(Math.floor(this.stats.level), 1, LEVEL_CAP);
       this.stats.expNext = levelExpNeeded(this.stats.level);
 
+      const stackCap = kind => {
+        if (kind === 'card' || kind === 'cardkey') return (typeof MAX_CARD_STACK !== 'undefined') ? MAX_CARD_STACK : 999;
+        return (typeof MAX_STONE_STACK !== 'undefined') ? MAX_STONE_STACK : 9999;
+      };
+
       const bag = new Array(BAG_SIZE).fill(null);
       (Array.isArray(d.bag) ? d.bag : []).forEach((it, i) => {
         if (i < BAG_SIZE && validItem(it)) {
           if (it.kind === 'skillbook') it = { kind: 'skillbook', sid: it.sid, count: Math.min(MAX_SKILLBOOK_STACK, Math.floor(it.count)) };
-          if ((it.kind === 'stone' || it.kind === 'optstone' || it.kind === 'cleanstone') && typeof MAX_STONE_STACK !== 'undefined') {
-            it = { ...it, count: Math.min(MAX_STONE_STACK, Math.floor(it.count)) };
+          else if (STACK_KINDS.indexOf(it.kind) >= 0) {
+            it = { ...it, count: Math.min(stackCap(it.kind), cntOf(it)) };
+            if (it.kind === 'optstone' && !it.color) it.color = 'red';    // ซ่อมหินออฟที่ข้อมูลสีหาย
           }
           if (it.kind === 'material' && typeof MAX_MAT_STACK !== 'undefined') {
             it = { kind: 'material', mid: it.mid, count: Math.min(MAX_MAT_STACK, Math.floor(it.count)) };
@@ -120,7 +141,7 @@ Object.assign(Main.prototype, {
 
       Object.keys(this.equipment).forEach(k => {
         const it = d.equipment && d.equipment[k];
-        this.equipment[k] = validItem(it) && it.kind === 'equip' ? it : null;
+        this.equipment[k] = it && it.kind === 'equip' && validItem(it) ? it : null;
       });
 
       this.learnedSkills = new Set(['sw_slash']);
@@ -165,6 +186,14 @@ Object.assign(Main.prototype, {
       let si = Number.isInteger(d.stageIdx) ? d.stageIdx : 0;
       if (!ZONES[si] || this.stats.level < ZONES[si].reqLv) si = 0;
       this.toastMsg('โหลดเซฟแล้ว (Lv.' + this.stats.level + ')');
+
+      // แจ้งถ้ามีไอเทมถูกข้ามตอนโหลด (บอกชนิด จะได้รู้ว่าระบบไหนยังเซฟไม่ได้)
+      const dk = Object.keys(dropped);
+      if (dk.length) {
+        console.warn('save.js: ข้ามไอเทมตอนโหลด', dropped);
+        const txt = dk.map(k => k + ' x' + dropped[k]).join(', ');
+        setTimeout(() => { try { this.toastMsg('⚠ ข้ามไอเทมที่ข้อมูลผิดปกติ: ' + txt); } catch (e) {} }, 1800);
+      }
       return si;
     } catch (e) {
       console.error('โหลดเซฟไม่สำเร็จ', e);
