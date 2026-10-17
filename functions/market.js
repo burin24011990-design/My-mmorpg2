@@ -1,4 +1,5 @@
-// functions/market.js — ตลาดกลาง v5  (บันทึกไว้เป็น functions/market.js)
+// functions/market.js — ตลาดกลาง v6  (บันทึกไว้เป็น functions/market.js)
+// v6: รองรับ "หินพลังวิเศษ" (kind:'magicstone') | เพดานราคา CAP.magicstone
 // v5: รองรับ "การ์ด" (kind:'card') และ "กุญแจถอดการ์ด" (kind:'cardkey') + อุปกรณ์ที่ฝังการ์ดไว้ (sockets) | ดู cards.js ในเกม
 // ใน functions/index.js ต้องมี:  Object.assign(exports, require('./market'));
 //
@@ -64,7 +65,7 @@ const CAP = {
   box:   { white: 300000, blue: 1000000, red: 3000000, gold: 9999999 },
   equip: { white: 500000, blue: 1500000, red: 4000000, gold: 9999999 },
   equipPlusBonus: 0.10, equipStarBonus: 0.15,
-  optstone: 150000, cleanstone: 200000,
+  optstone: 150000, cleanstone: 200000, magicstone: 2000000,   // magicstone = หินพลังวิเศษ (ราคาต่อก้อน)
   card: { mon: 200000, boss: 800000 },      // การ์ดมอน / การ์ดบอส (ราคาต่อใบ)
   cardkey: 300000,                          // กุญแจถอดการ์ด (ราคาต่อชิ้น)
   equipSocketBonus: 0.10,                   // อุปกรณ์ที่ฝังการ์ดไว้: เพดานราคา +10% ต่อการ์ด 1 ใบ
@@ -190,6 +191,9 @@ function validateItem(raw) {
     case 'cleanstone':
       if (!int(it.count, 1, 9999)) bad('จำนวนไม่ถูกต้อง');
       break;
+    case 'magicstone':   // หินพลังวิเศษ: มีแค่ kind + count
+      if (!int(it.count, 1, 9999)) bad('จำนวนไม่ถูกต้อง');
+      break;
     case 'optstone':
       if (OPT_COLORS.indexOf(it.color) < 0 || !int(it.count, 1, 9999)) bad('หินออฟไม่ถูกต้อง');
       break;
@@ -212,6 +216,7 @@ function maxUnitPrice(it) {
   else if (it.kind === 'cardkey') c = CAP.cardkey;
   else if (it.kind === 'optstone') c = CAP.optstone;
   else if (it.kind === 'cleanstone') c = CAP.cleanstone;
+  else if (it.kind === 'magicstone') c = CAP.magicstone;
   else if (it.kind === 'stone') c = CAP.stone;
   else c = CAP.book;
   return Math.min(MAX_PRICE, Math.floor(c));
