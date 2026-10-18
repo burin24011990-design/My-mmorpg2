@@ -324,22 +324,35 @@
     return _addItem.apply(this, arguments);
   };
 
-  // จัดกระเป๋า: เอาการ์ดออกก่อน (โค้ดเดิมจะรวมการ์ดต่างชนิดเป็นกองเดียว) แล้วใส่กลับแบบแยกตามใบ
-  const _sort = P.sortBag;
-  P.sortBag = function () {
-    const held = [];
-    this.bag.forEach((s, i) => { if (isCardKind(s)) { held.push(s); this.bag[i] = null; } });
-    const r = _sort.apply(this, arguments);
-    held.sort((a, b) => (a.kind === b.kind ? 0 : (a.kind === 'cardkey' ? -1 : 1)) || String(a.cid || '').localeCompare(String(b.cid || ''), undefined, { numeric: true }));
-    held.forEach((s) => {
-      if (stackAdd(this, s, cnt(s)) > 0) {      // ไม่น่าเกิด (ช่องที่ยกออกว่างให้ครบ) กันของหายไว้
-        const i = this.bag.findIndex((q) => !q);
-        if (i >= 0) this.bag[i] = s;
-      }
+  // จัดกระเป๋า: ห้ามรวมการ์ดต่างด่านเป็นกองเดียว
+  // sortBag เดิม (enhance.js) จัดกลุ่มของซ้อนกองตาม "ชนิด" การ์ดทุกใบเลยรวมกัน -> ยกการ์ดออกก่อนจัด แล้วใส่กลับแยกตามรหัสการ์ด
+  // ใช้ตัวรับ-ส่งค่า (getter/setter) บน prototype: ไม่ว่าไฟล์ไหนจะมาตั้ง sortBag ทีหลัง (แม้โหลดหลังไฟล์นี้) ก็ยังผ่านตัวครอบนี้เสมอ
+  (function installSort() {
+    let inner = P.sortBag;
+    const wrapper = function () {
+      const held = [];
+      this.bag.forEach((s, i) => { if (s && s.kind === 'card') { held.push(s); this.bag[i] = null; } });
+      const r = typeof inner === 'function' ? inner.apply(this, arguments) : undefined;
+      held.sort((a, b) => {
+        const A = cardInfo(a.cid) || { boss: false, z: 0 }, B = cardInfo(b.cid) || { boss: false, z: 0 };
+        return (A.boss - B.boss) || (A.z - B.z);
+      });
+      held.forEach((c) => {
+        const left = stackAdd(this, { kind: 'card', cid: c.cid }, cnt(c));
+        if (left > 0) {                          // สำรอง: ใส่ไม่ได้ให้วางช่องว่างช่องแรก ของไม่หาย
+          const i = this.bag.findIndex((q) => !q);
+          if (i >= 0) this.bag[i] = { kind: 'card', cid: c.cid, count: left };
+        }
+      });
+      sv(this);
+      return r;
+    };
+    Object.defineProperty(P, 'sortBag', {
+      configurable: true,
+      get: function () { return wrapper; },
+      set: function (fn) { inner = fn; },
     });
-    sv(this);
-    return r;
-  };
+  })();
 
   // ห้ามย่อยอุปกรณ์ที่ยังมีการ์ดอยู่ (กันการ์ดหาย)
   const _dis = P.dismantleBagItem;
