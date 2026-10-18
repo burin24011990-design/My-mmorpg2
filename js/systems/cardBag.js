@@ -86,6 +86,33 @@
     UI().openSocket(sc(), sel.src, sel.id, Number(b.dataset.id));
   });
 
+
+  // ---------- จัดกระเป๋า: ห้ามรวมการ์ดต่างด่านเป็นกองเดียว ----------
+  // สาเหตุเดิม: sortBag ของ enhance.js จัดกลุ่มของที่ซ้อนได้ตาม "ชนิด" (kind) การ์ดทุกใบเลยรวมเป็นกองเดียว และเหลือแค่ด่านของใบแรก
+  // แก้: ยกการ์ดออกก่อนจัด แล้วใส่กลับแยกตามรหัสการ์ด (cid) | ครอบไว้ท้ายสุดจึงใช้ได้ไม่ว่าโหลดไฟล์ลำดับไหน
+  const P = Main.prototype;
+  const _sort = P.sortBag;
+  if (typeof _sort === 'function') {
+    P.sortBag = function () {
+      const held = [];
+      this.bag.forEach((s, i) => { if (s && s.kind === 'card') { held.push(s); this.bag[i] = null; } });
+      const r = _sort.apply(this, arguments);
+      const cs = window.CardSys;
+      const info = (c) => (cs && cs.cardInfo(c.cid)) || { boss: false, z: 0 };
+      held.sort((a, b) => { const A = info(a), B = info(b); return (A.boss - B.boss) || (A.z - B.z); });
+      held.forEach((c) => {
+        let left = c.count || 1;
+        if (cs) left = cs.addCardToBag(this, c.cid, left);
+        if (left > 0) {                       // สำรอง: ถ้าใส่ไม่ได้ ให้วางในช่องว่างช่องแรก ของไม่หาย
+          const i = this.bag.findIndex((q) => !q);
+          if (i >= 0) this.bag[i] = Object.assign({}, c, { count: left });
+        }
+      });
+      if (this.saveSoon) this.saveSoon();
+      return r;
+    };
+  }
+
   (function watch() {
     const layer = document.getElementById('ui-layer');
     if (!layer) return setTimeout(watch, 500);
