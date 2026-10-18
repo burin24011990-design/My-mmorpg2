@@ -326,31 +326,40 @@
 
   // จัดกระเป๋า: ห้ามรวมการ์ดต่างด่านเป็นกองเดียว
   // sortBag เดิม (enhance.js) จัดกลุ่มของซ้อนกองตาม "ชนิด" การ์ดทุกใบเลยรวมกัน -> ยกการ์ดออกก่อนจัด แล้วใส่กลับแยกตามรหัสการ์ด
-  // ใช้ตัวรับ-ส่งค่า (getter/setter) บน prototype: ไม่ว่าไฟล์ไหนจะมาตั้ง sortBag ทีหลัง (แม้โหลดหลังไฟล์นี้) ก็ยังผ่านตัวครอบนี้เสมอ
+  // ใช้ตัวรับ-ส่งค่า (getter/setter) บน prototype: ไม่ว่าไฟล์ไหนจะมาตั้ง sortBag ทีหลังก็ยังผ่านตัวครอบนี้เสมอ
+  // กันพัง: (1) ถ้าถูกเรียกซ้อนตัวเอง (ไฟล์อื่นครอบซ้ำ) จะข้ามไปใช้ฟังก์ชันจัดกระเป๋าตัวแรกแทน ไม่วนไม่รู้จบ
+  //         (2) ใส่การ์ดกลับเสมอ แม้ฟังก์ชันจัดกระเป๋าจะ error กลางทาง การ์ดจึงไม่หาย
   (function installSort() {
-    let inner = P.sortBag;
+    let base = P.sortBag, inner = P.sortBag, busy = false;
     const wrapper = function () {
+      if (busy) return typeof base === 'function' ? base.apply(this, arguments) : undefined;
+      busy = true;
       const held = [];
       this.bag.forEach((s, i) => { if (s && s.kind === 'card') { held.push(s); this.bag[i] = null; } });
-      const r = typeof inner === 'function' ? inner.apply(this, arguments) : undefined;
-      held.sort((a, b) => {
-        const A = cardInfo(a.cid) || { boss: false, z: 0 }, B = cardInfo(b.cid) || { boss: false, z: 0 };
-        return (A.boss - B.boss) || (A.z - B.z);
-      });
-      held.forEach((c) => {
-        const left = stackAdd(this, { kind: 'card', cid: c.cid }, cnt(c));
-        if (left > 0) {                          // สำรอง: ใส่ไม่ได้ให้วางช่องว่างช่องแรก ของไม่หาย
-          const i = this.bag.findIndex((q) => !q);
-          if (i >= 0) this.bag[i] = { kind: 'card', cid: c.cid, count: left };
-        }
-      });
-      sv(this);
+      let r;
+      try {
+        r = typeof inner === 'function' ? inner.apply(this, arguments) : undefined;
+      } finally {
+        busy = false;
+        held.sort((a, b) => {
+          const A = cardInfo(a.cid) || { boss: false, z: 0 }, B = cardInfo(b.cid) || { boss: false, z: 0 };
+          return (A.boss - B.boss) || (A.z - B.z);
+        });
+        held.forEach((c) => {
+          const left = stackAdd(this, { kind: 'card', cid: c.cid }, cnt(c));
+          if (left > 0) {                          // สำรอง: ใส่ไม่ได้ให้วางช่องว่างช่องแรก ของไม่หาย
+            const i = this.bag.findIndex((q) => !q);
+            if (i >= 0) this.bag[i] = { kind: 'card', cid: c.cid, count: left };
+          }
+        });
+        sv(this);
+      }
       return r;
     };
     Object.defineProperty(P, 'sortBag', {
       configurable: true,
       get: function () { return wrapper; },
-      set: function (fn) { inner = fn; },
+      set: function (fn) { if (typeof fn === 'function' && fn !== wrapper) { if (!base) base = fn; inner = fn; } },
     });
   })();
 
