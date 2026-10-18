@@ -31,8 +31,11 @@
     win.querySelectorAll('button.cell[data-act="sel-bag"], button.cell[data-act="sel-equip"]').forEach(function (c) {
       const it = c.dataset.act === 'sel-bag' ? s.bag[Number(c.dataset.id)] : s.equipment[c.dataset.id];
       if (!it) return;
-      if ((it.kind === 'card' || it.kind === 'cardkey') && it.count > 1 && !c.querySelector('.cnt')) {
+      if ((it.kind === 'card' || it.kind === 'cardkey' || it.kind === 'cardstone') && it.count > 1 && !c.querySelector('.cnt')) {
         const sp = document.createElement('span'); sp.className = 'cnt'; sp.textContent = 'x' + it.count; c.appendChild(sp);
+      }
+      if (it.kind === 'card' && it.plus > 0 && !c.querySelector('.pl')) {      // ระดับตีบวกของการ์ด (มุมซ้ายบน เหมือนอุปกรณ์)
+        const sp = document.createElement('span'); sp.className = 'pl'; sp.textContent = '+' + it.plus; c.appendChild(sp);
       }
       if (it.kind === 'equip' && !c.querySelector('.sk')) {
         const p = ui.pips(it);
@@ -45,7 +48,7 @@
     if (!sel || !sel.it || !right) return;
     const it = sel.it;
 
-    if (it.kind === 'card' || it.kind === 'cardkey') {
+    if (it.kind === 'card' || it.kind === 'cardkey' || it.kind === 'cardstone') {
       if (force || !right.querySelector('[data-cd]')) {
         right.innerHTML = '<div data-cd="1">' + ui.itemDetailHTML(it) + '</div>';
       }
@@ -76,6 +79,22 @@
 
   // cards.js เรียกหลังโหลดรูปเสร็จ / ใส่-ถอดการ์ดเสร็จ เพื่อวาดแผงรายละเอียดใหม่
   window.BagWindowRefresh = function () { decorate(true); };
+
+  // ปุ่มในรายละเอียดการ์ด: ตีบวก / ย่อย (ปุ่มเหล่านี้ไม่มี data-act จึงไม่ไปชนกับ bagWindow.js)
+  document.addEventListener('click', function (e) {
+    const b = e.target && e.target.closest && e.target.closest('[data-cact]');
+    const cs = window.CardSys;
+    if (!b || !cs) return;
+    const sel = selected();
+    if (!sel || sel.src !== 'bag' || !sel.it || sel.it.kind !== 'card') return;
+    const act = b.dataset.cact;
+    if (act === 'enh') cs.enhanceCard(sc(), sel.id);
+    else if (act === 'dis1') cs.dismantleCard(sc(), sel.id, 1);
+    else if (act === 'disall') cs.dismantleCard(sc(), sel.id, sel.it.count || 1);
+    // วาดแผงรายละเอียด/ตารางใหม่ (กองอาจหมดหรือเปลี่ยนระดับ +)
+    setTimeout(function () { decorate(true); }, 60);
+    setTimeout(function () { decorate(true); }, 900);
+  });
 
   // แตะช่องการ์ด = เปิดหน้าต่างใส่/ถอด (bagWindow.js วาดหน้าต่างใหม่หลังแตะ จึงอ่านช่องที่เลือกจากหน้าจอ)
   document.addEventListener('click', function (e) {
