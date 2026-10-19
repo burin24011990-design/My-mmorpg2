@@ -5,6 +5,8 @@
 //   3) มอนที่อยู่ไกลเกิน 900px ข้าม AI ทุกสถานะ (ยกเว้นตอนกำลังไล่ตี)
 //   4) หาเป้าหมายใกล้สุดทุก 120ms แทนทุกเฟรม
 //   5) หลอดเลือดของมอนที่ซ่อนในพุ่มไม่โชว์ (drawEnemyBar เช็ก hiddenInBush)
+//   6) v45: การเคลื่อนไหวสมูทขึ้น (ออกตัว/หยุดแบบค่อยๆ เร่ง-ลด), ความเร็วเดินรวมปรับได้ (MONSTER_MOVE_MUL),
+//           ความเร็วแอนิเมชันเดินปรับตามความเร็วจริงของตัวมอน (ไม่ไถลเร็วกว่าท่าเดิน), กัน idle/walk สลับรัว
 // ด่าน 1-4: มอนไม่โจมตีก่อน (สู้กลับเมื่อโดนตี) | ด่าน 5 ขึ้นไป: โจมตีก่อนทั้งหมด
 // ผู้เล่นอยู่ในพุ่มหญ้า: มอนที่ห่างเกิน BUSH_REVEAL_DIST มองไม่เห็น (ดู obstacles.js)
 // หมายเหตุ: hurtPlayer อยู่ใน fixes.js แล้ว
@@ -18,6 +20,14 @@ const BUSH_REVEAL_AFTER_ATTACK = 1500;
 // ===== ปรับความแรงมอนสเตอร์ทั้งหมด (ปรับตรงนี้) =====
 const MONSTER_DMG_SCALE = 0.1;         // ตัวคูณพลังโจมตีมอนทุกชนิด (1 = เดิม, 0.6 = เหลือ 60%)
 const MONSTER_ATK_INTERVAL_MUL = 2.7;  // ตัวคูณช่วงเวลาระหว่างโจมตี (1 = เดิม, 1.6 = ช้าลง 1.6 เท่า)
+// ===== ปรับการเคลื่อนไหวของมอน (ปรับตรงนี้) =====
+const MONSTER_MOVE_MUL = 0.85;         // ตัวคูณความเร็วเดินทุกแบบ (1 = เร็วเท่าเดิม, 0.85 = ช้าลง 15%)
+const MONSTER_ACCEL_MS = 180;          // เวลาที่ใช้เร่ง/ลดความเร็ว (ms) ยิ่งมากยิ่งออกตัว-หยุดนุ่ม (0 = ทันทีเหมือนเดิม)
+const WALK_ANIM_REF_SPEED = 60;        // ความเร็ว (px/s) ที่ท่าเดินเล่นด้วยความเร็วปกติ | ช้ากว่านี้ท่าเดินจะช้าลงตาม
+const WALK_ANIM_MIN_SCALE = 0.55;      // ท่าเดินช้าสุด (เท่าของปกติ)
+const WALK_ANIM_MAX_SCALE = 1.3;       // ท่าเดินเร็วสุด (เท่าของปกติ)
+const WALK_START_SPEED = 22;           // ความเร็ว (px/s) ที่เริ่มเปลี่ยน idle -> walk
+const WALK_STOP_SPEED = 9;             // ความเร็ว (px/s) ที่กลับ walk -> idle (ต่ำกว่าค่าเริ่ม กันสลับรัว)
 // โอกาสดรอปหนังสือสกิล (ปรับตรงนี้)
 const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
@@ -202,6 +212,7 @@ Object.assign(Main.prototype, {
     flash(e.x, e.y);
     const pt = this.randomSpawnPoint(400);
     e.setPosition(pt.x, pt.y); e.setVelocity(0, 0);
+    e._sx = 0; e._sy = 0;                                // รีเซ็ตความเร็วที่สะสมไว้ (ระบบเร่ง-ลด)
     e.homeX = pt.x; e.homeY = pt.y; e.wanderX = pt.x; e.wanderY = pt.y;
     e.state = 'idle';
     e.nextTeleport = time + Phaser.Math.Between(BOSS_TELEPORT_MIN_MINUTES * 60000, BOSS_TELEPORT_MAX_MINUTES * 60000);
@@ -216,6 +227,7 @@ Object.assign(Main.prototype, {
     e.homeX = pt.x; e.homeY = pt.y;
     e.wanderX = pt.x; e.wanderY = pt.y; e.nextWander = 0;
     e.atkUntil = 0; e.animState = '';
+    e._sx = 0; e._sy = 0;                                // ความเร็วที่ผ่านการเร่ง-ลดแล้ว (ใช้ใน smoothEnemyVelocity)
     if (e.def && e.def.hasSheet) e.play(e.def.key + '_idle');
     const sc = (e.def && e.def.scale) || 1;
     e.labelOff = (e.isBoss ? 46 : 30) * sc;              // ระยะชื่อเหนือตัวมอน (หลอดเลือดอยู่ใต้ชื่อ)
@@ -295,13 +307,37 @@ Object.assign(Main.prototype, {
     this.fireShot(e, Math.atan2(p.y - e.y, p.x - e.x), 240, RANGED_SHOT_SCALE, 1);
   },
 
+  // ทำให้ความเร็วเปลี่ยนแบบค่อยๆ เร่ง/ลด (ไม่กระชากทันทีเวลาออกตัว หยุด หรือเปลี่ยนทิศ)
+  // เรียกหลัง AI ตั้งความเร็วเป้าหมายของเฟรมนั้นแล้ว (AI ใช้ moveTo / setVelocity ตั้งค่าเป้าหมายไว้ใน body.velocity)
+  smoothEnemyVelocity(e, dt) {
+    if (!e.body) return;
+    if (MONSTER_ACCEL_MS <= 0) { e._sx = e.body.velocity.x; e._sy = e.body.velocity.y; return; }
+    const k = Math.min(1, dt / MONSTER_ACCEL_MS);
+    const tx = e.body.velocity.x, ty = e.body.velocity.y;   // ความเร็วเป้าหมายที่ AI เพิ่งตั้ง
+    const nx = e._sx + (tx - e._sx) * k;
+    const ny = e._sy + (ty - e._sy) * k;
+    e._sx = nx; e._sy = ny;
+    e.body.setVelocity(nx, ny);
+  },
+
   // เลือกแอนิเมชัน idle / walk / attack ตามการเคลื่อนไหว (ทำงานเฉพาะตัวที่มี sprite sheet)
+  // v45: idle<->walk ใช้ค่าเริ่ม/หยุดต่างกัน (กันสลับรัว) และความเร็วท่าเดินปรับตามความเร็วจริง
   updateEnemyAnim(e, time) {
     const d = e.def;
     if (!d || !d.hasSheet || !e.body) return;
     const vx = e.body.velocity.x, vy = e.body.velocity.y;
-    const st = time < e.atkUntil ? 'attack' : ((vx * vx + vy * vy) > 100 ? 'walk' : 'idle');
+    const spd = Math.sqrt(vx * vx + vy * vy);
+    let st;
+    if (time < e.atkUntil) st = 'attack';
+    else if (e.animState === 'walk') st = spd > WALK_STOP_SPEED ? 'walk' : 'idle';
+    else st = spd > WALK_START_SPEED ? 'walk' : 'idle';
     if (e.animState !== st) { e.animState = st; e.play(d.key + '_' + st, true); }
+    // ท่าเดินเล่นเร็ว/ช้าตามความเร็วจริง (เดินช้าตอนเดินเล่น ไล่ตามเร็วตอนไล่ตี) ท่าอื่นเล่นปกติ
+    if (e.anims) {
+      e.anims.timeScale = st === 'walk'
+        ? Phaser.Math.Clamp(spd / WALK_ANIM_REF_SPEED, WALK_ANIM_MIN_SCALE, WALK_ANIM_MAX_SCALE)
+        : 1;
+    }
     if (Math.abs(vx) > 5) e.setFlipX(vx < 0);
   },
 
@@ -317,6 +353,8 @@ Object.assign(Main.prototype, {
     barG.clear();
 
     const view = this.cameras.main.worldView;   // คำนวณครั้งเดียวต่อเฟรม ใช้ซ่อนชื่อมอนนอกจอ
+    const dt = Math.min(50, (this.game && this.game.loop && this.game.loop.delta) || 16.7);   // เวลาต่อเฟรม (ms) ใช้กับการเร่ง-ลดความเร็ว
+    const mm = MONSTER_MOVE_MUL;                // ตัวคูณความเร็วเดินรวม
 
     this.enemies.getChildren().forEach(e => {
       if (e.isBoss && time > (e.nextTeleport || 0)) this.bossTeleport(e, time);
@@ -330,6 +368,7 @@ Object.assign(Main.prototype, {
           if (e.levelText) e.levelText.setPosition(e.x, e.y - e.labelOff);
         }
         e.setVelocity(0, 0);
+        e._sx = 0; e._sy = 0;
         if (e.levelText && e.levelText.visible) e.levelText.setVisible(false);
         return;
       }
@@ -350,22 +389,25 @@ Object.assign(Main.prototype, {
           e.wanderX = e.homeX + Math.cos(ang) * rad; e.wanderY = e.homeY + Math.sin(ang) * rad;
           e.nextWander = time + Phaser.Math.Between(2000, 4000);
         }
-        this.physics.moveTo(e, e.wanderX, e.wanderY, 28);
+        this.physics.moveTo(e, e.wanderX, e.wanderY, 28 * mm);
         if (Phaser.Math.Distance.Between(e.x, e.y, e.wanderX, e.wanderY) < 6) e.setVelocity(0, 0);
       } else if (e.state === 'chase') {
         if (e.ranged) {
-          if (distPlayer > 260) this.physics.moveToObject(e, p, e.speed);
+          if (distPlayer > 260) this.physics.moveToObject(e, p, e.speed * mm);
           else if (distPlayer < 160) {
             const away = new Phaser.Math.Vector2(e.x - p.x, e.y - p.y).normalize();
-            e.setVelocity(away.x * 60, away.y * 60);
+            e.setVelocity(away.x * 60 * mm, away.y * 60 * mm);
           } else e.setVelocity(0, 0);
           if (canSee && distPlayer < 340 && time > e.nextShot) { this.enemyShoot(e); e.nextShot = time + Phaser.Math.Between(1600, 2200) * MONSTER_ATK_INTERVAL_MUL; }
         } else {
-          this.physics.moveToObject(e, p, e.speed);
+          this.physics.moveToObject(e, p, e.speed * mm);
         }
       } else {
-        this.physics.moveTo(e, e.homeX, e.homeY, 60);
+        this.physics.moveTo(e, e.homeX, e.homeY, 60 * mm);
       }
+
+      // ทำให้การออกตัว/หยุด/เปลี่ยนทิศนุ่มขึ้น (ค่อยๆ เร่ง-ลดความเร็ว)
+      this.smoothEnemyVelocity(e, dt);
 
       // ชนตัวทำดาเมจเฉพาะตอนไล่ตี (มอนที่ยังไม่โกรธเดินชนไม่เจ็บ)
       if (e.state === 'chase' && time > this.hitCd && distPlayer < e.hitRange) {
