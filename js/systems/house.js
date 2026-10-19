@@ -580,6 +580,392 @@
           b.addEventListener('click', function () {
             const cost = d.price * q;
             if (!m.canAddMat(id, q)) { toast(m, 'กระเป๋าเต็ม'); return; }
+  // ---------- ตกปลา ----------
+  const tri = function (t) { const x = t % 2; return x < 1 ? x : 2 - x; };
+  function rollFish(baited) {
+    const list = FISH_TABLE.map(function (f) { return { id: f.id, w: f.w * (baited && f.rare ? FISH_CFG.baitRareMul : 1) }; });
+    let total = 0; list.forEach(function (f) { total += f.w; });
+    let r = Math.random() * total;
+    for (let i = 0; i < list.length; i++) { r -= list[i].w; if (r <= 0) return list[i].id; }
+    return list[0].id;
+  }
+
+  function fishView(m, card, body) {
+    const h = m.houseState();
+    const alive = function () { return document.body.contains(card); };
+    let state = 'idle', useBait = false, baited = false, timer = 0, raf = 0, center = 0.5, t0 = 0, pos = 0;
+
+    // ฉากตกปลา: ข้อความ + แถบจังหวะ + ผลที่ได้ อยู่ในกรอบน้ำเดียวกัน
+    const scene = el('div', 'hs-scene st-idle');
+    const flo = el('div', 'hs-float', '🎣');
+    const msg = el('div', 'hs-msg', 'กดทอดเบ็ดเพื่อเริ่มตกปลา');
+    const bar = el('div', 'hs-bar');
+    const zone = el('div', 'hs-zone'), mk = el('div', 'hs-mark');
+    bar.append(zone, mk);
+    bar.style.visibility = 'hidden';
+    const res = el('div', 'hs-res', '');
+    scene.append(flo, msg, bar, res);
+
+    const stock = el('div', 'hs-stock', '');
+    const duo = el('div', 'hs-duo');
+    const baitBtn = el('button', 'hs-btn hs-alt hs-two', '');
+    const waterBtn = el('button', 'hs-btn hs-alt hs-two', '');
+    duo.append(baitBtn, waterBtn);
+    const act = el('button', 'hs-btn hs-main', '🎣 ทอดเบ็ด');
+    body.append(scene, stock, duo, act);
+
+    function setSt(s) {
+      state = s;
+      scene.className = 'hs-scene st-' + s;
+      flo.textContent = s === 'wait' ? '🪝' : (s === 'bite' ? '❗' : '🎣');
+    }
+    function chip(id, n) {
+      const c = el('div', 'hs-chip', '');
+      c.append(matIcon(id, 34), el('b', '', 'x' + n), el('small', '', MAT_DEFS[id].name));
+      return c;
+    }
+    function refresh() {
+      baitBtn.textContent = '';
+      baitBtn.classList.toggle('on', useBait);
+      baitBtn.append(el('b', '', (useBait ? '☑' : '☐') + ' 🪱 ใช้เหยื่อ ×' + m.countMat('bait_basic')), el('small', '', 'ปลาหายากง่ายขึ้น'));
+      baitBtn.disabled = state !== 'idle';
+      waterBtn.textContent = '';
+      waterBtn.append(el('b', '', '💧 ตักน้ำ ×10'), el('small', '', 'ใช้ทำอาหาร (มี ' + m.countMat('water') + ')'));
+      stock.textContent = '';
+      let anyFish = false;
+      FISH_TABLE.forEach(function (f) {
+        const n = m.countMat(f.id);
+        if (!n) return;
+        anyFish = true;
+        stock.append(chip(f.id, n));
+      });
+      if (!anyFish) stock.append(el('div', 'hs-note', 'ยังไม่มีปลาในกระเป๋า'));
+    }
+    function toIdle() {
+      setSt('idle');
+      clearTimeout(timer); cancelAnimationFrame(raf);
+      bar.style.visibility = 'hidden';
+      act.textContent = '🎣 ทอดเบ็ด';
+      refresh();
+    }
+    function cast() {
+      baited = false;
+      if (useBait) { if (m.takeMat('bait_basic', 1)) baited = true; else useBait = false; }
+      setSt('wait');
+      res.textContent = '';
+      msg.textContent = '🌊 รอปลากิน...';
+      act.textContent = '🪝 ดึงเบ็ด';
+      refresh();
+      timer = setTimeout(bite, FISH_CFG.waitMin + Math.random() * (FISH_CFG.waitMax - FISH_CFG.waitMin));
+    }
+    function bite() {
+      if (!alive() || state !== 'wait') return;
+      setSt('bite');
+      center = 0.2 + Math.random() * 0.6;
+      const w = FISH_CFG.zoneW;
+      zone.style.left = ((center - w / 2) * 100) + '%';
+      zone.style.width = (w * 100) + '%';
+      bar.style.visibility = 'visible';
+      msg.textContent = '❗ ปลากินเบ็ด! แตะตอนตัวชี้อยู่ในโซนเขียว';
+      act.textContent = '✊ ดึง!';
+      try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+      t0 = performance.now();
+      raf = requestAnimationFrame(loop);
+    }
+    function loop(now) {
+      if (state !== 'bite' || !alive()) return;
+      if (now - t0 > FISH_CFG.biteLimitMs) { finish(false, false); return; }
+      pos = tri((now - t0) / 1000 * FISH_CFG.speed);
+      mk.style.left = (pos * 100) + '%';
+      raf = requestAnimationFrame(loop);
+    }
+    function finish(ok, perfect) {
+      toIdle();
+      if (!ok) { msg.textContent = '💨 ปลาหลุดไปแล้ว...'; return; }
+      const fid = rollFish(baited), n = (perfect && FISH_CFG.perfectDouble) ? 2 : 1;
+      const left = m.addMat(fid, n), d = MAT_DEFS[fid];
+      h.fished = (h.fished || 0) + 1;
+      if (left >= n) msg.textContent = '🎒 กระเป๋าเต็ม! ปลาหลุดมือ';
+      else {
+        msg.textContent = perfect ? '⭐ สุดยอด! จังหวะเป๊ะ' : '✅ ตกได้แล้ว!';
+        res.textContent = '';
+        res.append(matIcon(fid, 44), document.createTextNode(' ' + d.name + ' x' + (n - left)));
+        toast(m, 'ตกได้: ' + d.name + ' x' + (n - left));
+      }
+      if (m.saveSoon) m.saveSoon();
+      refresh();
+    }
+    baitBtn.addEventListener('click', function () {
+      if (state !== 'idle') return;
+      if (!useBait && m.countMat('bait_basic') < 1) { toast(m, 'ไม่มีเหยื่อ (ซื้อได้ที่แท็บร้านค้า)'); return; }
+      useBait = !useBait; refresh();
+    });
+    waterBtn.addEventListener('click', function () {
+      const left = m.addMat('water', 10);
+      toast(m, left >= 10 ? 'กระเป๋าเต็ม' : '💧 ได้น้ำ x' + (10 - left));
+      refresh();
+    });
+    act.addEventListener('click', function () {
+      if (state === 'idle') { cast(); return; }
+      if (state === 'wait') { toIdle(); msg.textContent = '😅 ดึงเร็วไป ปลาหนีแล้ว'; return; }
+      if (state === 'bite') { const d = Math.abs(pos - center); finish(d <= FISH_CFG.zoneW / 2, d <= FISH_CFG.zoneW * 0.15); }
+    });
+    refresh();
+    return function () { clearTimeout(timer); cancelAnimationFrame(raf); };
+  }
+
+  // ---------- แปลงผัก ----------
+  function plotInfo(p) {
+    const c = p && CROPS[p.seed];
+    if (!c) return { st: 'empty' };
+    const e = Math.max(0, Date.now() - p.at);
+    if (e >= c.growMs) return { st: 'ready', crop: c, frac: 1 };
+    return { st: 'grow', crop: c, left: c.growMs - e, frac: e / c.growMs };
+  }
+  function plantSeed(m, i, seed) {
+    const h = m.houseState();
+    if (h.plots[i] || !CROPS[seed] || !m.takeMat(seed, 1)) return false;
+    h.plots[i] = { seed: seed, at: Date.now() };
+    if (m.saveSoon) m.saveSoon();
+    refreshPlots(m);
+    return true;
+  }
+  function harvestPlot(m, i) {   // คืนข้อความ หรือ null ถ้าเก็บไม่ได้
+    const h = m.houseState(), p = h.plots[i], inf = plotInfo(p);
+    if (inf.st !== 'ready') return null;
+    const c = inf.crop, n = c.yieldMin + Math.floor(Math.random() * (c.yieldMax - c.yieldMin + 1));
+    const left = m.addMat(c.veg, n);
+    if (left >= n) { toast(m, 'กระเป๋าเต็ม เก็บเกี่ยวไม่ได้'); return null; }
+    h.plots[i] = null;
+    let txt = MAT_DEFS[c.veg].icon + MAT_DEFS[c.veg].name + ' x' + (n - left);
+    if (Math.random() < SEED_RETURN_CHANCE && m.addMat(p.seed, 1) === 0) txt += ' + เมล็ดคืน 1';
+    if (m.saveSoon) m.saveSoon();
+    refreshPlots(m);
+    return txt;
+  }
+
+  function farmView(m, card, body, arg) {
+    const h = m.houseState();
+    const alive = function () { return document.body.contains(card); };
+    const wrap = el('div', 'hs-list');
+    body.append(wrap);
+    let picking = (arg && Number.isInteger(arg.plot) && !h.plots[arg.plot]) ? arg.plot : null;
+    let rows = [], timer = 0;
+
+    function paintIcon(r, inf) {
+      const sig = inf.st + (inf.crop ? inf.crop.veg : '') + (inf.st === 'grow' ? (inf.frac < 0.5 ? 'a' : 'b') : '');
+      if (sig === r.sig) return;
+      r.sig = sig;
+      r.ic.textContent = '';
+      if (inf.st === 'empty') r.ic.append(el('span', 'hs-plus', '＋'));
+      else if (inf.st === 'ready') r.ic.append(matIcon(inf.crop.veg, 50));
+      else r.ic.append(el('span', '', inf.frac < 0.5 ? '🌱' : '🌿'));
+    }
+    function refreshRows() {
+      rows.forEach(function (r) {
+        const inf = plotInfo(h.plots[r.i]);
+        paintIcon(r, inf);
+        r.card.className = 'hs-plot ' + inf.st;
+        if (inf.st === 'empty') { r.txt.textContent = 'แปลงว่าง'; r.sub.textContent = 'แตะปุ่มเพื่อเลือกเมล็ด'; r.btn.textContent = '🌱 ปลูก'; r.btn.disabled = false; r.fill.style.width = '0%'; }
+        else if (inf.st === 'ready') { r.txt.textContent = MAT_DEFS[inf.crop.veg].name; r.sub.textContent = '✨ พร้อมเก็บเกี่ยว!'; r.btn.textContent = '✂️ เก็บเกี่ยว'; r.btn.disabled = false; r.fill.style.width = '100%'; }
+        else { r.txt.textContent = MAT_DEFS[inf.crop.veg].name; r.sub.textContent = '⏳ อีก ' + fmtTime(inf.left); r.btn.textContent = 'กำลังโต'; r.btn.disabled = true; r.fill.style.width = Math.round(inf.frac * 100) + '%'; }
+      });
+    }
+    function draw() {
+      clearInterval(timer);
+      wrap.innerHTML = ''; rows = [];
+      if (picking !== null) {
+        wrap.append(el('div', 'hs-sec', '🌱 เลือกเมล็ดสำหรับแปลง ' + (picking + 1)));
+        const grid = el('div', 'hs-grid');
+        let any = false;
+        Object.keys(CROPS).forEach(function (seed) {
+          const own = m.countMat(seed);
+          if (own < 1) return;
+          any = true;
+          const c = CROPS[seed], pc = el('div', 'hs-prod');
+          const ic = el('div', 'hs-pic', ''); ic.append(matIcon(seed, 46));
+          pc.append(ic, el('div', 'hs-pname', MAT_DEFS[seed].name));
+          if (MAT_DEFS[seed].rarity) pc.append(el('div', 'hs-tag', MAT_DEFS[seed].rarity));
+          pc.append(el('div', 'hs-sub', 'มี ' + own + ' • โต ' + Math.round(c.growMs / 60000) + ' นาที'),
+            el('div', 'hs-sub', 'ได้ ' + c.yieldMin + '-' + c.yieldMax + ' ชิ้น'));
+          const b = el('button', 'hs-mini hs-wide', 'ปลูก');
+          b.addEventListener('click', function () { if (plantSeed(m, picking, seed)) { picking = null; draw(); } });
+          pc.append(b); grid.append(pc);
+        });
+        if (any) wrap.append(grid);
+        else wrap.append(el('div', 'hs-note', 'ไม่มีเมล็ด เมล็ดได้จากการล่ามอนสเตอร์ (หรือเก็บเกี่ยวผักแล้วมีโอกาสได้เมล็ดคืน)'));
+        const back = el('button', 'hs-btn hs-alt', '◀ กลับ');
+        back.addEventListener('click', function () { picking = null; draw(); });
+        wrap.append(back);
+        return;
+      }
+      const all = el('button', 'hs-btn hs-main2', '✂️ เก็บเกี่ยวทั้งหมดที่พร้อม');
+      all.addEventListener('click', function () {
+        const got = [];
+        for (let i = 0; i < PLOT_COUNT; i++) { const t = harvestPlot(m, i); if (t) got.push(t); }
+        toast(m, got.length ? 'เก็บเกี่ยว: ' + got.join(' / ') : 'ยังไม่มีผักพร้อมเก็บ');
+        draw();
+      });
+      const grid = el('div', 'hs-grid');
+      for (let i = 0; i < PLOT_COUNT; i++) {
+        const pc = el('div', 'hs-plot empty');
+        const num = el('div', 'hs-pn', 'แปลง ' + (i + 1));
+        const ic = el('div', 'hs-pi', '');
+        const txt = el('div', 'hs-pname', '');
+        const sub = el('div', 'hs-sub', '');
+        const pg = el('div', 'hs-pg'), fill = el('div', 'hs-pgf');
+        pg.append(fill);
+        const btn = el('button', 'hs-mini hs-wide', '');
+        (function (idx) {
+          btn.addEventListener('click', function () {
+            const inf = plotInfo(h.plots[idx]);
+            if (inf.st === 'empty') { picking = idx; draw(); }
+            else if (inf.st === 'ready') { const t = harvestPlot(m, idx); if (t) toast(m, 'เก็บเกี่ยว: ' + t); draw(); }
+          });
+        })(i);
+        pc.append(num, ic, txt, sub, pg, btn); grid.append(pc);
+        rows.push({ i: i, card: pc, ic: ic, txt: txt, sub: sub, btn: btn, fill: fill, sig: '' });
+      }
+      wrap.append(grid, all);
+      timer = setInterval(function () { if (!alive()) { clearInterval(timer); return; } refreshRows(); }, 1000);
+    }
+    draw(); refreshRows();
+    return function () { clearInterval(timer); };
+  }
+
+  // ---------- ทำอาหาร / สมุดอาหาร ----------
+  function costFor(r, books) {
+    const o = {};
+    Object.keys(r.need).forEach(function (id) { o[id] = Math.ceil(r.need[id] * (100 + COOK_STEP_PCT * books) / 100); });
+    return o;
+  }
+  function cookOnce(m, r) {   // 'ok' | 'max' | 'lack'
+    const h = m.houseState(), n = h.cookbook[r.id] || 0;
+    if (n >= COOK_MAX_BOOKS) return 'max';
+    const cost = costFor(r, n), ids = Object.keys(cost);
+    for (let i = 0; i < ids.length; i++) if (m.countMat(ids[i]) < cost[ids[i]]) return 'lack';
+    ids.forEach(function (id) { m.takeMat(id, cost[id]); });
+    h.cookbook[r.id] = n + 1;
+    return 'ok';
+  }
+
+  function cookView(m, card, body) {
+    const h = m.houseState();
+    let tier = 1, onlyCan = false;
+    const sum = el('div', 'hs-sum', '');
+    const tabs = el('div', 'hs-tabs hs-sub-tabs');
+    const filt = el('button', 'hs-btn hs-alt', '');
+    const list = el('div', 'hs-list');
+    body.append(sum, tabs, filt, list);
+
+    function canCook(r) {
+      const n = h.cookbook[r.id] || 0;
+      if (n >= COOK_MAX_BOOKS) return false;
+      const c = costFor(r, n);
+      return Object.keys(c).every(function (id) { return m.countMat(id) >= c[id]; });
+    }
+    function summary() {
+      const b = m.cookbookBonus(), ks = Object.keys(b);
+      let books = 0; Object.keys(h.cookbook).forEach(function (k) { books += h.cookbook[k]; });
+      sum.textContent = '';
+      sum.append(el('b', '', '📖 ทำแล้ว ' + books + ' เล่ม'));
+      sum.append(el('div', 'hs-sub', 'โบนัสถาวรรวม: ' + (ks.length ? ks.map(function (k) { return fmtVal(k, b[k]); }).join(' · ') : 'ยังไม่มี')));
+    }
+    function drawTabs() {
+      tabs.innerHTML = '';
+      for (let t = 1; t <= 5; t++) {
+        const b = el('button', 'hs-tab' + (t === tier ? ' on' : ''), 'ระดับ ' + t);
+        b.addEventListener('click', function () { tier = t; draw(); });
+        tabs.append(b);
+      }
+    }
+    function doCook(r, times) {
+      let ok = 0, why = '';
+      for (let i = 0; i < times; i++) { const x = cookOnce(m, r); if (x === 'ok') ok++; else { why = x; break; } }
+      if (ok > 0) {
+        m.computeAtk();
+        if (m.saveSoon) m.saveSoon();
+        toast(m, '🍳 ทำ ' + r.name + ' ได้ ' + ok + ' เล่ม (รวม ' + h.cookbook[r.id] + ')');
+      } else toast(m, why === 'max' ? 'ครบ ' + COOK_MAX_BOOKS + ' เล่มแล้ว' : 'วัตถุดิบไม่พอ');
+      draw();
+    }
+    function draw() {
+      summary(); drawTabs();
+      [(tier - 1) * 2 + 1, (tier - 1) * 2 + 2].forEach(function (sn) {   // โหลดแผ่นไอคอนของระดับนี้ (เสร็จแล้ววาดใหม่ให้โชว์รูป)
+        dishLoadSheet(sn, function () { if (document.body.contains(card)) draw(); });
+      });
+      filt.textContent = (onlyCan ? '☑' : '☐') + ' แสดงเฉพาะที่ทำได้ตอนนี้';
+      list.innerHTML = '';
+      let shown = 0;
+      COOK_RECIPES.forEach(function (r, ri) {
+        if (r.tier !== tier) return;
+        const n = h.cookbook[r.id] || 0, can = canCook(r);
+        if (onlyCan && !can) return;
+        shown++;
+        const row = el('div', 'hs-dish' + (n >= COOK_MAX_BOOKS ? ' max' : '') + (can ? ' can' : ''));
+        const head = el('div', 'hs-dh');
+        const dn = el('span', 'hs-dn', '');
+        if (DISH_ICONS[ri]) {
+          const im = el('img', 'hs-ico');
+          im.src = DISH_ICONS[ri];
+          im.alt = '';
+          dn.append(im, el('span', '', r.name));
+        } else dn.append(el('span', 'hs-emo', r.icon), el('span', '', r.name));
+        head.append(dn, el('span', 'hs-dc', n + '/' + COOK_MAX_BOOKS));
+        const pgb = el('div', 'hs-pg'), pgf = el('div', 'hs-pgf');
+        pgf.style.width = Math.round(n / COOK_MAX_BOOKS * 100) + '%';
+        pgb.append(pgf);
+        const chips = el('div', 'hs-chips');
+        Object.keys(r.bonus).forEach(function (k) { chips.append(el('span', 'hs-bn', fmtVal(k, r.bonus[k]))); });
+        row.append(head, pgb, chips);
+        if (n > 0) row.append(el('div', 'hs-sub', 'รวมแล้ว: ' + Object.keys(r.bonus).map(function (k) { return fmtVal(k, r.bonus[k] * n); }).join(' · ')));
+        if (n < COOK_MAX_BOOKS) {
+          const cost = costFor(r, n), ing = el('div', 'hs-ing');
+          Object.keys(cost).forEach(function (id) {
+            const have = m.countMat(id), s = el('span', (have >= cost[id] ? 'hs-ok' : 'hs-no') + ' hs-ig', '');
+            s.append(matIcon(id, 20), document.createTextNode(' ' + MAT_DEFS[id].name + ' ' + have + '/' + cost[id]));
+            ing.append(s);
+          });
+          row.append(ing);
+          const bt = el('div', 'hs-bt');
+          const b1 = el('button', 'hs-mini', '🍳 ทำ ×1'), b10 = el('button', 'hs-mini', '🍳 ต่อเนื่อง ×10');
+          b1.disabled = !can; b10.disabled = !can;
+          b1.addEventListener('click', function () { doCook(r, 1); });
+          b10.addEventListener('click', function () { doCook(r, 10); });
+          bt.append(b1, b10); row.append(bt);
+        } else row.append(el('div', 'hs-ok', '✔ ครบ ' + COOK_MAX_BOOKS + ' เล่ม'));
+        list.append(row);
+      });
+      if (!shown) list.append(el('div', 'hs-note', 'ยังไม่มีเมนูที่ทำได้ในระดับนี้'));
+    }
+    filt.addEventListener('click', function () { onlyCan = !onlyCan; draw(); });
+    draw();
+  }
+
+  // ---------- ร้านค้า ----------
+  function shopView(m, card, body) {
+    const goldEl = el('div', 'hs-gold', '');
+    const list = el('div', 'hs-list');
+    body.append(goldEl, list);
+    const refs = [];
+    function refreshAll() {
+      goldEl.textContent = '🪙 ทองของคุณ  ' + Number(m.stats.gold || 0).toLocaleString();
+      refs.forEach(function (r) { r.own.textContent = 'มี ' + m.countMat(r.id); });
+    }
+    function section(title, ids) {
+      list.append(el('div', 'hs-sec', title));
+      const grid = el('div', 'hs-grid');
+      ids.forEach(function (id) {
+        const d = MAT_DEFS[id], pc = el('div', 'hs-prod');
+        const ic = el('div', 'hs-pic', ''); ic.append(matIcon(id, 44));
+        const own = el('div', 'hs-sub', '');
+        pc.append(ic, el('div', 'hs-pname', d.name), el('div', 'hs-price', '🪙 ' + d.price), own);
+        const bt = el('div', 'hs-bt hs-bt2');
+        [1, 10].forEach(function (q) {
+          const b = el('button', 'hs-mini', '×' + q);
+          b.addEventListener('click', function () {
+            const cost = d.price * q;
+            if (!m.canAddMat(id, q)) { toast(m, 'กระเป๋าเต็ม'); return; }
             if (!spendGold(m, cost)) { toast(m, 'ทองไม่พอ'); return; }   // ลดทองในเกม -> goldSync.js ส่งส่วนต่างติดลบขึ้นเซิร์ฟเวอร์เอง
             m.addMat(id, q);
             toast(m, 'ซื้อ ' + d.name + ' x' + q);
@@ -588,9 +974,10 @@
           });
           bt.append(b);
         });
-        row.append(left, bt); list.append(row);
+        pc.append(bt); grid.append(pc);
         refs.push({ id: id, own: own });
       });
+      list.append(grid);
     }
     section('🧂 เครื่องปรุง', ['sp_salt', 'sp_sugar', 'sp_sauce', 'sp_spice', 'sp_oil']);
     section('🎣 เหยื่อ', ['bait_basic']);
@@ -612,24 +999,26 @@
     card.classList.add('hs-card');
     const tabs = el('div', 'hs-tabs'), body = el('div', 'hs-body');
     card.append(tabs, body);
-    const TABS = [['fish', '🎣 ตกปลา', fishView], ['farm', '🥬 แปลงผัก', farmView], ['cook', '🍳 ทำอาหาร', cookView], ['shop', '🛒 ร้านค้า', shopView]];
+    const TABS = [['fish', '🎣', 'ตกปลา', fishView], ['farm', '🥬', 'แปลงผัก', farmView], ['cook', '🍳', 'ทำอาหาร', cookView], ['shop', '🛒', 'ร้านค้า', shopView]];
     let cleanup = null;
     function show(key, a) {
       if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
       body.innerHTML = '';
       tabs.innerHTML = '';
       TABS.forEach(function (t) {
-        const b = el('button', 'hs-tab' + (t[0] === key ? ' on' : ''), t[1]);
+        const b = el('button', 'hs-tab' + (t[0] === key ? ' on' : ''), '');
+        b.append(el('span', 'hs-ti', t[1]), el('span', 'hs-tl', t[2]));
         b.addEventListener('click', function () { show(t[0]); });
         tabs.append(b);
       });
       const t = TABS.filter(function (x) { return x[0] === key; })[0];
-      cleanup = t[2](m, card, body, a) || null;
+      cleanup = t[3](m, card, body, a) || null;
     }
     show(tab || 'fish', arg);
     townCloseBtn(m, card);
   }
   window.openHouse = openHouse;
+
 
   // ================= แมพบ้านส่วนตัว =================
   const hasFrame = function (m, k) { return m.textures.exists('town') && !!m.textures.getFrame('town', k); };
