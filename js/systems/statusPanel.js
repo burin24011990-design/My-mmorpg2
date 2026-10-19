@@ -1,16 +1,20 @@
 // ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
-// v4: ดีไซน์ใหม่ทั้งหมด (ไม่ใช้ css/status-panel.css) + โชว์ชื่อตัวละคร (อ่านจาก mmo_cloud_lastname) + ใส่รูปตัวละครได้
-//     ค่าที่บวกจากอุปกรณ์ = สีเขียว | ค่าที่บวกจากการ์ด = สีฟ้า
+// v5: ย่อหน้าต่างลง (WIN_SCALE) + ซ่อนปุ่ม เสียง/เมือง/แชนแนล ตอนเปิด (คืนเมื่อปิด)
+//     ชื่อตัวละครอ่านจาก mmo_cloud_lastname | ใส่รูปตัวละครได้ | อุปกรณ์ = เขียว, การ์ด = ฟ้า
 (function () {
   var PP = window.PixelPanels;
   if (!PP) return;
 
   // ---------- ตั้งค่า (ปรับตรงนี้) ----------
+  var WIN_SCALE = 0.5;              // ขนาดหน้าต่างจอแนวนอน: 1 = เดิม | 0.5 = ครึ่งหนึ่ง
+  var PORTRAIT_SCALE = 0.85;        // ขนาดหน้าต่างจอแนวตั้ง (จอแคบ ไม่ควรย่อมาก)
   var PORTRAIT_URL = '';            // ใส่ path รูปเริ่มต้นได้ เช่น 'assets/portrait.png' (ว่าง = ใช้อีโมจิ 🦊)
   var PORTRAIT_EMOJI = '🦊';
   var PORTRAIT_KEY = 'xh_portrait_v1';   // ที่เก็บรูปที่ผู้เล่นเลือกเอง (เก็บในเครื่อง)
   var PORTRAIT_SIZE = 192;          // ย่อรูปเป็นสี่เหลี่ยมจัตุรัสขนาดนี้ก่อนเก็บ
+  // ปุ่มที่จะซ่อนตอนเปิดหน้าสเตตัส (จับจากข้อความบนปุ่ม) ถ้ามีปุ่มอื่นอยากซ่อน เพิ่มชื่อใน RegExp นี้
+  var HIDE_BTN_RE = /^(เสียง|เมือง|CH\s?\d+(-\d+)?)$/;
   // ฉายาตามเลเวล (เลเวลขึ้นไป -> ฉายา)
   var RANKS = [
     [1, 'หน้าใหม่ยุทธภพ'], [20, 'ศิษย์สำนัก'], [40, 'ยอดฝีมือ'],
@@ -51,10 +55,11 @@
     var st = document.createElement('style');
     st.id = 'wx-css';
     st.textContent = [
-      '.wx-win{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(94%,820px);max-height:94%;display:none;flex-direction:column;box-sizing:border-box;z-index:60;pointer-events:auto;',
+      '.wx-win{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(' + WIN_SCALE + ');transform-origin:center center;width:min(94%,820px);max-height:94%;display:none;flex-direction:column;box-sizing:border-box;z-index:60;pointer-events:auto;',
       "font-family:'Noto Serif SC','Mitr',sans-serif;color:#f3e3bf;padding:10px 12px 12px;border:3px solid #c9a24a;border-radius:6px;",
       'background:radial-gradient(ellipse at 50% 0%,rgba(140,24,24,.45),transparent 62%),repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 7px),linear-gradient(#1d0d0d,#0d0505);',
       'box-shadow:0 0 0 2px #3b0d0d,0 0 0 4px rgba(201,162,74,.45),0 10px 40px rgba(0,0,0,.8),inset 0 0 36px rgba(0,0,0,.75)}',
+      '@media (orientation:portrait){.wx-win{transform:translate(-50%,-50%) scale(' + PORTRAIT_SCALE + ')}}',
       '.wx-win.open{display:flex}',
       '.wx-cn{position:absolute;width:13px;height:13px;background:#8e1b16;border:2px solid #e6c36a;transform:rotate(45deg);box-shadow:0 0 6px #000}',
       '.wx-cn.a{left:-9px;top:-9px}.wx-cn.b{right:-9px;top:-9px}.wx-cn.c{left:-9px;bottom:-9px}.wx-cn.d{right:-9px;bottom:-9px}',
@@ -101,6 +106,38 @@
       '.wx-legend u{text-decoration:none;font-weight:700}'
     ].join('');
     document.head.appendChild(st);
+  }
+
+  // ---------- ซ่อน/คืนปุ่ม เสียง เมือง แชนแนล ----------
+  var hidden = [];        // [{el, v}] ปุ่มที่ซ่อนไว้ (เก็บค่าเดิมไว้คืน)
+  var hudTimer = null;
+  function hideHud() {
+    try {
+      var all = document.querySelectorAll('body *');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (win && win.contains(el)) continue;
+        if (el.childElementCount > 0) continue;               // เอาเฉพาะตัวที่มีแต่ข้อความ
+        var tx = (el.textContent || '').trim();
+        if (!tx || tx.length > 8 || !HIDE_BTN_RE.test(tx)) continue;
+        // ไต่ขึ้นไปหาตัวปุ่ม (ครอบทั้งไอคอน+ป้ายชื่อ) ไม่เกิน 3 ชั้น และไม่ใหญ่เกินปุ่ม
+        var t = el;
+        for (var n = 0; n < 3; n++) {
+          var p = t.parentElement;
+          if (!p || p === layer || p === document.body || p === document.documentElement) break;
+          var r = p.getBoundingClientRect();
+          if (r.width > 170 || r.height > 170) break;
+          t = p;
+        }
+        if (hidden.some(function (h) { return h.el === t; })) continue;
+        hidden.push({ el: t, v: t.style.visibility });
+        t.style.visibility = 'hidden';
+      }
+    } catch (e) {}
+  }
+  function restoreHud() {
+    hidden.forEach(function (h) { try { h.el.style.visibility = h.v || ''; } catch (e) {} });
+    hidden = [];
   }
 
   // ---------- ชื่อตัวละคร ----------
@@ -269,8 +306,18 @@
     body.scrollTop = top;
   }
 
-  function show() { render(); win.classList.add('open'); }
-  function hide() { if (win) win.classList.remove('open'); }
+  function show() {
+    render();
+    win.classList.add('open');
+    hideHud();
+    // ปุ่มบางตัวถูกวาดใหม่เป็นระยะ -> เช็กซ้ำเป็นช่วงๆ ระหว่างเปิดอยู่
+    if (!hudTimer) hudTimer = setInterval(function () { if (isOpen()) hideHud(); }, 700);
+  }
+  function hide() {
+    if (win) win.classList.remove('open');
+    if (hudTimer) { clearInterval(hudTimer); hudTimer = null; }
+    restoreHud();
+  }
   function isOpen() { return !!(win && win.classList.contains('open')); }
 
   // ---- ครอบฟังก์ชันของ PixelPanels: 'status' ใช้หน้าต่างนี้ / ชื่ออื่นใช้ของเดิม ----
