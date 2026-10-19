@@ -1,19 +1,29 @@
-// ===== หน้าต่างสเตตัสแบบกะทัดรัด: โชว์ค่าสถานะอย่างเดียว =====
+// ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
-// ไม่แก้ไฟล์เดิม: แค่ดักเมื่อเปิดหน้า 'status' แล้วใช้หน้าต่างนี้แทน
-// หน้าอื่น (อุปกรณ์ / สกิล) ยังใช้ของเดิมทุกอย่าง
-// v2: ค่าที่บวกจากอุปกรณ์ = สีเขียว | ค่าที่บวกจากการ์ด = สีฟ้า
+// v4: ดีไซน์ใหม่ทั้งหมด (ไม่ใช้ css/status-panel.css) + โชว์ชื่อตัวละคร (อ่านจาก mmo_cloud_lastname) + ใส่รูปตัวละครได้
+//     ค่าที่บวกจากอุปกรณ์ = สีเขียว | ค่าที่บวกจากการ์ด = สีฟ้า
 (function () {
   var PP = window.PixelPanels;
   if (!PP) return;
-  var layer = document.getElementById('ui-layer') || document.body;
-  var win = null, body = null;
 
-  // กลุ่มค่าสถานะ (คีย์ตาม STAT_DEFS ใน stats.js) — ค่าไหนไม่มีในเกมจะข้ามเอง
+  // ---------- ตั้งค่า (ปรับตรงนี้) ----------
+  var PORTRAIT_URL = '';            // ใส่ path รูปเริ่มต้นได้ เช่น 'assets/portrait.png' (ว่าง = ใช้อีโมจิ 🦊)
+  var PORTRAIT_EMOJI = '🦊';
+  var PORTRAIT_KEY = 'xh_portrait_v1';   // ที่เก็บรูปที่ผู้เล่นเลือกเอง (เก็บในเครื่อง)
+  var PORTRAIT_SIZE = 192;          // ย่อรูปเป็นสี่เหลี่ยมจัตุรัสขนาดนี้ก่อนเก็บ
+  // ฉายาตามเลเวล (เลเวลขึ้นไป -> ฉายา)
+  var RANKS = [
+    [1, 'หน้าใหม่ยุทธภพ'], [20, 'ศิษย์สำนัก'], [40, 'ยอดฝีมือ'],
+    [60, 'จอมยุทธ์'], [80, 'ปรมาจารย์'], [100, 'เทพยุทธ์']
+  ];
+
+  var layer = document.getElementById('ui-layer') || document.body;
+  var win = null, body = null, fileIn = null;
+
   var GROUPS = [
-    { t: '⚔️ โจมตี',  c: '#ff6a5e', k: ['patk', 'ap', 'aspd', 'crit', 'critdmg', 'ppen', 'mpen'] },
-    { t: '🛡️ ป้องกัน', c: '#5db0ff', k: ['pdef', 'mdef', 'dodge', 'hpregen', 'mpregen'] },
-    { t: '✨ พิเศษ',   c: '#f2d48a', k: ['cdr', 'mspd', 'lifesteal', 'spellvamp'] }
+    { z: '攻', t: 'โจมตี',    c: '#d6403a', k: ['patk', 'ap', 'aspd', 'crit', 'critdmg', 'ppen', 'mpen'] },
+    { z: '守', t: 'ป้องกัน',   c: '#3f86c8', k: ['pdef', 'mdef', 'dodge', 'hpregen', 'mpregen'] },
+    { z: '奇', t: 'พิเศษ',     c: '#c9a24a', k: ['cdr', 'mspd', 'lifesteal', 'spellvamp'] }
   ];
 
   function esc(s) {
@@ -25,7 +35,126 @@
   function num(v) { return (typeof v === 'number' && !isNaN(v)) ? v : 0; }
   function pct(v) { return Math.max(0, Math.min(100, v)); }
 
-  // แยกโบนัสจากอุปกรณ์ / การ์ด (เฉพาะชิ้นที่สวมอยู่)
+  // ---------- ฟอนต์จีน (ดึงเฉพาะตัวอักษรที่ใช้ ไฟล์เล็กมาก) ----------
+  (function () {
+    if (document.getElementById('wx-font')) return;
+    var zh = '攻守奇俠江湖氣血內力經驗銀兩殺敵錄武';
+    var l = document.createElement('link');
+    l.id = 'wx-font'; l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&text=' + encodeURIComponent(zh) + '&display=swap';
+    document.head.appendChild(l);
+  })();
+
+  // ---------- CSS ----------
+  function css() {
+    if (document.getElementById('wx-css')) return;
+    var st = document.createElement('style');
+    st.id = 'wx-css';
+    st.textContent = [
+      '.wx-win{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(94%,820px);max-height:94%;display:none;flex-direction:column;box-sizing:border-box;z-index:60;pointer-events:auto;',
+      "font-family:'Noto Serif SC','Mitr',sans-serif;color:#f3e3bf;padding:10px 12px 12px;border:3px solid #c9a24a;border-radius:6px;",
+      'background:radial-gradient(ellipse at 50% 0%,rgba(140,24,24,.45),transparent 62%),repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 7px),linear-gradient(#1d0d0d,#0d0505);',
+      'box-shadow:0 0 0 2px #3b0d0d,0 0 0 4px rgba(201,162,74,.45),0 10px 40px rgba(0,0,0,.8),inset 0 0 36px rgba(0,0,0,.75)}',
+      '.wx-win.open{display:flex}',
+      '.wx-cn{position:absolute;width:13px;height:13px;background:#8e1b16;border:2px solid #e6c36a;transform:rotate(45deg);box-shadow:0 0 6px #000}',
+      '.wx-cn.a{left:-9px;top:-9px}.wx-cn.b{right:-9px;top:-9px}.wx-cn.c{left:-9px;bottom:-9px}.wx-cn.d{right:-9px;bottom:-9px}',
+      '.wx-banner{text-align:center;font-size:11px;letter-spacing:3px;color:#c9a24a;margin:-2px 0 6px;display:flex;align-items:center;gap:8px}',
+      '.wx-banner:before,.wx-banner:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent)}',
+      '.wx-banner b{font-weight:900;font-size:13px;color:#e6c36a;text-shadow:0 0 6px rgba(201,162,74,.5)}',
+      '.wx-head{display:flex;align-items:center;gap:12px;flex:0 0 auto}',
+      '.wx-pt{position:relative;flex:0 0 auto;width:clamp(54px,17vh,92px);height:clamp(54px,17vh,92px);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,9vh,50px);',
+      'background:radial-gradient(circle at 35% 30%,#4a1414,#170707);border:3px solid #e6c36a;box-shadow:0 0 0 2px #5a1010,0 0 0 4px #c9a24a,0 0 14px rgba(0,0,0,.9);overflow:hidden}',
+      '.wx-pt img{width:100%;height:100%;object-fit:cover;pointer-events:none}',
+      '.wx-cam{position:absolute;right:0;bottom:0;left:0;text-align:center;font-size:10px;line-height:1.5;background:rgba(0,0,0,.6);color:#e6c36a;font-family:inherit}',
+      '.wx-id{flex:1;min-width:0}',
+      '.wx-name{font-size:clamp(18px,5.4vh,28px);font-weight:900;color:#f6dc8c;letter-spacing:1px;text-shadow:0 2px 0 #5a1010,0 0 10px rgba(201,162,74,.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wx-meta{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}',
+      '.wx-lv{background:linear-gradient(#b3261e,#6e100c);border:2px solid #e6c36a;border-radius:4px;padding:1px 9px;font-weight:900;font-size:14px;color:#fff3cf;box-shadow:0 0 6px rgba(0,0,0,.7)}',
+      '.wx-rank{font-size:12px;color:#e6c36a;border-bottom:1px solid rgba(201,162,74,.5);padding:0 2px}',
+      '.wx-cls{font-size:12px;color:#d9c6a0}',
+      '.wx-rm{font-size:10px;color:#9a8a6a;text-decoration:underline;cursor:pointer;margin-left:2px}',
+      '.wx-x{flex:0 0 auto;width:38px;height:38px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:18px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0}',
+      '.wx-x:active{filter:brightness(1.3)}',
+      '.wx-bars{display:flex;flex-direction:column;gap:5px;margin:9px 0 8px;flex:0 0 auto}',
+      '.wx-bar{position:relative;height:clamp(17px,5vh,24px);border:2px solid #c9a24a;border-radius:3px;background:#0a0404;overflow:hidden;box-shadow:inset 0 0 8px #000}',
+      '.wx-bar i{position:absolute;left:0;top:0;bottom:0}',
+      '.wx-bar.hp i{background:linear-gradient(#e0443a,#8e1510)}',
+      '.wx-bar.mp i{background:linear-gradient(#3f9ad8,#164a86)}',
+      '.wx-bar.xp i{background:linear-gradient(#e6c36a,#9a741c)}',
+      '.wx-bar b{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:clamp(10px,3vh,13px);font-weight:600;text-shadow:0 1px 2px #000,0 0 3px #000;color:#fff}',
+      '.wx-bar b em{font-style:normal;font-family:"Noto Serif SC","Mitr",sans-serif;font-weight:900;color:#ffe9b0;margin-right:5px}',
+      '.wx-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;-webkit-overflow-scrolling:touch;padding:2px 2px 0}',
+      '.wx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}',
+      '.wx-card{border:1px solid rgba(201,162,74,.7);border-radius:5px;background:rgba(0,0,0,.38);box-shadow:inset 0 0 14px rgba(0,0,0,.6);overflow:hidden}',
+      '.wx-card h3{margin:0;display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:14px;font-weight:700;color:var(--c);background:linear-gradient(90deg,rgba(255,255,255,.07),transparent);border-bottom:2px solid var(--c)}',
+      '.wx-card h3 i{font-style:normal;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:var(--c);color:#fff;border-radius:3px;font-weight:900;font-size:15px;box-shadow:0 0 0 1px #000,inset 0 0 0 1px rgba(255,255,255,.35)}',
+      '.wx-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:6px 9px;border-bottom:1px dashed rgba(201,162,74,.28);font-size:13px}',
+      '.wx-row:last-child{border-bottom:0}',
+      '.wx-row span{color:#d9c6a0}',
+      '.wx-row b{color:#fff3cf;font-weight:700;text-align:right}',
+      '.wx-row small{font-size:11px;font-weight:700;margin-left:3px}',
+      '.wx-foot{display:flex;gap:8px;margin-top:8px}',
+      '.wx-chip{flex:1;display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border:1px solid rgba(201,162,74,.7);border-radius:5px;background:rgba(0,0,0,.4);font-size:13px}',
+      '.wx-chip span em{font-style:normal;font-family:"Noto Serif SC","Mitr",sans-serif;font-weight:900;color:#e6c36a;margin-right:4px}',
+      '.wx-chip b{color:#f6dc8c}',
+      '.wx-legend{margin-top:7px;text-align:center;font-size:11px;color:#9a8a6a}',
+      '.wx-legend u{text-decoration:none;font-weight:700}'
+    ].join('');
+    document.head.appendChild(st);
+  }
+
+  // ---------- ชื่อตัวละคร ----------
+  // startScreen.js เก็บชื่อที่ตั้งตอนกดเริ่มเล่นไว้ที่ localStorage คีย์ mmo_cloud_lastname (ผู้เยี่ยมชมจะมี G- นำหน้า)
+  function playerName(s) {
+    var c = [];
+    try {
+      c.push(localStorage.getItem('mmo_cloud_lastname'));
+      c.push(window.PLAYER_NAME, window.playerName, window.myName);
+      if (s) c.push(s.playerName, s.charName, s.myName, s.nickname, s.name, s.stats && s.stats.name);
+      if (window.Net) c.push(window.Net.name, window.Net.myName);
+    } catch (e) {}
+    for (var i = 0; i < c.length; i++) {
+      if (typeof c[i] === 'string' && c[i].trim()) return c[i].trim();
+    }
+    return 'Player';
+  }
+  function rankOf(lv) {
+    var r = RANKS[0][1];
+    RANKS.forEach(function (x) { if (lv >= x[0]) r = x[1]; });
+    return r;
+  }
+
+  // ---------- รูปตัวละคร ----------
+  function getPortrait() {
+    try { var v = localStorage.getItem(PORTRAIT_KEY); if (v) return v; } catch (e) {}
+    return PORTRAIT_URL || '';
+  }
+  function hasCustomPortrait() {
+    try { return !!localStorage.getItem(PORTRAIT_KEY); } catch (e) { return false; }
+  }
+  function pickFile(file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    var fr = new FileReader();
+    fr.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        try {
+          var c = document.createElement('canvas');
+          c.width = c.height = PORTRAIT_SIZE;
+          var side = Math.min(im.width, im.height);
+          c.getContext('2d').drawImage(im, (im.width - side) / 2, (im.height - side) / 2, side, side, 0, 0, PORTRAIT_SIZE, PORTRAIT_SIZE);
+          localStorage.setItem(PORTRAIT_KEY, c.toDataURL('image/jpeg', 0.85));
+        } catch (e) {
+          var s = window.__mainScene; if (s && s.toastMsg) s.toastMsg('บันทึกรูปไม่สำเร็จ');
+        }
+        render();
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+
+  // ---------- แยกโบนัสจากอุปกรณ์ / การ์ด (เฉพาะชิ้นที่สวมอยู่) ----------
   function bonusSplit(s) {
     var eqB = {}, cdB = {};
     try {
@@ -42,15 +171,35 @@
     return { eq: eqB, cd: cdB };
   }
 
+  // ---------- สร้างหน้าต่าง ----------
   function build() {
     if (win) return;
+    css();
     win = document.createElement('div');
-    win.className = 'sp-win';
-    win.innerHTML = '<div class="sp-head"></div><div class="sp-bars"></div><div class="sp-body"></div>';
+    win.className = 'wx-win';
+    win.innerHTML =
+      '<span class="wx-cn a"></span><span class="wx-cn b"></span><span class="wx-cn c"></span><span class="wx-cn d"></span>' +
+      '<div class="wx-banner"><b>俠客錄</b><span>ทำเนียบยอดยุทธ์</span></div>' +
+      '<div class="wx-head"></div><div class="wx-bars"></div>' +
+      '<div class="wx-scroll"></div>';
     layer.appendChild(win);
-    body = win.querySelector('.sp-body');
+    body = win.querySelector('.wx-scroll');
+
+    fileIn = document.createElement('input');
+    fileIn.type = 'file'; fileIn.accept = 'image/*'; fileIn.style.display = 'none';
+    fileIn.addEventListener('change', function () {
+      if (fileIn.files && fileIn.files[0]) pickFile(fileIn.files[0]);
+      fileIn.value = '';
+    });
+    win.appendChild(fileIn);
+
     win.addEventListener('click', function (e) {
-      if (e.target.closest('.sp-x')) hide();
+      if (e.target.closest('.wx-x')) { hide(); return; }
+      if (e.target.closest('.wx-rm')) {
+        try { localStorage.removeItem(PORTRAIT_KEY); } catch (er) {}
+        render(); return;
+      }
+      if (e.target.closest('.wx-pt')) fileIn.click();
     });
     ['pointerdown', 'touchstart', 'touchmove', 'mousedown'].forEach(function (evn) {
       win.addEventListener(evn, function (e) { e.stopPropagation(); }, { passive: true });
@@ -60,31 +209,37 @@
   function render() {
     build();
     var s = window.__mainScene;
-    var head = win.querySelector('.sp-head');
-    var bars = win.querySelector('.sp-bars');
+    var head = win.querySelector('.wx-head');
+    var bars = win.querySelector('.wx-bars');
     if (!s || !s.stats || !s.getStats) {
-      head.innerHTML = '<div class="sp-id"><div class="sp-name">กำลังโหลด...</div></div><button class="sp-x" aria-label="ปิด">✕</button>';
+      head.innerHTML = '<div class="wx-id"><div class="wx-name">กำลังโหลด...</div></div><button class="wx-x" aria-label="ปิด">✕</button>';
       return;
     }
     var st = s.stats, S = s.getStats();
     var cls = '';
     try { cls = (s.currentClass && window.WEAPON_CLASS_LABEL) ? (WEAPON_CLASS_LABEL[s.currentClass()] || '') : ''; } catch (e) {}
 
+    var lv = num(st.level || 1);
     var hp = Math.floor(num(st.hp)), hpMax = s.maxHp ? s.maxHp() : hp;
     var mp = Math.floor(num(st.mp)), mpMax = s.maxMp ? s.maxMp() : mp;
     var exp = st.expNext ? +(num(st.exp) / st.expNext * 100).toFixed(1) : 0;
 
+    var pic = getPortrait();
     head.innerHTML =
-      '<div class="sp-seal"><span>🦊</span></div>' +
-      '<div class="sp-id"><div class="sp-name">Player</div>' +
-      '<div class="sp-meta"><span class="sp-lv">Lv. ' + num(st.level || 1) + '</span>' +
-      (cls ? '<span class="sp-cls">' + esc(cls) + '</span>' : '') + '</div></div>' +
-      '<button class="sp-x" aria-label="ปิด">✕</button>';
+      '<div class="wx-pt" title="แตะเพื่อเปลี่ยนรูป">' +
+      (pic ? '<img src="' + esc(pic) + '" alt="">' : PORTRAIT_EMOJI) +
+      '<span class="wx-cam">📷 เปลี่ยนรูป</span></div>' +
+      '<div class="wx-id"><div class="wx-name">' + esc(playerName(s)) + '</div>' +
+      '<div class="wx-meta"><span class="wx-lv">Lv. ' + lv + '</span>' +
+      '<span class="wx-rank">' + esc(rankOf(lv)) + '</span>' +
+      (cls ? '<span class="wx-cls">' + esc(cls) + '</span>' : '') +
+      (hasCustomPortrait() ? '<span class="wx-rm">ลบรูป</span>' : '') + '</div></div>' +
+      '<button class="wx-x" aria-label="ปิด">✕</button>';
 
     bars.innerHTML =
-      '<div class="sp-bar hp"><i style="width:' + pct(hpMax ? hp / hpMax * 100 : 0) + '%"></i><b><span>❤️ HP</span><span>' + fmt(hp) + ' / ' + fmt(hpMax) + '</span></b></div>' +
-      '<div class="sp-bar mp"><i style="width:' + pct(mpMax ? mp / mpMax * 100 : 0) + '%"></i><b><span>💧 MP</span><span>' + fmt(mp) + ' / ' + fmt(mpMax) + '</span></b></div>' +
-      '<div class="sp-bar xp"><i style="width:' + pct(exp) + '%"></i><b>EXP ' + exp + '%</b></div>';
+      '<div class="wx-bar hp"><i style="width:' + pct(hpMax ? hp / hpMax * 100 : 0) + '%"></i><b><span><em>血</em>HP</span><span>' + fmt(hp) + ' / ' + fmt(hpMax) + '</span></b></div>' +
+      '<div class="wx-bar mp"><i style="width:' + pct(mpMax ? mp / mpMax * 100 : 0) + '%"></i><b><span><em>氣</em>MP</span><span>' + fmt(mp) + ' / ' + fmt(mpMax) + '</span></b></div>' +
+      '<div class="wx-bar xp"><i style="width:' + pct(exp) + '%"></i><b><span><em>經驗</em>EXP</span><span>' + exp + '%</span></b></div>';
 
     var defs = window.STAT_DEFS || {};
     var f = window.fmtStat || function (k, v) { return Math.round(v); };
@@ -97,19 +252,20 @@
         if (!d) return;
         if (d.hideZero && !S[k]) return;
         var add = '';
-        if (split.eq[k] > 0) add += ' <small style="color:#5ee08a;font-weight:700">+' + esc(f(k, split.eq[k])) + '</small>';
-        if (split.cd[k] > 0) add += ' <small style="color:#5db8ff;font-weight:700">+' + esc(f(k, split.cd[k])) + '</small>';
-        rows += '<div class="sp-row"><span>' + esc(d.label) + '</span><b>' + esc(f(k, S[k])) + add + '</b></div>';
+        if (split.eq[k] > 0) add += '<small style="color:#5ee08a">+' + esc(f(k, split.eq[k])) + '</small>';
+        if (split.cd[k] > 0) add += '<small style="color:#5db8ff">+' + esc(f(k, split.cd[k])) + '</small>';
+        rows += '<div class="wx-row"><span>' + esc(d.label) + '</span><b>' + esc(f(k, S[k])) + add + '</b></div>';
       });
-      if (rows) cards += '<div class="sp-card" style="--c:' + g.c + '"><h3>' + g.t + '</h3>' + rows + '</div>';
+      if (rows) cards += '<div class="wx-card" style="--c:' + g.c + '"><h3><i>' + g.z + '</i>' + g.t + '</h3>' + rows + '</div>';
     });
 
     var top = body.scrollTop;
     body.innerHTML =
-      '<div class="sp-grid">' + cards + '</div>' +
-      '<div class="sp-foot">' +
-      '<div class="sp-chip"><span>🪙 ทอง</span><b>' + fmt(num(st.gold)) + '</b></div>' +
-      '<div class="sp-chip"><span>☠️ ฆ่าแล้ว</span><b>' + fmt(num(s.kills)) + '</b></div></div>';
+      '<div class="wx-grid">' + cards + '</div>' +
+      '<div class="wx-foot">' +
+      '<div class="wx-chip"><span><em>銀兩</em>ทอง</span><b>' + fmt(num(st.gold)) + '</b></div>' +
+      '<div class="wx-chip"><span><em>殺敵</em>ฆ่าแล้ว</span><b>' + fmt(num(s.kills)) + '</b></div></div>' +
+      '<div class="wx-legend"><u style="color:#5ee08a">+เขียว</u> จากอุปกรณ์ • <u style="color:#5db8ff">+ฟ้า</u> จากการ์ด</div>';
     body.scrollTop = top;
   }
 
