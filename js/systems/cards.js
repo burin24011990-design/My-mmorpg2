@@ -706,4 +706,73 @@
     // เลือกการ์ดจากกระเป๋า (รวมกองเดียวกัน แยกตามรหัสการ์ดและระดับ +)
     const by = {};
     sc.bag.forEach((s) => {
-      if (s && s.kind === 
+            if (s && s.kind === 'card' && isCid(s.cid)) {
+        const k = s.cid + '|' + plusOf(s);
+        if (!by[k]) by[k] = { cid: s.cid, plus: plusOf(s), count: 0 };
+        by[k].count += cnt(s);
+      }
+    });
+    const list = Object.keys(by).map((k) => by[k]).sort((a, b) => {
+      const A = cardInfo(a.cid) || { boss: false, z: 0 }, B = cardInfo(b.cid) || { boss: false, z: 0 };
+      return (A.boss - B.boss) || (A.z - B.z) || (a.plus - b.plus);
+    });
+    modal((pn, close) => {
+      let h = '<h3>ใส่การ์ด (ช่อง ' + (i + 1) + ')</h3>';
+      if (!list.length) h += '<div class="cs-note">ไม่มีการ์ดในกระเป๋า</div>';
+      list.forEach((e, n) => {
+        const info = cardInfo(e.cid);
+        if (!info) return;
+        h += '<div class="cs-it"><img src="' + iconURL({ kind: 'card', cid: e.cid }) + '" alt="">'
+          + '<div class="t">' + esc(cardName(info, e.plus)) + '  x' + e.count
+          + '<small>' + esc(info.statName) + ' ' + esc(cardValText(info, e.plus)) + '</small></div>'
+          + '<button class="cs-b" data-pick="' + n + '">ใส่</button></div>';
+      });
+      h += '<button class="cs-b g" data-x="c" style="width:100%;margin-top:6px">ปิด</button>';
+      pn.innerHTML = h;
+      pn.addEventListener('click', (ev) => {
+        const p = ev.target.closest('[data-pick]');
+        if (p) {
+          const e = list[Number(p.dataset.pick)];
+          if (e && socketCard(sc, src, id, i, e.cid, e.plus)) refresh();
+          close();
+          return;
+        }
+        if (ev.target.closest('[data-x]')) close();
+      });
+    });
+  }
+
+  // ---------- ส่งออกให้ไฟล์อื่นเรียกใช้ (cardBag.js / market.js / save.js ฯลฯ) ----------
+  window.CardUI = {
+    pips: pips,
+    socketsHTML: socketsHTML,
+    itemDetailHTML: itemDetailHTML,
+    openSocket: openSocket,
+    iconURL: iconURL,
+    cardInfo: cardInfo,
+  };
+  window.CardSys = {
+    cardInfo: cardInfo,
+    parseCid: parseCid,
+    isCid: isCid,
+    getSockets: getSockets,
+    getSocketPlus: getSocketPlus,
+    hasCards: hasCards,
+    cardBonusOf: cardBonusOf,
+    socketCard: socketCard,
+    unsocketCard: unsocketCard,
+    enhanceCard: enhanceCard,
+    dismantleCard: dismantleCard,
+    addCardToBag: addCardToBag,
+    addKeyToBag: addKeyToBag,
+    addCardStones: addCardStones,
+    countKeys: countKeys,
+    countCardStones: countCardStones,
+    enhChance: enhChance,
+    enhStones: enhStones,
+    enhGold: enhGold,
+    cardStoneYield: cardStoneYield,
+    MAX_CARD_STACK: MAX_CARD_STACK,
+    MAX_CARD_PLUS: MAX_CARD_PLUS,
+  };
+})();
