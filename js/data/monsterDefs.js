@@ -3,9 +3,16 @@
 //  1) เอาไฟล์ PNG ไปไว้ที่ assets/monsters/ ตั้งชื่อ z1_normal.png, z1_ranged.png, z1_boss.png ... z9_boss.png
 //  2) เพิ่มชื่อลงใน MONSTER_SHEETS_READY ด้านล่าง เช่น ['z1_normal', 'z1_ranged'] หรือทั้งด่าน ['z1'] หรือทั้งหมด ['all']
 // รูปแบบ sprite sheet: 12 เฟรมเรียงแนวนอน = 0-3 idle, 4-7 attack, 8-11 walk
-//   ธรรมดา/ยิงไกล: เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส: เฟรมละ 64x64 (แผ่นรวม 768x64)
+//   ชีตความละเอียดสูง (ด่านใน MONSTER_HQ_ZONES): ธรรมดา/ยิงไกล เฟรมละ 96x96 (แผ่นรวม 1152x96) | บอส เฟรมละ 128x128 (แผ่นรวม 1536x128)
+//   ชีตแบบเดิม (ด่านอื่น): ธรรมดา/ยิงไกล เฟรมละ 48x48 (แผ่นรวม 576x48) | บอส เฟรมละ 64x64 (แผ่นรวม 768x64)
 // วาดให้มอนสเตอร์หันหน้า "ไปทางขวา" (เกมจะกลับด้านเองเมื่อเดินไปซ้าย)
 const MONSTER_SHEETS_READY = ['all'];   // ด่านที่มี sprite พร้อมแล้ว (เพิ่มทีละด่าน)
+
+// ด่านที่ใช้ชีตความละเอียดสูง (เลขด่าน 1-9) | ด่านไหนทำชีต 96/128 เสร็จแล้วให้เพิ่มเลขตรงนี้
+const MONSTER_HQ_ZONES = [1, 2];
+// ขนาดที่แสดงของชีตความละเอียดสูง (1 = ตัวใหญ่เท่าภาพเต็ม, 0.75 = ใหญ่กว่าของเดิมประมาณ 1.5 เท่า, 0.6 = ประมาณ 1.2 เท่า)
+// (ค่านี้คูณเข้า scale ทำให้ hitbox และระยะตีเปลี่ยนตามด้วย)
+const MONSTER_DISPLAY_MUL = 0.75;
 
 // ขนาดตัวมอนสเตอร์ (ตัวคูณ) แยกตามด่าน 1-9 : แก้เลขตรงนี้ได้เลย
 // ด่าน 1-4 ขนาดปกติ | ด่าน 5 ขึ้นไปใหญ่ขึ้นเรื่อยๆ | บอสใหญ่กว่ามอนธรรมดาเสมอ
@@ -90,18 +97,20 @@ const _MONSTER_TABLE = [
 // สร้าง MONSTER_DEFS[zoneIdx][kind] = { id, key, name, color, fx, ability, fw, fh, frames, hasSheet }
 const MONSTER_DEFS = _MONSTER_TABLE.map((zt, zi) => {
   const out = {};
+  const hq = MONSTER_HQ_ZONES.indexOf(zi + 1) >= 0;       // ด่านนี้ใช้ชีตความละเอียดสูงไหม
   ['normal', 'ranged', 'boss'].forEach(kind => {
     const m = zt[kind];
     const boss = kind === 'boss';
+    const fs = hq ? (boss ? 128 : 96) : (boss ? 64 : 48);
     out[kind] = {
       id: 'z' + (zi + 1) + '_' + kind,
       key: 'mon_z' + (zi + 1) + '_' + kind,
       name: m.name, color: m.color, ability: m.ability,
       fx: m.fx || zt.fx,
-      fw: boss ? 64 : 48, fh: boss ? 64 : 48,
+      fw: fs, fh: fs,
       kind: kind, zone: zi,
       frames: 12, hasSheet: false,
-      scale: ((boss ? MONSTER_SIZE_BOSS : MONSTER_SIZE_NORMAL)[zi] || 1) * (m.sizeMul || 1),
+      scale: ((boss ? MONSTER_SIZE_BOSS : MONSTER_SIZE_NORMAL)[zi] || 1) * (m.sizeMul || 1) * (hq ? MONSTER_DISPLAY_MUL : 1),
     };
   });
   return out;
@@ -118,11 +127,12 @@ function _monsterSheetReady(def) {
 }
 
 // เรียกใน preload() ของ Main.js (ถ้า MONSTER_SHEETS_READY ว่าง จะไม่โหลดอะไร)
+// เลข ?v= ใช้บังคับมือถือโหลดชีตใหม่ ถ้าเปลี่ยนไฟล์ภาพแล้วไม่เปลี่ยน ให้เพิ่มเลขนี้
 function preloadMonsterSprites(scene) {
   MONSTER_DEFS.forEach(z => Object.keys(z).forEach(k => {
     const d = z[k];
     if (_monsterSheetReady(d)) {
-      scene.load.spritesheet(d.key, 'assets/monsters/' + d.id + '.png?v=1', { frameWidth: d.fw, frameHeight: d.fh });
+      scene.load.spritesheet(d.key, 'assets/monsters/' + d.id + '.png?v=2', { frameWidth: d.fw, frameHeight: d.fh });
     }
   }));
 }
