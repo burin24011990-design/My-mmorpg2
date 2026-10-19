@@ -32,44 +32,45 @@
   function hdirs(row) { return hseq(row, [0, 1, 2, 3]); }
 
   // จังหวะท่าโจมตี (ปรับตรงนี้ถ้าอยากให้ช้า/เร็วขึ้น)
-  //  ATK6 = 6 ช็อต, ATK7 = 7 ช็อต | เวลาเล่น = จำนวนช็อต / rate (วินาที)
-  //  ถ้าแก้เวลาให้ยาวขึ้น อย่าลืมเพิ่ม ATTACK_MS / SKILL_MS ใน heroPatch.js ให้ยาวกว่าเวลาเล่น
-  var ATK6 = [0, 0, 1, 1, 2, 3];
-  var ATK7 = [0, 0, 1, 1, 2, 2, 3];
+  //  ATK6 = 5 ช็อต (ดาบ/โจร), ATK7 = 6 ช็อต (ธนู/เมจ/หมอ) | เวลาเล่น = จำนวนช็อต / rate (วินาที)
+  //  เฟรม 0 = เตรียมท่า, 1 = ฟัน/ปล่อย (ค้าง 2 ช็อตให้เห็นจังหวะปะทะ), 2 = ตามแรง, 3 = เก็บท่า
+  //  heroPatch.js อ่านเวลาเล่นจริงจากอนิเมชัน แล้วล็อกท่าให้เอง ไม่ต้องตั้งเวลาซ้ำ
+  var ATK6 = [0, 1, 1, 2, 3];
+  var ATK7 = [0, 1, 1, 2, 2, 3];
 
   // ชีตใหม่ (action ที่ไม่มีในนี้ เช่น hurt/death จะ fallback ไปใช้ชีตเดิม)
   var SKINS = {
-    // นักดาบ: ฟัน 6 ช็อต ~0.6 วิ
+    // นักดาบ: ฟัน 5 ช็อต ~0.5 วิ
     hero_sword: {
       idle:   mix(hdirs(0), { rate: 5, loop: true }),
       walk:   mix(hdirs(4), { rate: 8, loop: true }),
       sword:  mix(hseq(8, ATK6), { rate: 10, loop: false }),
       dagger: mix(hseq(8, ATK6), { rate: 10, loop: false }),
-      skill:  mix(hseq(8, ATK6), { rate: 9,  loop: false })
+      skill:  mix(hseq(8, ATK6), { rate: 10, loop: false })
     },
-    // โจร: ฟันมีดคู่ 6 ช็อต ~0.6 วิ
+    // โจร: ฟันมีดคู่ 5 ช็อต ~0.5 วิ
     hero_rogue: {
       idle:   mix(hdirs(0), { rate: 5, loop: true }),
       walk:   mix(hdirs(4), { rate: 8, loop: true }),
       sword:  mix(hseq(8, ATK6), { rate: 10, loop: false }),
       dagger: mix(hseq(8, ATK6), { rate: 10, loop: false }),
-      skill:  mix(hseq(8, ATK6), { rate: 9,  loop: false })
+      skill:  mix(hseq(8, ATK6), { rate: 10, loop: false })
     },
-    // นักธนู: ง้างคันธนู-ปล่อยลูกธนู 7 ช็อต ~0.7 วิ (ใช้ท่า 'bow')
+    // นักธนู: ง้างคันธนู-ปล่อยลูกธนู 6 ช็อต ~0.6 วิ (ใช้ท่า 'bow')
     hero_archer: {
       idle:  mix(hdirs(0), { rate: 5, loop: true }),
       walk:  mix(hdirs(4), { rate: 8, loop: true }),
       bow:   mix(hseq(8, ATK7), { rate: 10, loop: false }),
       skill: mix(hseq(8, ATK7), { rate: 10, loop: false })
     },
-    // เมจ (กำลังภายใน ถือพัด): ร่ายเวท 7 ช็อต ~0.7 วิ (ใช้ท่า 'staff')
+    // เมจ (กำลังภายใน ถือพัด): ร่ายเวท 6 ช็อต ~0.6 วิ (ใช้ท่า 'staff')
     hero_mage: {
       idle:  mix(hdirs(0), { rate: 5, loop: true }),
       walk:  mix(hdirs(4), { rate: 8, loop: true }),
       staff: mix(hseq(8, ATK7), { rate: 10, loop: false }),
       skill: mix(hseq(8, ATK7), { rate: 10, loop: false })
     },
-    // หมอ (เดิมคือพระ): ร่ายเวท 7 ช็อต ~0.7 วิ
+    // หมอ (เดิมคือพระ): ร่ายเวท 6 ช็อต ~0.6 วิ
     //  staff = ตีปกติ (ใช้ได้กับ sword/dagger ด้วย)  skill / skill2 = ท่าสกิล (ใช้เฟรมชุดเดียวกัน)
     hero_priest: {
       idle:   mix(hdirs(0), { rate: 5, loop: true }),
@@ -95,7 +96,7 @@
 
   window.HeroAnims = {
     KEY: 'hero',
-    SCALE: 1.15,
+    SCALE: 1.0,
 
     // แปลงชื่อคลาส -> สกิน  (ปรับ regex ให้ตรงกับชื่อคลาสในเกมคุณได้)
     skinOf: function (cls) {
