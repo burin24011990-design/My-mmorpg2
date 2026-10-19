@@ -3,9 +3,10 @@
 // โหลดหลัง heroAnims.js และหลัง stats.js แต่ก่อน main.js
 
 (function () {
-  var HERO_SCALE = 1.15;   // ขนาดตัวละครในเกม (ปรับเลขนี้ถ้าใหญ่/เล็กไป)
-  var ATTACK_MS  = 700;    // ระยะเวลาที่ล็อกท่าโจมตีปกติ (ต้อง >= เวลาเล่นท่าใน heroAnims.js)
-  var SKILL_MS   = 700;    // ระยะเวลาที่ล็อกท่าสกิล
+  var HERO_SCALE = 1.0;    // ขนาดตัวละครในเกม (ปรับเลขนี้ถ้าใหญ่/เล็กไป) ให้ตรงกับ SCALE ใน heroAnims.js
+  var ATTACK_MS  = 550;    // เวลาล็อกท่าโจมตี "สำรอง" (ปกติใช้เวลาเล่นจริงของอนิเมชัน)
+  var SKILL_MS   = 550;    // เวลาล็อกท่าสกิล "สำรอง"
+  var LUNGE_PX   = 9;      // ระยะที่ตัวละครพุ่งไปทางเป้าหมายตอนฟัน/ปล่อย (พิกเซลบนจอ) ตั้ง 0 เพื่อปิด
   var BOB_PX     = 3;      // ความสูงการเด้งตอนเดิน (พิกเซลบนจอ) ตั้ง 0 เพื่อปิด
   var SPEED_REF  = 190;    // ความเร็วเดินเต็มที่ของเกม (ตรงกับ input.js)
 
@@ -25,12 +26,15 @@
     if (Math.abs(x) >= Math.abs(y)) return x < 0 ? 'left' : 'right';
     return y < 0 ? 'up' : 'down';
   }
+  var DIR_VEC = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] };
 
-  function setBob(scene, px) {
-    var p = scene.player;
-    var oy = scene._heroBaseOY + px / (96 * HERO_SCALE);
-    if (p.originY !== oy) p.setOrigin(0.5, oy);
+  // เลื่อนภาพตัวละครด้วยการขยับ origin (บนจอ px): ox/oy = ระยะเลื่อนแนวนอน/แนวตั้ง
+  function setOffset(scene, ox, oy) {
+    var p = scene.player, k = 96 * HERO_SCALE;
+    var nx = 0.5 - ox / k, ny = scene._heroBaseOY - oy / k;
+    if (p.originX !== nx || p.originY !== ny) p.setOrigin(nx, ny);
   }
+  function setBob(scene, px) { setOffset(scene, 0, -px); }
 
   var origPreload = target.preload;
   target.preload = function () {
@@ -61,7 +65,17 @@
     if (origUpdate) origUpdate.apply(this, arguments);
     try {
       if (!this._heroOn || !this.player || !this.player.body) return;
-      if (this.time.now < (this._atkUntil || 0)) { setBob(this, 0); return; }
+      var now = this.time.now;
+
+      if (now < (this._atkUntil || 0)) {
+        // ระหว่างโจมตี: พุ่งไปทางเป้าหมายช่วงฟัน แล้วถอยกลับ (ช่วยให้เห็นการเคลื่อนไหวชัดขึ้น)
+        var t = Phaser.Math.Clamp((now - this._atkStart) / this._atkDur, 0, 1);
+        var f = t < 0.4 ? t / 0.4 : (1 - t) / 0.6;
+        f = Math.sin(f * Math.PI / 2);
+        var v0 = DIR_VEC[this._heroDir] || [0, 0];
+        setOffset(this, v0[0] * LUNGE_PX * f, v0[1] * LUNGE_PX * f);
+        return;
+      }
 
       var p = this.player, v = p.body.velocity;
       var speed = Math.hypot(v.x, v.y);
@@ -91,9 +105,14 @@
     scene._heroDir = d;
     var cls = (typeof scene.currentClass === 'function') ? scene.currentClass() : 'sword';
     var act = (isSkill && HAS_SKILL_ANIM[cls]) ? 'skill' : scene.attackAnimName();
-    scene._atkUntil = scene.time.now + (act === 'skill' ? SKILL_MS : ATTACK_MS);
     p.anims.timeScale = 1;
+    p.anims.stop();                       // เริ่มท่าใหม่จากเฟรมแรกทุกครั้ง (ไม่ค้างท่าเก่า)
     HeroAnims.play(p, act, d);
+    var cur = p.anims.currentAnim;
+    var dur = (cur && cur.duration) ? cur.duration : (act === 'skill' ? SKILL_MS : ATTACK_MS);
+    scene._atkStart = scene.time.now;
+    scene._atkDur = dur;
+    scene._atkUntil = scene.time.now + dur + 30;   // ล็อกเท่าเวลาเล่นจริง
   }
 
   [['useBasicAttack', false], ['useSkill', true], ['useUlti', true]].forEach(function (pair) {
