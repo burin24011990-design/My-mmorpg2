@@ -98,6 +98,9 @@
   // isSkill = true และเป็นคลาสที่มีท่า skill -> เล่นท่า 'skill' | อื่นๆ -> ท่าโจมตีปกติตามอาวุธ
   function playAttack(scene, isSkill) {
     if (!scene._heroOn || !scene.player) return;
+    // ออโต้บอท/การกดค้างจะเรียกโจมตีถี่มาก: ถ้าท่าเดิมยังเล่นอยู่ ห้ามเริ่มใหม่ (ไม่งั้นค้างอยู่เฟรมแรก)
+    // ยกเว้นสกิลที่ขัดจังหวะท่าโจมตีปกติได้ 1 ครั้ง
+    if (scene.time.now < (scene._atkUntil || 0) && (!isSkill || scene._atkIsSkill)) return;
     var p = scene.player, d = scene._heroDir || 'right', dx = 0, dy = 0;
     if (scene.target && typeof scene.target.x === 'number') { dx = scene.target.x - p.x; dy = scene.target.y - p.y; }
     else if (scene.facing) { dx = scene.facing.x; dy = scene.facing.y; }
@@ -110,6 +113,7 @@
     HeroAnims.play(p, act, d);
     var cur = p.anims.currentAnim;
     var dur = (cur && cur.duration) ? cur.duration : (act === 'skill' ? SKILL_MS : ATTACK_MS);
+    scene._atkIsSkill = !!isSkill;
     scene._atkStart = scene.time.now;
     scene._atkDur = dur;
     scene._atkUntil = scene.time.now + dur + 30;   // ล็อกเท่าเวลาเล่นจริง
