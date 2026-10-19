@@ -1,5 +1,5 @@
 /* ===== ระบบบ้าน v3 (หน้าต่างตกปลา / แปลงผัก / ทำอาหาร / ร้านค้า จัดวางใหม่) ===== */
-.hs-card { text-align: center; width: min(560px, 94vw) !important; max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.hs-card { text-align: center; width: min(560px, 94vw) !important; max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 
 /* ----- แท็บบน: ไอคอนบน ตัวหนังสือล่าง 4 ช่องเท่ากัน ----- */
 .hs-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
@@ -139,3 +139,13 @@
 /* ----- ไอคอนรูปวัตถุดิบ ----- */
 .hs-mi { object-fit: contain; flex: 0 0 auto; vertical-align: middle; }
 .hs-ig { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ----- ปุ่ม X ปิดหน้าต่าง (มุมขวาบน ลอยค้างตอนเลื่อน) ----- */
+.hs-xwrap { position: sticky; top: 0; height: 0; z-index: 20; }
+.hs-x {
+  position: absolute; top: 2px; right: 2px; width: 44px; height: 44px; padding: 0;
+  font-family: inherit; font-size: 20px; line-height: 1; color: #ffe28a;
+  background: #26090f; border: 2px solid #ffd45c; border-radius: 50%;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.hs-x:active { background: #ffd45c; color: #26090f; }
