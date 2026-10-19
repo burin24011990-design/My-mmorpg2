@@ -1,19 +1,22 @@
 // ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
-// v5: ย่อหน้าต่างลง (WIN_SCALE) + ซ่อนปุ่ม เสียง/เมือง/แชนแนล ตอนเปิด (คืนเมื่อปิด)
+// v6: ปุ่ม − / + ปรับขนาดหน้าต่างในเกม (จำค่าไว้) | ซ่อนปุ่ม HTML (.hb-t: เสียง/เมือง/CH ฯลฯ) ตอนเปิด แล้วคืนเมื่อปิด
 //     ชื่อตัวละครอ่านจาก mmo_cloud_lastname | ใส่รูปตัวละครได้ | อุปกรณ์ = เขียว, การ์ด = ฟ้า
 (function () {
   var PP = window.PixelPanels;
   if (!PP) return;
 
   // ---------- ตั้งค่า (ปรับตรงนี้) ----------
-  var WIN_SCALE = 0.5;              // ขนาดหน้าต่างจอแนวนอน: 1 = เดิม | 0.5 = ครึ่งหนึ่ง
-  var PORTRAIT_SCALE = 0.85;        // ขนาดหน้าต่างจอแนวตั้ง (จอแคบ ไม่ควรย่อมาก)
+  var WIN_SCALE = 0.5;              // ขนาดเริ่มต้นจอแนวนอน (ถ้ายังไม่เคยกด − / +)
+  var PORTRAIT_SCALE = 0.85;        // ขนาดเริ่มต้นจอแนวตั้ง
+  var SCALE_MIN = 0.3, SCALE_MAX = 1.3, SCALE_STEP = 0.1;
+  var SCALE_KEY = 'xh_status_scale_v1';   // ที่จำขนาดที่ผู้เล่นเลือก (เก็บในเครื่อง)
   var PORTRAIT_URL = '';            // ใส่ path รูปเริ่มต้นได้ เช่น 'assets/portrait.png' (ว่าง = ใช้อีโมจิ 🦊)
   var PORTRAIT_EMOJI = '🦊';
   var PORTRAIT_KEY = 'xh_portrait_v1';   // ที่เก็บรูปที่ผู้เล่นเลือกเอง (เก็บในเครื่อง)
   var PORTRAIT_SIZE = 192;          // ย่อรูปเป็นสี่เหลี่ยมจัตุรัสขนาดนี้ก่อนเก็บ
-  // ปุ่มที่จะซ่อนตอนเปิดหน้าสเตตัส (จับจากข้อความบนปุ่ม) ถ้ามีปุ่มอื่นอยากซ่อน เพิ่มชื่อใน RegExp นี้
+  // ปุ่ม HTML ที่จะซ่อนตอนเปิดหน้าสเตตัส: ทุกอันที่ใช้คลาส .hb-t + ข้อความที่ตรงกับ RegExp นี้ (เผื่อบางปุ่มไม่มีคลาส)
+  var HIDE_SELECTOR = '.hb-t';
   var HIDE_BTN_RE = /^(เสียง|เมือง|CH\s?\d+(-\d+)?)$/;
   // ฉายาตามเลเวล (เลเวลขึ้นไป -> ฉายา)
   var RANKS = [
@@ -49,17 +52,44 @@
     document.head.appendChild(l);
   })();
 
+  // ---------- ขนาดหน้าต่าง (ปรับในเกมด้วยปุ่ม − / +) ----------
+  function isPortrait() { return window.innerHeight > window.innerWidth; }
+  function userScale() {
+    try { var v = parseFloat(localStorage.getItem(SCALE_KEY)); if (v > 0) return v; } catch (e) {}
+    return 0;
+  }
+  function curScale() {
+    return userScale() || (isPortrait() ? PORTRAIT_SCALE : WIN_SCALE);
+  }
+  function applyScale() {
+    if (!win) return;
+    var s = Math.max(SCALE_MIN, Math.min(SCALE_MAX, curScale()));
+    win.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+    // ปุ่มควบคุมมุมขวาบนขยายสวนทาง ให้กดง่ายแม้หน้าต่างย่อเล็ก
+    win.style.setProperty('--inv', String(Math.min(2.2, 1 / s)));
+    var lab = win.querySelector('.wx-sc');
+    if (lab) lab.textContent = Math.round(s * 100) + '%';
+  }
+  function stepScale(d) {
+    var s = Math.round((curScale() + d) * 10) / 10;
+    s = Math.max(SCALE_MIN, Math.min(SCALE_MAX, s));
+    try { localStorage.setItem(SCALE_KEY, String(s)); } catch (e) {}
+    applyScale();
+  }
+  window.addEventListener('resize', applyScale);
+  window.addEventListener('orientationchange', function () { setTimeout(applyScale, 250); });
+
   // ---------- CSS ----------
   function css() {
     if (document.getElementById('wx-css')) return;
     var st = document.createElement('style');
     st.id = 'wx-css';
     st.textContent = [
-      '.wx-win{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(' + WIN_SCALE + ');transform-origin:center center;width:min(94%,820px);max-height:94%;display:none;flex-direction:column;box-sizing:border-box;z-index:60;pointer-events:auto;',
+      '[data-wxh]{visibility:hidden !important}',
+      '.wx-win{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(0.5);transform-origin:center center;width:min(94%,820px);max-height:94%;display:none;flex-direction:column;box-sizing:border-box;z-index:9000;pointer-events:auto;',
       "font-family:'Noto Serif SC','Mitr',sans-serif;color:#f3e3bf;padding:10px 12px 12px;border:3px solid #c9a24a;border-radius:6px;",
       'background:radial-gradient(ellipse at 50% 0%,rgba(140,24,24,.45),transparent 62%),repeating-linear-gradient(45deg,rgba(255,255,255,.018) 0 2px,transparent 2px 7px),linear-gradient(#1d0d0d,#0d0505);',
       'box-shadow:0 0 0 2px #3b0d0d,0 0 0 4px rgba(201,162,74,.45),0 10px 40px rgba(0,0,0,.8),inset 0 0 36px rgba(0,0,0,.75)}',
-      '@media (orientation:portrait){.wx-win{transform:translate(-50%,-50%) scale(' + PORTRAIT_SCALE + ')}}',
       '.wx-win.open{display:flex}',
       '.wx-cn{position:absolute;width:13px;height:13px;background:#8e1b16;border:2px solid #e6c36a;transform:rotate(45deg);box-shadow:0 0 6px #000}',
       '.wx-cn.a{left:-9px;top:-9px}.wx-cn.b{right:-9px;top:-9px}.wx-cn.c{left:-9px;bottom:-9px}.wx-cn.d{right:-9px;bottom:-9px}',
@@ -78,8 +108,10 @@
       '.wx-rank{font-size:12px;color:#e6c36a;border-bottom:1px solid rgba(201,162,74,.5);padding:0 2px}',
       '.wx-cls{font-size:12px;color:#d9c6a0}',
       '.wx-rm{font-size:10px;color:#9a8a6a;text-decoration:underline;cursor:pointer;margin-left:2px}',
-      '.wx-x{flex:0 0 auto;width:38px;height:38px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:18px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0}',
-      '.wx-x:active{filter:brightness(1.3)}',
+      '.wx-tools{flex:0 0 auto;display:flex;align-items:center;gap:6px;transform:scale(var(--inv,1));transform-origin:right center}',
+      '.wx-tools button{width:38px;height:38px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:18px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0;line-height:1}',
+      '.wx-tools button:active{filter:brightness(1.3)}',
+      '.wx-tools .wx-sc{min-width:38px;text-align:center;font-size:11px;color:#e6c36a}',
       '.wx-bars{display:flex;flex-direction:column;gap:5px;margin:9px 0 8px;flex:0 0 auto}',
       '.wx-bar{position:relative;height:clamp(17px,5vh,24px);border:2px solid #c9a24a;border-radius:3px;background:#0a0404;overflow:hidden;box-shadow:inset 0 0 8px #000}',
       '.wx-bar i{position:absolute;left:0;top:0;bottom:0}',
@@ -108,35 +140,45 @@
     document.head.appendChild(st);
   }
 
-  // ---------- ซ่อน/คืนปุ่ม เสียง เมือง แชนแนล ----------
-  var hidden = [];        // [{el, v}] ปุ่มที่ซ่อนไว้ (เก็บค่าเดิมไว้คืน)
+  // ---------- ซ่อน/คืนปุ่ม HTML (เสียง เมือง แชนแนล ฯลฯ) ----------
+  var hidden = [];        // ปุ่มที่ติดป้าย data-wxh ไว้ (ไว้ถอดคืน)
   var hudTimer = null;
+  function markHide(el) {
+    // ไต่ขึ้นหากล่องปุ่มที่ลอยอยู่บนจอ (fixed/absolute) แต่ไม่ใหญ่เกินปุ่ม
+    var t = el, found = null;
+    for (var n = 0; n < 5 && t && t !== document.body && t !== document.documentElement; n++) {
+      var pos = '';
+      try { pos = getComputedStyle(t).position; } catch (e) {}
+      if (pos === 'fixed' || pos === 'absolute') { found = t; break; }
+      t = t.parentElement;
+    }
+    if (!found) found = el.parentElement || el;
+    var r = found.getBoundingClientRect();
+    if (r.width > 220 || r.height > 220) found = el.parentElement && el.parentElement.getBoundingClientRect().width <= 220 ? el.parentElement : el;
+    if (found === layer || found === win || (win && win.contains(found)) || found === document.body) return;
+    if (found.hasAttribute('data-wxh')) return;
+    found.setAttribute('data-wxh', '1');
+    hidden.push(found);
+  }
   function hideHud() {
     try {
+      var list = document.querySelectorAll(HIDE_SELECTOR);
+      for (var i = 0; i < list.length; i++) {
+        if (win && win.contains(list[i])) continue;
+        markHide(list[i]);
+      }
+      // สำรอง: ปุ่มที่ไม่มีคลาส แต่ข้อความตรงชื่อ
       var all = document.querySelectorAll('body *');
-      for (var i = 0; i < all.length; i++) {
-        var el = all[i];
-        if (win && win.contains(el)) continue;
-        if (el.childElementCount > 0) continue;               // เอาเฉพาะตัวที่มีแต่ข้อความ
+      for (var j = 0; j < all.length; j++) {
+        var el = all[j];
+        if (el.childElementCount > 0 || (win && win.contains(el))) continue;
         var tx = (el.textContent || '').trim();
-        if (!tx || tx.length > 8 || !HIDE_BTN_RE.test(tx)) continue;
-        // ไต่ขึ้นไปหาตัวปุ่ม (ครอบทั้งไอคอน+ป้ายชื่อ) ไม่เกิน 3 ชั้น และไม่ใหญ่เกินปุ่ม
-        var t = el;
-        for (var n = 0; n < 3; n++) {
-          var p = t.parentElement;
-          if (!p || p === layer || p === document.body || p === document.documentElement) break;
-          var r = p.getBoundingClientRect();
-          if (r.width > 170 || r.height > 170) break;
-          t = p;
-        }
-        if (hidden.some(function (h) { return h.el === t; })) continue;
-        hidden.push({ el: t, v: t.style.visibility });
-        t.style.visibility = 'hidden';
+        if (tx && tx.length <= 8 && HIDE_BTN_RE.test(tx)) markHide(el);
       }
     } catch (e) {}
   }
   function restoreHud() {
-    hidden.forEach(function (h) { try { h.el.style.visibility = h.v || ''; } catch (e) {} });
+    hidden.forEach(function (el) { try { el.removeAttribute('data-wxh'); } catch (e) {} });
     hidden = [];
   }
 
@@ -232,6 +274,8 @@
 
     win.addEventListener('click', function (e) {
       if (e.target.closest('.wx-x')) { hide(); return; }
+      if (e.target.closest('.wx-zm')) { stepScale(-SCALE_STEP); return; }
+      if (e.target.closest('.wx-zp')) { stepScale(SCALE_STEP); return; }
       if (e.target.closest('.wx-rm')) {
         try { localStorage.removeItem(PORTRAIT_KEY); } catch (er) {}
         render(); return;
@@ -241,6 +285,13 @@
     ['pointerdown', 'touchstart', 'touchmove', 'mousedown'].forEach(function (evn) {
       win.addEventListener(evn, function (e) { e.stopPropagation(); }, { passive: true });
     });
+    applyScale();
+  }
+
+  function toolsHTML() {
+    return '<div class="wx-tools"><button class="wx-zm" aria-label="ย่อ">−</button>' +
+      '<span class="wx-sc"></span><button class="wx-zp" aria-label="ขยาย">+</button>' +
+      '<button class="wx-x" aria-label="ปิด">✕</button></div>';
   }
 
   function render() {
@@ -249,7 +300,8 @@
     var head = win.querySelector('.wx-head');
     var bars = win.querySelector('.wx-bars');
     if (!s || !s.stats || !s.getStats) {
-      head.innerHTML = '<div class="wx-id"><div class="wx-name">กำลังโหลด...</div></div><button class="wx-x" aria-label="ปิด">✕</button>';
+      head.innerHTML = '<div class="wx-id"><div class="wx-name">กำลังโหลด...</div></div>' + toolsHTML();
+      applyScale();
       return;
     }
     var st = s.stats, S = s.getStats();
@@ -271,7 +323,8 @@
       '<span class="wx-rank">' + esc(rankOf(lv)) + '</span>' +
       (cls ? '<span class="wx-cls">' + esc(cls) + '</span>' : '') +
       (hasCustomPortrait() ? '<span class="wx-rm">ลบรูป</span>' : '') + '</div></div>' +
-      '<button class="wx-x" aria-label="ปิด">✕</button>';
+      toolsHTML();
+    applyScale();
 
     bars.innerHTML =
       '<div class="wx-bar hp"><i style="width:' + pct(hpMax ? hp / hpMax * 100 : 0) + '%"></i><b><span><em>血</em>HP</span><span>' + fmt(hp) + ' / ' + fmt(hpMax) + '</span></b></div>' +
@@ -309,9 +362,10 @@
   function show() {
     render();
     win.classList.add('open');
+    applyScale();
     hideHud();
-    // ปุ่มบางตัวถูกวาดใหม่เป็นระยะ -> เช็กซ้ำเป็นช่วงๆ ระหว่างเปิดอยู่
-    if (!hudTimer) hudTimer = setInterval(function () { if (isOpen()) hideHud(); }, 700);
+    // ปุ่มบางตัวถูกวาดใหม่เป็นระยะ -> เช็กซ้ำระหว่างเปิดอยู่
+    if (!hudTimer) hudTimer = setInterval(function () { if (isOpen()) hideHud(); }, 600);
   }
   function hide() {
     if (win) win.classList.remove('open');
