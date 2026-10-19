@@ -32,12 +32,6 @@
   let n = 0;
   const t = setInterval(function () { install(); if (++n > 20) clearInterval(t); }, 500);
 
-  // ตรวจสถานะ แล้วแจ้งผลในกล่องแดง (ลบส่วนนี้ได้เมื่อใช้งานได้แล้ว)
-  setTimeout(function () {
-    if (!window.CardSys) throw new Error('DIAG: ไม่มี window.CardSys (cards.js ยังไม่โหลดสมบูรณ์)');
-    if (!P.recalcStats.__cardStats) throw new Error('DIAG: ครอบ recalcStats ไม่สำเร็จ');
-    throw new Error('DIAG: cardStats พร้อมทำงาน');
-  }, 4000);
 
   // ตอนใส่/ถอดการ์ด ให้คำนวณสเตตัสใหม่ทันที
   setInterval(function () {
