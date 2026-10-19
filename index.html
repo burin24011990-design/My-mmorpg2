@@ -28,6 +28,30 @@
     font-size:20px; background:#26090f; color:#ffe28a;
   }
   #start-overlay .sub { margin-top:14px; font-size:13px; color:#aaa; }
+
+  /* ===== หน้าเลือกแนวจอ ===== */
+  #orient-pick {
+    position:fixed; inset:0; z-index:10001; background:rgba(10,4,6,.96); color:#fff;
+    display:none; align-items:center; justify-content:center; text-align:center;
+    font-family:'Mitr',sans-serif; padding:20px;
+  }
+  #orient-pick h2 { margin:0 0 6px; font-size:22px; color:#ffe28a; font-weight:500; }
+  #orient-pick p { margin:0 0 18px; font-size:13px; color:#aaa; }
+  #orient-pick .row { display:flex; gap:14px; justify-content:center; }
+  #orient-pick button {
+    font-family:inherit; font-size:17px; color:#ffe28a; background:#26090f;
+    border:2px solid #ffd45c; border-radius:12px; padding:16px 22px; cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #orient-pick button span { display:block; font-size:34px; margin-bottom:6px; }
+
+  /* ===== ข้อความเตือนเมื่อถือผิดแนว ===== */
+  #orient-warn {
+    position:fixed; inset:0; z-index:10002; background:#0a0406; color:#ffe28a;
+    display:none; align-items:center; justify-content:center; text-align:center;
+    font-family:'Mitr',sans-serif; font-size:18px; padding:20px;
+  }
+  #orient-warn span { display:block; font-size:48px; margin-bottom:10px; }
 </style>
 <link rel="stylesheet" href="css/start.css?v=21">
 </head>
@@ -102,15 +126,30 @@ window.addEventListener('error', function (e) {
 <div id="start-overlay">
   <div>
     <div class="btn">แตะเพื่อกลับเข้าเต็มจอ</div>
-    <div class="sub">เกมจะซ่อนแถบเบราว์เซอร์อัตโนมัติ (เล่นได้ทั้งแนวนอนและแนวตั้ง)</div>
+    <div class="sub">เกมจะซ่อนแถบเบราว์เซอร์อัตโนมัติ</div>
   </div>
 </div>
 
+<!-- หน้าเลือกแนวจอ -->
+<div id="orient-pick">
+  <div>
+    <h2>เลือกแนวหน้าจอ</h2>
+    <p>เลือกแล้วจะล็อกแนวนั้นทันที (เปลี่ยนได้ภายหลังโดยรีเฟรชหน้า)</p>
+    <div class="row">
+      <button data-o="portrait"><span>📱</span>แนวตั้ง</button>
+      <button data-o="landscape"><span>📱↔</span>แนวนอน</button>
+    </div>
+  </div>
+</div>
+
+<!-- ข้อความเตือนเมื่อถือผิดแนว -->
+<div id="orient-warn"><div><span>🔄</span><b id="ow-text"></b></div></div>
+
 <script>
-// ===== เต็มจอ + ปล่อยให้หมุนจอได้อิสระ (นอน/ตั้ง) =====
-// เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงเรียกจากปุ่ม "เริ่มเล่น"
-// ถ้าติดตั้งเกมลงหน้าจอโฮม (เมนู ⋮ > เพิ่มลงหน้าจอหลัก/ติดตั้งแอป) แล้วเปิดจากไอคอน จะเต็มจอทันที
-// หมายเหตุ: ต้องเปิด "หมุนอัตโนมัติ" (Auto-rotate) ในมือถือ | หมุนจอข้ามแนวแล้วเกมจะโหลดใหม่เอง (ดู main.js)
+// ===== เต็มจอ + เลือกแนวจอ (ตั้ง/นอน) แล้วล็อกตามที่เลือก =====
+// เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงเรียกจากปุ่มเลือกแนว / "เริ่มเล่น"
+// Android Chrome: ล็อกแนวจริงได้เมื่ออยู่ในโหมดเต็มจอ/ติดตั้งแอป
+// iPhone/iPad: ล็อกจริงไม่ได้ จึงใช้หน้าจอเตือนบังเมื่อถือผิดแนว
 (function () {
   var ov = document.getElementById('start-overlay');
   var de = document.documentElement;
@@ -121,15 +160,22 @@ window.addEventListener('error', function (e) {
     return (window.matchMedia && (window.matchMedia('(display-mode: fullscreen)').matches ||
             window.matchMedia('(display-mode: standalone)').matches)) || window.navigator.standalone === true;
   }
-  // เดิมล็อกแนวจอไว้ตามที่ถืออยู่ตอนเริ่ม ทำให้หมุนจอไม่ได้ -> เปลี่ยนเป็นปลดล็อก ให้หมุนได้ทั้งสองแนว
+
+  // ----- เก็บแนวที่ผู้เล่นเลือก -----
+  var ORIENT_KEY = 'xianhe_orient';
+  function getOrient() { try { return localStorage.getItem(ORIENT_KEY); } catch (e) { return null; } }
+  function setOrient(v) { try { localStorage.setItem(ORIENT_KEY, v); } catch (e) {} }
+
+  // ล็อกแนวจอจริง (Android Chrome ต้องอยู่ในโหมดเต็มจอ / ติดตั้งแอปแล้ว)
   function lockOrient() {
+    var want = getOrient();
+    if (!want) return;
     try {
       var o = screen.orientation;
-      if (!o) return;
-      if (o.unlock) o.unlock();
-      else if (o.lock) { var p = o.lock('any'); if (p && p.catch) p.catch(function () {}); }
+      if (o && o.lock) { var p = o.lock(want); if (p && p.catch) p.catch(function () {}); }
     } catch (e) {}
   }
+
   function nudgeResize() {
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 300);
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 800);
@@ -147,7 +193,41 @@ window.addEventListener('error', function (e) {
       lockOrient(); hideOverlay(); nudgeResize();
     }).catch(function () { hideOverlay(); });
   }
-  window.GameFS = { enter: enter, setStarted: function () { started = true; } };
+
+  // ----- ตัวกันหมุน: ถ้าถือผิดแนวที่เลือก ให้ขึ้นข้อความบังจอ (ใช้ได้ทุกเครื่อง รวมถึง iPhone) -----
+  var warn = document.getElementById('orient-warn');
+  var wtxt = document.getElementById('ow-text');
+  function checkOrient() {
+    var want = getOrient();
+    if (!want) { warn.style.display = 'none'; return; }
+    var isLand = window.innerWidth > window.innerHeight;
+    var ok = (want === 'landscape') === isLand;
+    wtxt.textContent = want === 'landscape'
+      ? 'กรุณาหมุนเครื่องเป็นแนวนอน'
+      : 'กรุณาหมุนเครื่องเป็นแนวตั้ง';
+    warn.style.display = ok ? 'none' : 'flex';
+  }
+  window.addEventListener('resize', checkOrient);
+  window.addEventListener('orientationchange', function () { setTimeout(checkOrient, 200); });
+
+  // ----- หน้าเลือกแนวจอ -----
+  var pick = document.getElementById('orient-pick');
+  function showPick() { pick.style.display = 'flex'; }
+  pick.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-o]');
+    if (!b) return;
+    setOrient(b.getAttribute('data-o'));
+    checkOrient();
+    pick.style.display = 'none';
+    enter();                 // แตะครั้งนี้นับเป็นการแตะของผู้ใช้ -> เข้าเต็มจอ + ล็อกแนวได้
+    nudgeResize();
+  });
+  // เรียกจากเมนูตั้งค่าในเกมเพื่อเลือกแนวใหม่: GameFS_pickOrient()
+  window.GameFS_pickOrient = showPick;
+  if (!getOrient()) showPick();
+  else { lockOrient(); checkOrient(); }
+
+  window.GameFS = { enter: enter, setStarted: function () { started = true; lockOrient(); checkOrient(); } };
 
   ov.addEventListener('click', enter);
   function onFsChange() {
