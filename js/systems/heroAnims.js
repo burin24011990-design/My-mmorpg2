@@ -25,9 +25,9 @@
   function g(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * NC + i); return a; }
   function dirs(startRow, count) {
     return { down: g(startRow, count), left: g(startRow + 1, count), right: g(startRow + 2, count), up: g(startRow + 3, count) };
-  }
-  function mix(o, extra) { for (var k in extra) o[k] = extra[k]; return o; }
-
+  }var HC = 4;
+function hh(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * HC + i); return a; }
+function hdirs(r) { return { down: hh(r,4), left: hh(r+1,4), right: hh(r+2,4), up: hh(r+3,4) }; }
   // ชีตพระ: 8 คอลัมน์ x 20 แถว (ช่อง 96x96) -> 768 x 1920 px
   // แถว: 0-3 idle | 4-7 walk | 8-11 ตีปกติ | 12-15 ท่าที่ 2 | 16-19 ท่าที่ 3 (วงแสง)
   // ลำดับทิศในแต่ละชุด: down, left, right, up
