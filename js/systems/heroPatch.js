@@ -1,11 +1,11 @@
-// ===== เปลี่ยนตัวละครผู้เล่นเป็นสไปรต์ hero + เล่นอนิเมชัน (รองรับสกินดาบ/มีด) =====
+// ===== เปลี่ยนตัวละครผู้เล่นเป็นสไปรต์ hero + เล่นอนิเมชัน (รองรับสกินทุกอาชีพ) =====
 // ไม่แก้ไฟล์เดิม: ครอบ preload / create / update / useBasicAttack / useSkill / useUlti ของ Main
 // โหลดหลัง heroAnims.js และหลัง stats.js แต่ก่อน main.js
 
 (function () {
-  var HERO_SCALE = 0.75;   // ขนาดตัวละครในเกม (ปรับเลขนี้ถ้าใหญ่/เล็กไป)
-  var ATTACK_MS  = 430;    // ระยะเวลาที่ล็อกท่าโจมตีปกติ
-  var SKILL_MS   = 300;    // ระยะเวลาที่ล็อกท่าสกิล (ดาบ/มีด)
+  var HERO_SCALE = 1.15;   // ขนาดตัวละครในเกม (ปรับเลขนี้ถ้าใหญ่/เล็กไป)
+  var ATTACK_MS  = 700;    // ระยะเวลาที่ล็อกท่าโจมตีปกติ (ต้อง >= เวลาเล่นท่าใน heroAnims.js)
+  var SKILL_MS   = 700;    // ระยะเวลาที่ล็อกท่าสกิล
   var BOB_PX     = 3;      // ความสูงการเด้งตอนเดิน (พิกเซลบนจอ) ตั้ง 0 เพื่อปิด
   var SPEED_REF  = 190;    // ความเร็วเดินเต็มที่ของเกม (ตรงกับ input.js)
 
@@ -13,7 +13,7 @@
 
   // คลาสอาวุธ -> ท่าโจมตี
   var ATTACK_BY_CLASS = { sword: 'sword', rogue: 'sword', mage: 'staff', priest: 'staff', archer: 'bow' };
-  // คลาสที่มีท่า 'skill' แยก (อยู่ในชีต hero_sword / hero_rogue)
+  // คลาสที่มีท่า 'skill' แยก
   var HAS_SKILL_ANIM = { sword: true, rogue: true };
 
   target.attackAnimName = function () {
@@ -81,7 +81,7 @@
   };
 
   // ----- โจมตี: หันไปทางเป้าหมาย (ครบ 4 ทิศ) -----
-  // isSkill = true และเป็นดาบ/มีด -> เล่นท่า 'skill' | อื่นๆ -> ท่าโจมตีปกติตามอาวุธ
+  // isSkill = true และเป็นคลาสที่มีท่า skill -> เล่นท่า 'skill' | อื่นๆ -> ท่าโจมตีปกติตามอาวุธ
   function playAttack(scene, isSkill) {
     if (!scene._heroOn || !scene.player) return;
     var p = scene.player, d = scene._heroDir || 'right', dx = 0, dy = 0;
