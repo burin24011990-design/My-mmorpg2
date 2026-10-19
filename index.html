@@ -134,7 +134,7 @@ window.addEventListener('error', function (e) {
 <div id="orient-pick">
   <div>
     <h2>เลือกแนวหน้าจอ</h2>
-    <p>เลือกแล้วจะล็อกแนวนั้นทันที (เปลี่ยนได้ภายหลังโดยรีเฟรชหน้า)</p>
+    <p>เลือกแล้วจะล็อกแนวนั้นทันที (จะถามใหม่ทุกครั้งที่เริ่มเกม)</p>
     <div class="row">
       <button data-o="portrait"><span>📱</span>แนวตั้ง</button>
       <button data-o="landscape"><span>📱↔</span>แนวนอน</button>
@@ -146,7 +146,7 @@ window.addEventListener('error', function (e) {
 <div id="orient-warn"><div><span>🔄</span><b id="ow-text"></b></div></div>
 
 <script>
-// ===== เต็มจอ + เลือกแนวจอ (ตั้ง/นอน) แล้วล็อกตามที่เลือก =====
+// ===== เต็มจอ + เลือกแนวจอ (ตั้ง/นอน) ทุกครั้งที่เริ่มเกม แล้วล็อกตามที่เลือก =====
 // เบราว์เซอร์อนุญาตให้เข้าเต็มจอได้ต่อเมื่อผู้ใช้แตะจอเท่านั้น จึงเรียกจากปุ่มเลือกแนว / "เริ่มเล่น"
 // Android Chrome: ล็อกแนวจริงได้เมื่ออยู่ในโหมดเต็มจอ/ติดตั้งแอป
 // iPhone/iPad: ล็อกจริงไม่ได้ จึงใช้หน้าจอเตือนบังเมื่อถือผิดแนว
@@ -161,10 +161,10 @@ window.addEventListener('error', function (e) {
             window.matchMedia('(display-mode: standalone)').matches)) || window.navigator.standalone === true;
   }
 
-  // ----- เก็บแนวที่ผู้เล่นเลือก -----
-  var ORIENT_KEY = 'xianhe_orient';
-  function getOrient() { try { return localStorage.getItem(ORIENT_KEY); } catch (e) { return null; } }
-  function setOrient(v) { try { localStorage.setItem(ORIENT_KEY, v); } catch (e) {} }
+  // ----- แนวที่ผู้เล่นเลือก: เก็บในหน่วยความจำเท่านั้น (ไม่จำข้ามรอบ) -> เริ่มเกมใหม่/รีเฟรช/ออกจากเกมแล้วจะถามใหม่ทุกครั้ง -----
+  var curOrient = null;
+  function getOrient() { return curOrient; }
+  function setOrient(v) { curOrient = v; }
 
   // ล็อกแนวจอจริง (Android Chrome ต้องอยู่ในโหมดเต็มจอ / ติดตั้งแอปแล้ว)
   function lockOrient() {
@@ -212,7 +212,12 @@ window.addEventListener('error', function (e) {
 
   // ----- หน้าเลือกแนวจอ -----
   var pick = document.getElementById('orient-pick');
-  function showPick() { pick.style.display = 'flex'; }
+  function showPick() {
+    curOrient = null;                       // ลืมแนวเดิม
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+    checkOrient();                          // ซ่อนข้อความเตือน
+    pick.style.display = 'flex';
+  }
   pick.addEventListener('click', function (e) {
     var b = e.target.closest('button[data-o]');
     if (!b) return;
@@ -222,10 +227,13 @@ window.addEventListener('error', function (e) {
     enter();                 // แตะครั้งนี้นับเป็นการแตะของผู้ใช้ -> เข้าเต็มจอ + ล็อกแนวได้
     nudgeResize();
   });
-  // เรียกจากเมนูตั้งค่าในเกมเพื่อเลือกแนวใหม่: GameFS_pickOrient()
+  // เรียกตอนออกจากเกม/ออกจากระบบ เพื่อให้ถามแนวจอใหม่: GameFS_pickOrient()
   window.GameFS_pickOrient = showPick;
-  if (!getOrient()) showPick();
-  else { lockOrient(); checkOrient(); }
+  // กดออกจากระบบ -> ถามแนวจอใหม่
+  var lnkOut = document.getElementById('lnk-out');
+  if (lnkOut) lnkOut.addEventListener('click', showPick);
+  // ถามทุกครั้งที่เปิดเกม
+  showPick();
 
   window.GameFS = { enter: enter, setStarted: function () { started = true; lockOrient(); checkOrient(); } };
 
