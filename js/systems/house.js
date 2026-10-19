@@ -241,10 +241,14 @@
     return list[0].id;
   }
 
+  // ตกปลาอัตโนมัติ: ดึงเบ็ดให้เองหลังปลากิน (ไม่ได้โบนัสจังหวะเป๊ะ) หยุดเองเมื่อกระเป๋าเต็ม/ปิดแท็บ/ปิดหน้าต่าง
+  const AUTO_FISH = { rate: 0.7, biteMin: 500, biteMax: 1400, gap: 900 };   // rate = โอกาสตกสำเร็จ (0-1)
+
   function fishView(m, card, body) {
     const h = m.houseState();
     const alive = function () { return document.body.contains(card); };
-    let state = 'idle', useBait = false, baited = false, timer = 0, raf = 0, center = 0.5, t0 = 0, pos = 0;
+    let state = 'idle', useBait = false, baited = false, timer = 0, raf = 0, autoT = 0, center = 0.5, t0 = 0, pos = 0;
+    let auto = false, autoN = 0;
 
     // ฉากตกปลา: ข้อความ + แถบจังหวะ + ผลที่ได้ อยู่ในกรอบน้ำเดียวกัน
     const scene = el('div', 'hs-scene st-idle');
@@ -262,14 +266,16 @@
     const baitBtn = el('button', 'hs-btn hs-alt hs-two', '');
     const waterBtn = el('button', 'hs-btn hs-alt hs-two', '');
     duo.append(baitBtn, waterBtn);
+    const autoBtn = el('button', 'hs-btn hs-alt hs-two', '');
     const act = el('button', 'hs-btn hs-main', '🎣 ทอดเบ็ด');
-    body.append(scene, stock, duo, act);
+    body.append(scene, stock, duo, autoBtn, act);
 
     function setSt(s) {
       state = s;
       scene.className = 'hs-scene st-' + s;
       flo.textContent = s === 'wait' ? '🪝' : (s === 'bite' ? '❗' : '🎣');
     }
+    function setAct(txt) { act.textContent = auto ? '⏹ หยุดตกปลาอัตโนมัติ' : txt; }
     function chip(id, n) {
       const c = el('div', 'hs-chip', '');
       c.append(matIcon(id, 34), el('b', '', 'x' + n), el('small', '', MAT_DEFS[id].name));
@@ -279,9 +285,13 @@
       baitBtn.textContent = '';
       baitBtn.classList.toggle('on', useBait);
       baitBtn.append(el('b', '', (useBait ? '☑' : '☐') + ' 🪱 ใช้เหยื่อ ×' + m.countMat('bait_basic')), el('small', '', 'ปลาหายากง่ายขึ้น'));
-      baitBtn.disabled = state !== 'idle';
+      baitBtn.disabled = state !== 'idle' && !auto;
       waterBtn.textContent = '';
       waterBtn.append(el('b', '', '💧 ตักน้ำ ×10'), el('small', '', 'ใช้ทำอาหาร (มี ' + m.countMat('water') + ')'));
+      autoBtn.textContent = '';
+      autoBtn.classList.toggle('on', auto);
+      autoBtn.append(el('b', '', (auto ? '☑' : '☐') + ' 🤖 ตกปลาอัตโนมัติ'),
+        el('small', '', auto ? 'ตกแล้ว ' + autoN + ' ครั้ง • แตะเพื่อหยุด' : 'สำเร็จ ' + Math.round(AUTO_FISH.rate * 100) + '% • ไม่มีโบนัสจังหวะเป๊ะ • ต้องเปิดหน้าต่างค้างไว้'));
       stock.textContent = '';
       let anyFish = false;
       FISH_TABLE.forEach(function (f) {
@@ -294,9 +304,9 @@
     }
     function toIdle() {
       setSt('idle');
-      clearTimeout(timer); cancelAnimationFrame(raf);
+      clearTimeout(timer); clearTimeout(autoT); cancelAnimationFrame(raf);
       bar.style.visibility = 'hidden';
-      act.textContent = '🎣 ทอดเบ็ด';
+      setAct('🎣 ทอดเบ็ด');
       refresh();
     }
     function cast() {
@@ -304,10 +314,18 @@
       if (useBait) { if (m.takeMat('bait_basic', 1)) baited = true; else useBait = false; }
       setSt('wait');
       res.textContent = '';
-      msg.textContent = '🌊 รอปลากิน...';
-      act.textContent = '🪝 ดึงเบ็ด';
+      msg.textContent = auto ? '🤖 อัตโนมัติ: รอปลากิน...' : '🌊 รอปลากิน...';
+      setAct('🪝 ดึงเบ็ด');
       refresh();
       timer = setTimeout(bite, FISH_CFG.waitMin + Math.random() * (FISH_CFG.waitMax - FISH_CFG.waitMin));
+    }
+    function schedulePull() {
+      clearTimeout(autoT);
+      autoT = setTimeout(function () {
+        if (!alive() || !auto || state !== 'bite') return;
+        cancelAnimationFrame(raf);
+        finish(Math.random() < AUTO_FISH.rate, false);
+      }, AUTO_FISH.biteMin + Math.random() * (AUTO_FISH.biteMax - AUTO_FISH.biteMin));
     }
     function bite() {
       if (!alive() || state !== 'wait') return;
@@ -317,11 +335,12 @@
       zone.style.left = ((center - w / 2) * 100) + '%';
       zone.style.width = (w * 100) + '%';
       bar.style.visibility = 'visible';
-      msg.textContent = '❗ ปลากินเบ็ด! แตะตอนตัวชี้อยู่ในโซนเขียว';
-      act.textContent = '✊ ดึง!';
-      try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {}
+      msg.textContent = auto ? '🤖 ปลากินเบ็ด กำลังดึง...' : '❗ ปลากินเบ็ด! แตะตอนตัวชี้อยู่ในโซนเขียว';
+      setAct('✊ ดึง!');
+      try { if (navigator.vibrate && !auto) navigator.vibrate(60); } catch (e) {}
       t0 = performance.now();
       raf = requestAnimationFrame(loop);
+      if (auto) schedulePull();
     }
     function loop(now) {
       if (state !== 'bite' || !alive()) return;
@@ -330,24 +349,38 @@
       mk.style.left = (pos * 100) + '%';
       raf = requestAnimationFrame(loop);
     }
+    function nextAuto() {   // วนรอบถัดไปของโหมดอัตโนมัติ
+      if (!auto) return;
+      autoT = setTimeout(function () { if (alive() && auto && state === 'idle') cast(); }, AUTO_FISH.gap);
+    }
     function finish(ok, perfect) {
       toIdle();
-      if (!ok) { msg.textContent = '💨 ปลาหลุดไปแล้ว...'; return; }
+      if (!ok) { msg.textContent = auto ? '🤖 ปลาหลุด ลองใหม่...' : '💨 ปลาหลุดไปแล้ว...'; nextAuto(); return; }
       const fid = rollFish(baited), n = (perfect && FISH_CFG.perfectDouble) ? 2 : 1;
       const left = m.addMat(fid, n), d = MAT_DEFS[fid];
       h.fished = (h.fished || 0) + 1;
-      if (left >= n) msg.textContent = '🎒 กระเป๋าเต็ม! ปลาหลุดมือ';
-      else {
-        msg.textContent = perfect ? '⭐ สุดยอด! จังหวะเป๊ะ' : '✅ ตกได้แล้ว!';
+      if (left >= n) {
+        msg.textContent = '🎒 กระเป๋าเต็ม! ปลาหลุดมือ' + (auto ? ' (หยุดตกอัตโนมัติ)' : '');
+        auto = false; setAct('🎣 ทอดเบ็ด');
+      } else {
+        if (auto) { autoN++; msg.textContent = '🤖 อัตโนมัติ: ตกได้ ' + autoN + ' ครั้ง'; }
+        else msg.textContent = perfect ? '⭐ สุดยอด! จังหวะเป๊ะ' : '✅ ตกได้แล้ว!';
         res.textContent = '';
         res.append(matIcon(fid, 44), document.createTextNode(' ' + d.name + ' x' + (n - left)));
-        toast(m, 'ตกได้: ' + d.name + ' x' + (n - left));
+        if (!auto) toast(m, 'ตกได้: ' + d.name + ' x' + (n - left));
+        nextAuto();
       }
       if (m.saveSoon) m.saveSoon();
       refresh();
     }
+    function stopAuto(text) {
+      auto = false;
+      clearTimeout(autoT);
+      if (state !== 'idle') toIdle(); else { setAct('🎣 ทอดเบ็ด'); refresh(); }
+      if (text) msg.textContent = text;
+    }
     baitBtn.addEventListener('click', function () {
-      if (state !== 'idle') return;
+      if (state !== 'idle' && !auto) return;
       if (!useBait && m.countMat('bait_basic') < 1) { toast(m, 'ไม่มีเหยื่อ (ซื้อได้ที่แท็บร้านค้า)'); return; }
       useBait = !useBait; refresh();
     });
@@ -356,13 +389,21 @@
       toast(m, left >= 10 ? 'กระเป๋าเต็ม' : '💧 ได้น้ำ x' + (10 - left));
       refresh();
     });
+    autoBtn.addEventListener('click', function () {
+      if (auto) { stopAuto('⏹ หยุดตกปลาอัตโนมัติแล้ว'); return; }
+      auto = true; autoN = 0;
+      if (state === 'idle') cast();
+      else if (state === 'bite') { setAct('✊ ดึง!'); schedulePull(); refresh(); }
+      else { setAct('🪝 ดึงเบ็ด'); refresh(); }
+    });
     act.addEventListener('click', function () {
+      if (auto) { stopAuto('⏹ หยุดตกปลาอัตโนมัติแล้ว'); return; }
       if (state === 'idle') { cast(); return; }
       if (state === 'wait') { toIdle(); msg.textContent = '😅 ดึงเร็วไป ปลาหนีแล้ว'; return; }
       if (state === 'bite') { const d = Math.abs(pos - center); finish(d <= FISH_CFG.zoneW / 2, d <= FISH_CFG.zoneW * 0.15); }
     });
     refresh();
-    return function () { clearTimeout(timer); cancelAnimationFrame(raf); };
+    return function () { auto = false; clearTimeout(timer); clearTimeout(autoT); cancelAnimationFrame(raf); };
   }
 
   // ---------- แปลงผัก ----------
@@ -635,6 +676,25 @@
     refreshAll();
   }
 
+  // ---------- กันการกดทะลุหน้าต่าง ----------
+  // หน้าต่างบ้านเป็น DOM ลอยเหนือเกม Phaser ซึ่งฟังเหตุการณ์สัมผัสที่ window ทำให้การแตะบนหน้าต่างไปโดนปุ่ม/สกิลที่อยู่ข้างหลัง
+  // จึงหยุดการส่งต่อเหตุการณ์จากหน้าต่าง และปิด input ของ Phaser ชั่วคราวระหว่างเปิดหน้าต่าง (คืนค่าเดิมเมื่อหน้าต่างปิด)
+  function shieldInput(m, card) {
+    const evs = ['pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchend', 'touchmove', 'mousedown', 'mouseup', 'mousemove', 'click', 'dblclick', 'wheel', 'contextmenu'];
+    const stop = function (e) { e.stopPropagation(); };
+    const targets = [card];
+    const par = card.parentElement;
+    if (par && par !== document.body && par !== document.documentElement) targets.push(par);   // ฉากคลุมเต็มจอที่ครอบหน้าต่าง (ถ้ามี)
+    targets.forEach(function (t) { evs.forEach(function (ev) { t.addEventListener(ev, stop); }); });
+    let prev = null;
+    try { if (m.input) { prev = m.input.enabled; m.input.enabled = false; } } catch (e) {}
+    const iv = setInterval(function () {
+      if (document.body.contains(card)) return;
+      clearInterval(iv);
+      try { if (m.input && prev !== null) m.input.enabled = prev; } catch (e) {}
+    }, 200);
+  }
+
   // ---------- แผงบ้าน (มีแท็บ) ----------
   function openHouse(m, tab, arg) {
     if (m.townModal) return;
@@ -648,6 +708,15 @@
     }
     const card = townDomCard(m, '🏠 บ้านของฉัน');
     card.classList.add('hs-card');
+    // ปุ่ม X มุมขวาบน (ทุกแท็บ) -> กดปุ่ม "ปิด" เดิมของหน้าต่าง
+    const xw = el('div', 'hs-xwrap'), xb = el('button', 'hs-x', '✕');
+    xb.addEventListener('click', function () {
+      const cb = Array.prototype.slice.call(card.querySelectorAll('button')).filter(function (b) { return b.textContent.trim() === 'ปิด'; })[0];
+      if (cb) cb.click(); else townCloseDialog(m);
+    });
+    xw.append(xb);
+    card.insertBefore(xw, card.firstChild);
+    shieldInput(m, card);
     const tabs = el('div', 'hs-tabs'), body = el('div', 'hs-body');
     card.append(tabs, body);
     const TABS = [['fish', '🎣', 'ตกปลา', fishView], ['farm', '🥬', 'แปลงผัก', farmView], ['cook', '🍳', 'ทำอาหาร', cookView], ['shop', '🛒', 'ร้านค้า', shopView]];
