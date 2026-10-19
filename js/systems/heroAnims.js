@@ -1,9 +1,9 @@
 // อนิเมชันตัวละครหลัก
 // - 'hero'       : assets/hero.png (ชีตเดิม ช่อง 96x96, 6 คอลัมน์) ใช้กับ hurt/death และ fallback
-// - 'hero_sword' : assets/hero_sword.png (นักดาบ, 4 คอลัมน์ x 12 แถว)  - 'hero_rogue' : assets/hero_rogue.png (นักมีด)
-// - 'hero_archer': assets/hero_archer.png (นักธนู) - 'hero_mage'  : assets/hero_mage.png (เมจ)
-// - 'hero_priest': assets/hero_priest.png (พระ/หมอ)    ชีตใหม่ 8 คอลัมน์ x 20 แถว
-// เลขเฟรม = แถว*คอลัมน์ + คอลัมน์ | สกินใหม่ (archer/mage/priest) มีทิศซ้ายวาดแยก ไม่ต้องพลิกภาพ
+// - ชีตใหม่ทุกอาชีพใช้ผังเดียวกัน: 4 คอลัมน์ x 12 แถว (ช่อง 96x96 -> 384 x 1152 px)
+//     hero_sword (ดาบ) | hero_rogue (โจร) | hero_archer (ธนู) | hero_mage (เมจ พัด) | hero_priest (หมอ)
+//   แถว: 0-3 idle | 4-7 walk | 8-11 โจมตี   ลำดับทิศในแต่ละชุด: down, left, right, up
+// เลขเฟรม = แถว*4 + คอลัมน์
 (function () {
   var COLS = 6;
   function f(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * COLS + i); return a; }
@@ -11,7 +11,7 @@
   // ฟังก์ชันช่วยรวมค่า (ต้องอยู่ก่อน SKINS)
   function mix(o, extra) { for (var k in extra) o[k] = extra[k]; return o; }
 
-  // ชีตเดิม
+  // ชีตเดิม (ใช้กับ hurt/death และ fallback)
   var BASE = {
     walk:  { down: f(0, 6), up: f(1, 6), right: f(2, 6), rate: 7, loop: true },
     idle:  { down: f(3, 4), up: f(4, 4), right: f(5, 4), rate: 2, loop: true },
@@ -22,78 +22,63 @@
     death: { right: [56, 57, 58, 59], rate: 6, loop: false }
   };
 
-  // ชีต archer/mage: 9 คอลัมน์ x 12 แถว (ช่อง 96x96)
-  // แถว: 0-3 idle(down,left,right,up) | 4-7 walk | 8-11 attack
-  var NC = 9;
-  function g(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * NC + i); return a; }
-  function dirs(startRow, count) {
-    return { down: g(startRow, count), left: g(startRow + 1, count), right: g(startRow + 2, count), up: g(startRow + 3, count) };
-  }
-
-  // ชีตผัง 4 คอลัมน์ x 12 แถว (ช่อง 96x96) -> 384 x 1152 px  (ตอนนี้ใช้กับนักดาบ)
-  // แถว: 0-3 idle | 4-7 walk | 8-11 โจมตี | ลำดับทิศ: down, left, right, up
+  // ชีตผัง 4 คอลัมน์ x 12 แถว
   var HC = 4;
-  function hh(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * HC + i); return a; }
-  function hdirs(r) { return { down: hh(r, 4), left: hh(r + 1, 4), right: hh(r + 2, 4), up: hh(r + 3, 4) }; }
-
-  // ชีตพระ: 8 คอลัมน์ x 20 แถว (ช่อง 96x96) -> 768 x 1920 px
-  // แถว: 0-3 idle | 4-7 walk | 8-11 ตีปกติ | 12-15 ท่าที่ 2 | 16-19 ท่าที่ 3 (วงแสง)
-  // ลำดับทิศในแต่ละชุด: down, left, right, up
-  var PC = 8;
-  function pr(row, count) { var a = []; for (var i = 0; i < count; i++) a.push(row * PC + i); return a; }
-  // c = จำนวนเฟรมแต่ละทิศ (ถ้าไม่ระบุ ใช้ 3 เฟรมทุกทิศ)
-  function pdirs(startRow, c) {
-    c = c || { down: 3, left: 3, right: 3, up: 3 };
-    return {
-      down: pr(startRow, c.down),
-      left: pr(startRow + 1, c.left),
-      right: pr(startRow + 2, c.right),
-      up: pr(startRow + 3, c.up)
-    };
+  // frames = ลำดับเฟรมที่เล่น (0-3) ของแถวนั้น เช่น [0,0,1,1,2,3] = ค้างท่าเตรียมกับท่าปะทะให้เห็นจังหวะ
+  function hseq(row, frames) {
+    function one(r) { return frames.map(function (i) { return r * HC + i; }); }
+    return { down: one(row), left: one(row + 1), right: one(row + 2), up: one(row + 3) };
   }
-  var PRIEST_IDLE_N = { down: 6, left: 8, right: 6, up: 8 };
-  var PRIEST_WALK_N = { down: 3, left: 4, right: 3, up: 4 };
+  function hdirs(row) { return hseq(row, [0, 1, 2, 3]); }
+
+  // จังหวะท่าโจมตี (ปรับตรงนี้ถ้าอยากให้ช้า/เร็วขึ้น)
+  //  ATK6 = 6 ช็อต, ATK7 = 7 ช็อต | เวลาเล่น = จำนวนช็อต / rate (วินาที)
+  //  ถ้าแก้เวลาให้ยาวขึ้น อย่าลืมเพิ่ม ATTACK_MS / SKILL_MS ใน heroPatch.js ให้ยาวกว่าเวลาเล่น
+  var ATK6 = [0, 0, 1, 1, 2, 3];
+  var ATK7 = [0, 0, 1, 1, 2, 2, 3];
 
   // ชีตใหม่ (action ที่ไม่มีในนี้ เช่น hurt/death จะ fallback ไปใช้ชีตเดิม)
   var SKINS = {
-    // นักดาบ: ผัง 4 คอลัมน์ (idle 4 / walk 4 / โจมตี 4 เฟรมต่อทิศ)
+    // นักดาบ: ฟัน 6 ช็อต ~0.6 วิ
     hero_sword: {
-      idle:   mix(hdirs(0), { rate: 5,  loop: true }),
-      walk:   mix(hdirs(4), { rate: 8,  loop: true }),
-      sword:  mix(hdirs(8), { rate: 12, loop: false }),
-      dagger: mix(hdirs(8), { rate: 12, loop: false }),
-      skill:  mix(hdirs(8), { rate: 14, loop: false })
+      idle:   mix(hdirs(0), { rate: 5, loop: true }),
+      walk:   mix(hdirs(4), { rate: 8, loop: true }),
+      sword:  mix(hseq(8, ATK6), { rate: 10, loop: false }),
+      dagger: mix(hseq(8, ATK6), { rate: 10, loop: false }),
+      skill:  mix(hseq(8, ATK6), { rate: 9,  loop: false })
     },
+    // โจร: ฟันมีดคู่ 6 ช็อต ~0.6 วิ
     hero_rogue: {
-      walk: { down: [0, 1, 2, 1], up: [6, 7, 8, 7], right: [12, 13, 14, 13], rate: 8, loop: true },
-      idle: { down: [18, 19, 20, 21, 22, 23], up: [24, 25, 26, 27, 28, 29], right: [30, 31, 32, 33, 34, 35], rate: 4, loop: true },
-      sword: { down: [36, 37, 38, 39, 40, 41], up: [42, 43, 44, 45, 46, 47], right: [48, 49, 50, 51], rate: 14, loop: false },
-      dagger: { down: [36, 37, 38, 39, 40, 41], up: [42, 43, 44, 45, 46, 47], right: [48, 49, 50, 51], rate: 14, loop: false },
-      skill: { down: [54, 55, 56], up: [60, 61, 62], right: [66, 67], rate: 12, loop: false }
+      idle:   mix(hdirs(0), { rate: 5, loop: true }),
+      walk:   mix(hdirs(4), { rate: 8, loop: true }),
+      sword:  mix(hseq(8, ATK6), { rate: 10, loop: false }),
+      dagger: mix(hseq(8, ATK6), { rate: 10, loop: false }),
+      skill:  mix(hseq(8, ATK6), { rate: 9,  loop: false })
     },
-    // นักธนู: idle 6 เฟรม / walk 6 เฟรม / ยิง 9 เฟรม (ใช้ท่า 'bow' + 'skill')
+    // นักธนู: ง้างคันธนู-ปล่อยลูกธนู 7 ช็อต ~0.7 วิ (ใช้ท่า 'bow')
     hero_archer: {
-      idle: mix(dirs(0, 6), { rate: 6, loop: true }),
-      walk: mix(dirs(4, 6), { rate: 10, loop: true }),
-      bow:  mix(dirs(8, 9), { rate: 21, loop: false })
+      idle:  mix(hdirs(0), { rate: 5, loop: true }),
+      walk:  mix(hdirs(4), { rate: 8, loop: true }),
+      bow:   mix(hseq(8, ATK7), { rate: 10, loop: false }),
+      skill: mix(hseq(8, ATK7), { rate: 10, loop: false })
     },
-    // เมจ: idle 6 เฟรม / walk 6 เฟรม / ร่ายเวท 6 เฟรม (ใช้ท่า 'staff')
+    // เมจ (กำลังภายใน ถือพัด): ร่ายเวท 7 ช็อต ~0.7 วิ (ใช้ท่า 'staff')
     hero_mage: {
-      idle:  mix(dirs(0, 6), { rate: 6, loop: true }),
-      walk:  mix(dirs(4, 6), { rate: 10, loop: true }),
-      staff: mix(dirs(8, 6), { rate: 14, loop: false })
+      idle:  mix(hdirs(0), { rate: 5, loop: true }),
+      walk:  mix(hdirs(4), { rate: 8, loop: true }),
+      staff: mix(hseq(8, ATK7), { rate: 10, loop: false }),
+      skill: mix(hseq(8, ATK7), { rate: 10, loop: false })
     },
-    // พระ: idle 6-8 เฟรม / walk 3-4 เฟรม / โจมตี 3 ชุด ชุดละ 3 เฟรม
-    //  staff  = ตีปกติ (ใช้ได้กับ sword/dagger ด้วย)
-    //  skill  = ท่าสกิล (มีแสงรอบตัว)   skill2 = ท่าสกิลที่ 2 (วงแสงใหญ่)
+    // หมอ (เดิมคือพระ): ร่ายเวท 7 ช็อต ~0.7 วิ
+    //  staff = ตีปกติ (ใช้ได้กับ sword/dagger ด้วย)  skill / skill2 = ท่าสกิล (ใช้เฟรมชุดเดียวกัน)
     hero_priest: {
-      idle:   mix(pdirs(0, PRIEST_IDLE_N), { rate: 6,  loop: true }),
-      walk:   mix(pdirs(4, PRIEST_WALK_N), { rate: 8,  loop: true }),
-      staff:  mix(pdirs(8),                { rate: 10, loop: false }),
-      sword:  mix(pdirs(8),                { rate: 10, loop: false }),
-      dagger: mix(pdirs(8),                { rate: 10, loop: false }),
-      skill:  mix(pdirs(12),               { rate: 12, loop: false }),
-      skill2: mix(pdirs(16),               { rate: 12, loop: false })
+      idle:   mix(hdirs(0), { rate: 5, loop: true }),
+      walk:   mix(hdirs(4), { rate: 8, loop: true }),
+      staff:  mix(hseq(8, ATK7), { rate: 10, loop: false }),
+      sword:  mix(hseq(8, ATK7), { rate: 10, loop: false }),
+      dagger: mix(hseq(8, ATK7), { rate: 10, loop: false }),
+      skill:  mix(hseq(8, ATK7), { rate: 10, loop: false }),
+      skill2: mix(hseq(8, ATK7), { rate: 10, loop: false })
     }
   };
   var SHEETS = {
@@ -110,7 +95,7 @@
 
   window.HeroAnims = {
     KEY: 'hero',
-    SCALE: 0.75,
+    SCALE: 1.15,
 
     // แปลงชื่อคลาส -> สกิน  (ปรับ regex ให้ตรงกับชื่อคลาสในเกมคุณได้)
     skinOf: function (cls) {
@@ -162,7 +147,7 @@
     // HeroAnims.play(sprite, 'walk', 'left', skin?)
     // skin: 'hero_sword' | 'hero_rogue' | 'hero_archer' | 'hero_mage' | 'hero_priest' | 'hero'
     // ถ้าไม่ส่ง skin จะใช้ sprite.heroSkin  (ผู้เล่นอื่นต้องตั้ง sprite.heroSkin ไว้ ไม่งั้นจะได้ชุดเก่า 'hero')
-    // 'sword' = ตีปกติ, 'skill' = ท่าสกิลหมุน/แทง (ชุดที่ 2 ของแต่ละคลาส), 'skill2' = เฉพาะพระ
+    // 'sword' = ตีปกติ, 'skill' = ท่าสกิล, 'skill2' = เฉพาะหมอ
     play: function (sprite, action, dir, skin) {
       if (!sprite || !sprite.scene || !sprite.anims || !sprite.scene.textures.exists('hero')) return;
       if (!skin) skin = sprite.heroSkin;
