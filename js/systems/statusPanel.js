@@ -2,6 +2,7 @@
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
 // ไม่แก้ไฟล์เดิม: แค่ดักเมื่อเปิดหน้า 'status' แล้วใช้หน้าต่างนี้แทน
 // หน้าอื่น (อุปกรณ์ / สกิล) ยังใช้ของเดิมทุกอย่าง
+// v2: ค่าที่บวกจากอุปกรณ์ = สีเขียว | ค่าที่บวกจากการ์ด = สีฟ้า
 (function () {
   var PP = window.PixelPanels;
   if (!PP) return;
@@ -23,6 +24,23 @@
   function fmt(n) { return typeof n === 'number' ? n.toLocaleString('en-US') : esc(n); }
   function num(v) { return (typeof v === 'number' && !isNaN(v)) ? v : 0; }
   function pct(v) { return Math.max(0, Math.min(100, v)); }
+
+  // แยกโบนัสจากอุปกรณ์ / การ์ด (เฉพาะชิ้นที่สวมอยู่)
+  function bonusSplit(s) {
+    var eqB = {}, cdB = {};
+    try {
+      var eq = s.equipment || {};
+      (window.EQUIP_SLOT_KEYS || Object.keys(eq)).forEach(function (k) {
+        var it = eq[k];
+        if (!it) return;
+        var a = window.computeItemStats ? window.computeItemStats(it) : {};
+        Object.keys(a).forEach(function (key) { eqB[key] = (eqB[key] || 0) + a[key]; });
+        var c = window.CardSys ? window.CardSys.cardBonusOf(it) : {};
+        Object.keys(c).forEach(function (key) { cdB[key] = (cdB[key] || 0) + c[key]; });
+      });
+    } catch (e) {}
+    return { eq: eqB, cd: cdB };
+  }
 
   function build() {
     if (win) return;
@@ -70,6 +88,7 @@
 
     var defs = window.STAT_DEFS || {};
     var f = window.fmtStat || function (k, v) { return Math.round(v); };
+    var split = bonusSplit(s);
     var cards = '';
     GROUPS.forEach(function (g) {
       var rows = '';
@@ -77,7 +96,10 @@
         var d = defs[k];
         if (!d) return;
         if (d.hideZero && !S[k]) return;
-        rows += '<div class="sp-row"><span>' + esc(d.label) + '</span><b>' + esc(f(k, S[k])) + '</b></div>';
+        var add = '';
+        if (split.eq[k] > 0) add += ' <small style="color:#5ee08a;font-weight:700">+' + esc(f(k, split.eq[k])) + '</small>';
+        if (split.cd[k] > 0) add += ' <small style="color:#5db8ff;font-weight:700">+' + esc(f(k, split.cd[k])) + '</small>';
+        rows += '<div class="sp-row"><span>' + esc(d.label) + '</span><b>' + esc(f(k, S[k])) + add + '</b></div>';
       });
       if (rows) cards += '<div class="sp-card" style="--c:' + g.c + '"><h3>' + g.t + '</h3>' + rows + '</div>';
     });
