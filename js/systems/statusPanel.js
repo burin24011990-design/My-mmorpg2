@@ -1,6 +1,6 @@
 // ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
-// v7: ปุ่ม − / + / ✕ ย้ายไปมุมขวาบน ขนาดเล็ก (ไม่เบียดชื่อ) | ป้าย Lv/ฉายาไม่ตกบรรทัด
+// v8: ปุ่ม − / + (ปรับขนาด) อยู่มุมซ้ายบน | ปุ่ม ✕ ปิด อยู่มุมขวาบน | ขนาดเล็ก ไม่เบียดชื่อ
 //     ปุ่ม − / + ปรับขนาดหน้าต่างในเกม (จำค่าไว้) | ซ่อนปุ่ม HTML (.hb-t) ตอนเปิด แล้วคืนเมื่อปิด
 //     ชื่อตัวละครอ่านจาก mmo_cloud_lastname | ใส่รูปตัวละครได้ | อุปกรณ์ = เขียว, การ์ด = ฟ้า
 (function () {
@@ -68,9 +68,8 @@
     if (!win) return;
     var s = Math.max(SCALE_MIN, Math.min(SCALE_MAX, curScale()));
     win.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
-    // ปุ่มควบคุมมุมขวาบนขยายสวนทางเล็กน้อย ให้กดง่ายแม้หน้าต่างย่อเล็ก
+    // ปุ่มควบคุมมุมบนขยายสวนทางเล็กน้อย ให้กดง่ายแม้หน้าต่างย่อเล็ก
     win.style.setProperty('--inv', String(Math.max(1, Math.min(TOOL_INV_MAX, 1 / s))));
-    win.title = '';
   }
   function stepScale(d) {
     var s = Math.round((curScale() + d) * 10) / 10;
@@ -95,8 +94,8 @@
       '.wx-win.open{display:flex}',
       '.wx-cn{position:absolute;width:13px;height:13px;background:#8e1b16;border:2px solid #e6c36a;transform:rotate(45deg);box-shadow:0 0 6px #000}',
       '.wx-cn.a{left:-9px;top:-9px}.wx-cn.b{right:-9px;top:-9px}.wx-cn.c{left:-9px;bottom:-9px}.wx-cn.d{right:-9px;bottom:-9px}',
-      // เว้นที่สองข้างหัวข้อให้ปุ่มมุมขวาบน (ซ้าย-ขวาเท่ากัน หัวข้อจึงอยู่กลางเหมือนเดิม)
-      '.wx-banner{text-align:center;font-size:11px;letter-spacing:3px;color:#c9a24a;margin:-2px 0 6px;display:flex;align-items:center;gap:8px;padding:0 calc(var(--inv,1) * 82px + 6px);white-space:nowrap}',
+      // เว้นที่สองข้างหัวข้อให้ปุ่มมุมบน (ซ้าย-ขวาเท่ากัน หัวข้อจึงอยู่กลางเหมือนเดิม)
+      '.wx-banner{text-align:center;font-size:11px;letter-spacing:3px;color:#c9a24a;margin:-2px 0 6px;display:flex;align-items:center;gap:8px;padding:0 calc(var(--inv,1) * 60px + 6px);white-space:nowrap}',
       '.wx-banner:before,.wx-banner:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent)}',
       '.wx-banner b{font-weight:900;font-size:13px;color:#e6c36a;text-shadow:0 0 6px rgba(201,162,74,.5)}',
       '.wx-head{display:flex;align-items:center;gap:12px;flex:0 0 auto}',
@@ -112,10 +111,12 @@
       '.wx-rank{font-size:12px;color:#e6c36a;border-bottom:1px solid rgba(201,162,74,.5);padding:0 2px}',
       '.wx-cls{font-size:12px;color:#d9c6a0}',
       '.wx-rm{font-size:10px;color:#9a8a6a;text-decoration:underline;cursor:pointer;margin-left:2px}',
-      // ปุ่ม − / + / ✕ : ลอยอยู่มุมขวาบนของหน้าต่าง ขนาดเล็ก
-      '.wx-tools{position:absolute;top:5px;right:8px;z-index:3;display:flex;align-items:center;gap:4px;transform:scale(var(--inv,1));transform-origin:top right}',
-      '.wx-tools button{width:' + TOOL_BTN + 'px;height:' + TOOL_BTN + 'px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:14px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0;line-height:1;display:flex;align-items:center;justify-content:center}',
-      '.wx-tools button:active{filter:brightness(1.3)}',
+      // ปุ่มมุมบน: − / + อยู่ซ้าย | ✕ อยู่ขวา (ลอยอยู่ในหน้าต่าง ขนาดเล็ก)
+      '.wx-tools,.wx-tools-l{position:absolute;top:5px;z-index:3;display:flex;align-items:center;gap:4px;transform:scale(var(--inv,1))}',
+      '.wx-tools{right:8px;transform-origin:top right}',
+      '.wx-tools-l{left:8px;transform-origin:top left}',
+      '.wx-tools button,.wx-tools-l button{width:' + TOOL_BTN + 'px;height:' + TOOL_BTN + 'px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:14px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0;line-height:1;display:flex;align-items:center;justify-content:center}',
+      '.wx-tools button:active,.wx-tools-l button:active{filter:brightness(1.3)}',
       '.wx-bars{display:flex;flex-direction:column;gap:5px;margin:9px 0 8px;flex:0 0 auto}',
       '.wx-bar{position:relative;height:clamp(17px,5vh,24px);border:2px solid #c9a24a;border-radius:3px;background:#0a0404;overflow:hidden;box-shadow:inset 0 0 8px #000}',
       '.wx-bar i{position:absolute;left:0;top:0;bottom:0}',
@@ -262,9 +263,9 @@
     win.className = 'wx-win';
     win.innerHTML =
       '<span class="wx-cn a"></span><span class="wx-cn b"></span><span class="wx-cn c"></span><span class="wx-cn d"></span>' +
-      '<div class="wx-tools"><button class="wx-zm" aria-label="ย่อ">−</button>' +
-      '<button class="wx-zp" aria-label="ขยาย">+</button>' +
-      '<button class="wx-x" aria-label="ปิด">✕</button></div>' +
+      '<div class="wx-tools-l"><button class="wx-zm" aria-label="ย่อ">−</button>' +
+      '<button class="wx-zp" aria-label="ขยาย">+</button></div>' +
+      '<div class="wx-tools"><button class="wx-x" aria-label="ปิด">✕</button></div>' +
       '<div class="wx-banner"><b>俠客錄</b><span>ทำเนียบยอดยุทธ์</span></div>' +
       '<div class="wx-head"></div><div class="wx-bars"></div>' +
       '<div class="wx-scroll"></div>';
