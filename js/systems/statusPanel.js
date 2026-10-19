@@ -1,6 +1,7 @@
 // ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
-// v6: ปุ่ม − / + ปรับขนาดหน้าต่างในเกม (จำค่าไว้) | ซ่อนปุ่ม HTML (.hb-t: เสียง/เมือง/CH ฯลฯ) ตอนเปิด แล้วคืนเมื่อปิด
+// v7: ปุ่ม − / + / ✕ ย้ายไปมุมขวาบน ขนาดเล็ก (ไม่เบียดชื่อ) | ป้าย Lv/ฉายาไม่ตกบรรทัด
+//     ปุ่ม − / + ปรับขนาดหน้าต่างในเกม (จำค่าไว้) | ซ่อนปุ่ม HTML (.hb-t) ตอนเปิด แล้วคืนเมื่อปิด
 //     ชื่อตัวละครอ่านจาก mmo_cloud_lastname | ใส่รูปตัวละครได้ | อุปกรณ์ = เขียว, การ์ด = ฟ้า
 (function () {
   var PP = window.PixelPanels;
@@ -11,6 +12,8 @@
   var PORTRAIT_SCALE = 0.85;        // ขนาดเริ่มต้นจอแนวตั้ง
   var SCALE_MIN = 0.3, SCALE_MAX = 1.3, SCALE_STEP = 0.1;
   var SCALE_KEY = 'xh_status_scale_v1';   // ที่จำขนาดที่ผู้เล่นเลือก (เก็บในเครื่อง)
+  var TOOL_BTN = 24;                // ขนาดปุ่ม − / + / ✕ (px)
+  var TOOL_INV_MAX = 1.8;           // ปุ่มขยายสวนทางหน้าต่างได้สูงสุดกี่เท่า (กันกดยากตอนย่อเล็ก)
   var PORTRAIT_URL = '';            // ใส่ path รูปเริ่มต้นได้ เช่น 'assets/portrait.png' (ว่าง = ใช้อีโมจิ 🦊)
   var PORTRAIT_EMOJI = '🦊';
   var PORTRAIT_KEY = 'xh_portrait_v1';   // ที่เก็บรูปที่ผู้เล่นเลือกเอง (เก็บในเครื่อง)
@@ -65,10 +68,9 @@
     if (!win) return;
     var s = Math.max(SCALE_MIN, Math.min(SCALE_MAX, curScale()));
     win.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
-    // ปุ่มควบคุมมุมขวาบนขยายสวนทาง ให้กดง่ายแม้หน้าต่างย่อเล็ก
-    win.style.setProperty('--inv', String(Math.min(2.2, 1 / s)));
-    var lab = win.querySelector('.wx-sc');
-    if (lab) lab.textContent = Math.round(s * 100) + '%';
+    // ปุ่มควบคุมมุมขวาบนขยายสวนทางเล็กน้อย ให้กดง่ายแม้หน้าต่างย่อเล็ก
+    win.style.setProperty('--inv', String(Math.max(1, Math.min(TOOL_INV_MAX, 1 / s))));
+    win.title = '';
   }
   function stepScale(d) {
     var s = Math.round((curScale() + d) * 10) / 10;
@@ -93,25 +95,27 @@
       '.wx-win.open{display:flex}',
       '.wx-cn{position:absolute;width:13px;height:13px;background:#8e1b16;border:2px solid #e6c36a;transform:rotate(45deg);box-shadow:0 0 6px #000}',
       '.wx-cn.a{left:-9px;top:-9px}.wx-cn.b{right:-9px;top:-9px}.wx-cn.c{left:-9px;bottom:-9px}.wx-cn.d{right:-9px;bottom:-9px}',
-      '.wx-banner{text-align:center;font-size:11px;letter-spacing:3px;color:#c9a24a;margin:-2px 0 6px;display:flex;align-items:center;gap:8px}',
+      // เว้นที่สองข้างหัวข้อให้ปุ่มมุมขวาบน (ซ้าย-ขวาเท่ากัน หัวข้อจึงอยู่กลางเหมือนเดิม)
+      '.wx-banner{text-align:center;font-size:11px;letter-spacing:3px;color:#c9a24a;margin:-2px 0 6px;display:flex;align-items:center;gap:8px;padding:0 calc(var(--inv,1) * 82px + 6px);white-space:nowrap}',
       '.wx-banner:before,.wx-banner:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent)}',
       '.wx-banner b{font-weight:900;font-size:13px;color:#e6c36a;text-shadow:0 0 6px rgba(201,162,74,.5)}',
       '.wx-head{display:flex;align-items:center;gap:12px;flex:0 0 auto}',
       '.wx-pt{position:relative;flex:0 0 auto;width:clamp(54px,17vh,92px);height:clamp(54px,17vh,92px);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,9vh,50px);',
       'background:radial-gradient(circle at 35% 30%,#4a1414,#170707);border:3px solid #e6c36a;box-shadow:0 0 0 2px #5a1010,0 0 0 4px #c9a24a,0 0 14px rgba(0,0,0,.9);overflow:hidden}',
       '.wx-pt img{width:100%;height:100%;object-fit:cover;pointer-events:none}',
-      '.wx-cam{position:absolute;right:0;bottom:0;left:0;text-align:center;font-size:10px;line-height:1.5;background:rgba(0,0,0,.6);color:#e6c36a;font-family:inherit}',
+      '.wx-cam{position:absolute;right:0;bottom:0;left:0;text-align:center;font-size:10px;line-height:1.5;background:rgba(0,0,0,.6);color:#e6c36a;font-family:inherit;white-space:nowrap}',
       '.wx-id{flex:1;min-width:0}',
       '.wx-name{font-size:clamp(18px,5.4vh,28px);font-weight:900;color:#f6dc8c;letter-spacing:1px;text-shadow:0 2px 0 #5a1010,0 0 10px rgba(201,162,74,.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.wx-meta{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}',
+      '.wx-meta span{white-space:nowrap}',
       '.wx-lv{background:linear-gradient(#b3261e,#6e100c);border:2px solid #e6c36a;border-radius:4px;padding:1px 9px;font-weight:900;font-size:14px;color:#fff3cf;box-shadow:0 0 6px rgba(0,0,0,.7)}',
       '.wx-rank{font-size:12px;color:#e6c36a;border-bottom:1px solid rgba(201,162,74,.5);padding:0 2px}',
       '.wx-cls{font-size:12px;color:#d9c6a0}',
       '.wx-rm{font-size:10px;color:#9a8a6a;text-decoration:underline;cursor:pointer;margin-left:2px}',
-      '.wx-tools{flex:0 0 auto;display:flex;align-items:center;gap:6px;transform:scale(var(--inv,1));transform-origin:right center}',
-      '.wx-tools button{width:38px;height:38px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:18px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0;line-height:1}',
+      // ปุ่ม − / + / ✕ : ลอยอยู่มุมขวาบนของหน้าต่าง ขนาดเล็ก
+      '.wx-tools{position:absolute;top:5px;right:8px;z-index:3;display:flex;align-items:center;gap:4px;transform:scale(var(--inv,1));transform-origin:top right}',
+      '.wx-tools button{width:' + TOOL_BTN + 'px;height:' + TOOL_BTN + 'px;border:2px solid #c9a24a;background:linear-gradient(#7a1510,#3b0907);color:#ffe9b0;font-size:14px;border-radius:4px;cursor:pointer;font-family:inherit;padding:0;line-height:1;display:flex;align-items:center;justify-content:center}',
       '.wx-tools button:active{filter:brightness(1.3)}',
-      '.wx-tools .wx-sc{min-width:38px;text-align:center;font-size:11px;color:#e6c36a}',
       '.wx-bars{display:flex;flex-direction:column;gap:5px;margin:9px 0 8px;flex:0 0 auto}',
       '.wx-bar{position:relative;height:clamp(17px,5vh,24px);border:2px solid #c9a24a;border-radius:3px;background:#0a0404;overflow:hidden;box-shadow:inset 0 0 8px #000}',
       '.wx-bar i{position:absolute;left:0;top:0;bottom:0}',
@@ -258,6 +262,9 @@
     win.className = 'wx-win';
     win.innerHTML =
       '<span class="wx-cn a"></span><span class="wx-cn b"></span><span class="wx-cn c"></span><span class="wx-cn d"></span>' +
+      '<div class="wx-tools"><button class="wx-zm" aria-label="ย่อ">−</button>' +
+      '<button class="wx-zp" aria-label="ขยาย">+</button>' +
+      '<button class="wx-x" aria-label="ปิด">✕</button></div>' +
       '<div class="wx-banner"><b>俠客錄</b><span>ทำเนียบยอดยุทธ์</span></div>' +
       '<div class="wx-head"></div><div class="wx-bars"></div>' +
       '<div class="wx-scroll"></div>';
@@ -288,20 +295,13 @@
     applyScale();
   }
 
-  function toolsHTML() {
-    return '<div class="wx-tools"><button class="wx-zm" aria-label="ย่อ">−</button>' +
-      '<span class="wx-sc"></span><button class="wx-zp" aria-label="ขยาย">+</button>' +
-      '<button class="wx-x" aria-label="ปิด">✕</button></div>';
-  }
-
   function render() {
     build();
     var s = window.__mainScene;
     var head = win.querySelector('.wx-head');
     var bars = win.querySelector('.wx-bars');
     if (!s || !s.stats || !s.getStats) {
-      head.innerHTML = '<div class="wx-id"><div class="wx-name">กำลังโหลด...</div></div>' + toolsHTML();
-      applyScale();
+      head.innerHTML = '<div class="wx-id"><div class="wx-name">กำลังโหลด...</div></div>';
       return;
     }
     var st = s.stats, S = s.getStats();
@@ -322,9 +322,7 @@
       '<div class="wx-meta"><span class="wx-lv">Lv. ' + lv + '</span>' +
       '<span class="wx-rank">' + esc(rankOf(lv)) + '</span>' +
       (cls ? '<span class="wx-cls">' + esc(cls) + '</span>' : '') +
-      (hasCustomPortrait() ? '<span class="wx-rm">ลบรูป</span>' : '') + '</div></div>' +
-      toolsHTML();
-    applyScale();
+      (hasCustomPortrait() ? '<span class="wx-rm">ลบรูป</span>' : '') + '</div></div>';
 
     bars.innerHTML =
       '<div class="wx-bar hp"><i style="width:' + pct(hpMax ? hp / hpMax * 100 : 0) + '%"></i><b><span><em>血</em>HP</span><span>' + fmt(hp) + ' / ' + fmt(hpMax) + '</span></b></div>' +
