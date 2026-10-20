@@ -23,14 +23,16 @@ const BUSH_REVEAL_AFTER_ATTACK = 1500;
 const MONSTER_DMG_SCALE = 0.1;         // ตัวคูณพลังโจมตีมอนทุกชนิด (1 = เดิม, 0.6 = เหลือ 60%)
 const MONSTER_ATK_INTERVAL_MUL = 2.7;  // ตัวคูณช่วงเวลาระหว่างโจมตี (1 = เดิม, 1.6 = ช้าลง 1.6 เท่า)
 // ===== ปรับการเคลื่อนไหวของมอน (ปรับตรงนี้) =====
-const MONSTER_MOVE_MUL = 0.85;         // ตัวคูณความเร็วเดินทุกแบบ (1 = เร็วเท่าเดิน, 0.85 = ช้าลง 15%)
-const MONSTER_ACCEL_MS = 240;          // เวลาที่ใช้เร่ง/ลดความเร็ว (ms) ยิ่งมากยิ่งออกตัว-หยุดนุ่ม (0 = ทันทีเหมือนเดิม)
-const WALK_ANIM_REF_SPEED = 80;        // ความเร็ว (px/s) ที่ท่าเดินเล่นด้วยความเร็วปกติ | ยิ่งมาก ท่าเดินยิ่งช้าลง
-const WALK_ANIM_MIN_SCALE = 0.6;       // ท่าเดินช้าสุด (เท่าของปกติ)
+const MONSTER_MOVE_MUL = 0.7; // v48: ช้าลง (เดิม 0.85) | คอมเมนต์เดิม:         // ตัวคูณความเร็วเดินทุกแบบ (1 = เร็วเท่าเดิน, 0.85 = ช้าลง 15%)
+const MONSTER_ACCEL_MS = 320;          // เวลาที่ใช้เร่ง/ลดความเร็ว (ms) ยิ่งมากยิ่งออกตัว-หยุดนุ่ม (0 = ทันทีเหมือนเดิม)
+const WALK_ANIM_REF_SPEED = 60;        // ความเร็ว (px/s) ที่ท่าเดินเล่นด้วยความเร็วปกติ | ยิ่งมาก ท่าเดินยิ่งช้าลง
+const WALK_ANIM_MIN_SCALE = 0.7;       // ท่าเดินช้าสุด (เท่าของปกติ)
 const WALK_ANIM_MAX_SCALE = 1.0;       // ท่าเดินเร็วสุด (เท่าของปกติ) | 1.0 = ไม่เร่งเกินปกติตอนไล่ตี
 const WALK_START_SPEED = 22;           // ความเร็ว (px/s) ที่เริ่มเปลี่ยน idle -> walk
 const WALK_STOP_SPEED = 9;             // ความเร็ว (px/s) ที่กลับ walk -> idle (ต่ำกว่าค่าเริ่ม กันสลับรัว)
-const MONSTER_ANIM_HOLD_MS = 220;      // ค้างท่าขั้นต่ำ (ms) ก่อนสลับ idle<->walk (กันกะพริบ)
+const MONSTER_ATTACK_MS = 650;         // v48: ระยะเวลาเล่นท่าโจมตี (ms) ยิ่งมากท่าฟันยิ่งช้า
+const MONSTER_ATTACK_SLOW = 0.25;      // v48: ขณะฟัน ความเร็วเดินเหลือกี่เท่า (0 = ยืนฟัน, 1 = วิ่งไถลไปด้วย)
+const MONSTER_ANIM_HOLD_MS = 320;      // ค้างท่าขั้นต่ำ (ms) ก่อนสลับ idle<->walk (กันกะพริบ)
 // โอกาสดรอปหนังสือสกิล (ปรับตรงนี้)
 const NORMAL_SKILL_DROP_CHANCE = 0.05; // มอนธรรมดา 5%
 const BOSS_SKILL_DROP_CHANCE = 0.60;   // มินิบอส 60%
@@ -271,7 +273,7 @@ Object.assign(Main.prototype, {
     if (!(e.isBoss || e.isEpic) || !canSee || dist > 380 || time < (e.nextSkill || 0)) return;
     const p = this.player;
     const a = Math.atan2(p.y - e.y, p.x - e.x);
-    e.atkUntil = time + 500;
+    e.atkUntil = time + MONSTER_ATTACK_MS;
     if (e.isEpic) {
       e.nextSkill = time + Phaser.Math.Between(4000, 6000) * MONSTER_ATK_INTERVAL_MUL;
       [-0.3, 0, 0.3].forEach(o => this.fireShot(e, a + o, 220, RANGED_SHOT_SCALE, 0.5));
@@ -307,7 +309,7 @@ Object.assign(Main.prototype, {
   enemyShoot(e) {
     const p = this.player;
     if (Phaser.Math.Distance.Between(p.x, p.y, e.x, e.y) < 1) return;
-    e.atkUntil = this.time.now + 400;                    // เล่นท่าโจมตี
+    e.atkUntil = this.time.now + MONSTER_ATTACK_MS;                    // เล่นท่าโจมตี
     this.fireShot(e, Math.atan2(p.y - e.y, p.x - e.x), 240, RANGED_SHOT_SCALE, 1);
   },
 
@@ -360,9 +362,14 @@ Object.assign(Main.prototype, {
     }
 
     // กลับซ้าย-ขวา: ต้องเคลื่อนที่ในแนวนอนชัดเจน และเว้นระยะก่อนกลับครั้งถัดไป
-    if (Math.abs(vx) > 14 && time >= (e._flipHold || 0)) {
-      const f = vx < 0;
-      if (e.flipX !== f) { e.setFlipX(f); e._flipHold = time + 250; }
+    // ตอนไล่ตี หันตามตำแหน่งผู้เล่น (นิ่งกว่าหันตามความเร็วที่แกว่งไปมา) มีช่วงเฉยๆ 20px กันหันกลับรัว
+    const pl = e.scene && e.scene.player;
+    let dir = 0;
+    if (e.state === 'chase' && pl && Math.abs(pl.x - e.x) > 20) dir = pl.x - e.x;
+    else if (Math.abs(vx) > 14) dir = vx;
+    if (dir !== 0 && time >= (e._flipHold || 0)) {
+      const f = dir < 0;
+      if (e.flipX !== f) { e.setFlipX(f); e._flipHold = time + 350; }
     }
   },
 
@@ -426,20 +433,27 @@ Object.assign(Main.prototype, {
           if (canSee && distPlayer < 340 && time > e.nextShot) { this.enemyShoot(e); e.nextShot = time + Phaser.Math.Between(1600, 2200) * MONSTER_ATK_INTERVAL_MUL; }
         } else {
           // มอนประชิด: ถึงตัวผู้เล่นแล้วหยุด (ไม่เดินชนต่อจนทิศกลับไปมาทุกเฟรม)
-          if (distPlayer > Math.max(14, e.hitRange * 0.55)) this.physics.moveToObject(e, p, e.speed * mm);
-          else e.setVelocity(0, 0);
+          // เข้าหาแบบชะลอก่อนถึงตัว: ยิ่งใกล้ยิ่งช้า แล้วหยุดนุ่มๆ (ไม่สลับ เดิน/หยุด รัวๆ จนกระตุก)
+          const stopD = Math.max(14, e.hitRange * 0.5);
+          const slowD = e.hitRange * 2.2 + 30;
+          if (distPlayer > stopD) {
+            const f = Phaser.Math.Clamp((distPlayer - stopD) / (slowD - stopD), 0.25, 1);
+            this.physics.moveToObject(e, p, e.speed * mm * f);
+          } else e.setVelocity(0, 0);
         }
       } else {
         this.physics.moveTo(e, e.homeX, e.homeY, 60 * mm);
       }
 
       // ทำให้การออกตัว/หยุด/เปลี่ยนทิศนุ่มขึ้น (ค่อยๆ เร่ง-ลดความเร็ว)
+      // ขณะเล่นท่าโจมตี ให้ตัวชะลอ ไม่ไถลไปข้างหน้าตอนฟัน (ค่อยๆ ลดผ่านระบบเร่ง-ลดด้านล่าง)
+      if (time < e.atkUntil && e.body) e.body.setVelocity(e.body.velocity.x * MONSTER_ATTACK_SLOW, e.body.velocity.y * MONSTER_ATTACK_SLOW);
       this.smoothEnemyVelocity(e, dt);
 
       // ชนตัวทำดาเมจเฉพาะตอนไล่ตี (มอนที่ยังไม่โกรธเดินชนไม่เจ็บ)
       if (e.state === 'chase' && time > this.hitCd && distPlayer < e.hitRange) {
         this.hitCd = time + Math.round(600 * MONSTER_ATK_INTERVAL_MUL);
-        e.atkUntil = time + 400;                         // เล่นท่าโจมตี
+        e.atkUntil = time + MONSTER_ATTACK_MS;                         // เล่นท่าโจมตี
         this.hurtPlayer(e.dmg || 8);
       }
       // สกิลของ epic / บอส (ใช้ตอนไล่ตี)
