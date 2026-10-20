@@ -19,12 +19,13 @@ const ZONES = [
 
 // ===== ด่านจุติ (ต้องจุติถึงขั้นที่กำหนดถึงเข้าได้) =====
 // เปิดที่จุติขั้น: 1 3 5 7 9 11 13 15 17 19 21 23 24
-// ปรับความโหดตรงนี้ (ต่อด่าน r = ขั้นจุติของด่านนั้น):
+// ปรับความโหดตรงนี้ (ต่อด่าน i = ลำดับด่านจุติ เริ่มที่ 0, r = ขั้นจุติของด่านนั้น):
 const REBIRTH_ZONE_STEPS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 24];
 const RZ_FIRST_LV = 100;      // เลเวลมอนของด่านจุติแรก
 const RZ_LV_STEP = 3;         // ด่านถัดไปเลเวลมอนเพิ่มทีละเท่านี้ (ช่วงเลเวลมอนในด่าน = +4)
-const RZ_HP_K = 3;            // HP มอน   x (r+1) x ค่านี้
-const RZ_DMG_K = 2;           // ดาเมจมอน x (r+1) x ค่านี้
+// v29: ความแรงมอนด่านจุติ = RZ_POWER_FIRST + i x RZ_POWER_STEP  ->  x25, x30, x35, x40 ... (ด่านจุติสุดท้าย x85)
+const RZ_POWER_FIRST = 25;    // ด่านจุติแรกแรงกว่าฐาน (เลือด/ดาเมจ) กี่เท่า
+const RZ_POWER_STEP = 5;      // ด่านจุติถัดไปเพิ่มทีละกี่เท่า
 const RZ_EXP_K = 1;           // EXP ที่ได้ x (r+1) x ค่านี้ (เดิม 4 | หลอด EXP ต้องใช้ x2 x (r+1) เสมอ จึงยิ่งตัวเลขน้อย เก็บเลเวลยิ่งยาก)
 const RZ_GOLD_K = 2;          // ทองที่ได้ x (r+1) x ค่านี้
 // กล่องที่ดรอป: จุติ 1-9 = เลเวล 80 | จุติ 11-19 = เลเวล 90 | จุติ 21 ขึ้นไป = เลเวล 100
@@ -32,11 +33,12 @@ const rzBoxLevel = r => (r >= 21 ? 100 : (r >= 11 ? 90 : 80));
 
 REBIRTH_ZONE_STEPS.forEach(function (r, i) {
   const lv = RZ_FIRST_LV + i * RZ_LV_STEP;
+  const power = RZ_POWER_FIRST + i * RZ_POWER_STEP;
   const z = {
     id: 10 + i, name: 'ด่านจุติ ' + r, x: ZONE_CX, y: ZONE_CY, count: 60, rangedCount: 20,
     minLv: lv, maxLv: lv + 4, boxLevel: rzBoxLevel(r),
     reqRebirth: r,                       // ขั้นจุติที่ต้องมี
-    hpMul: RZ_HP_K * (r + 1), dmgMul: RZ_DMG_K * (r + 1),
+    hpMul: power, dmgMul: power,
     expMul: RZ_EXP_K * (r + 1), goldMul: RZ_GOLD_K * (r + 1),
     look: i % 9,                         // ใช้หน้าตา/ชื่อมอนของด่านเดิมลำดับนี้ (0-8) ไม่ต้องมีรูปใหม่
     bg: ((0x20 + i * 4) << 16) | (0x16 << 8) | (0x30 + i * 2),
@@ -66,11 +68,11 @@ ZONES.push({
 
 // ===== ความโหดมอนเพิ่มตามด่าน (ด่าน 1-9) =====
 // ด่านที่ n (n = 0 คือด่าน 1) = 1 + n x STEP
-//   เลือด  STEP 0.2  -> ด่าน1 x1.0 | ด่าน5 x1.8 | ด่าน9 x2.6
-//   ดาเมจ  STEP 0.25 -> ด่าน1 x1.0 | ด่าน5 x2.0 | ด่าน9 x3.0
-// ด่านจุติ/เมือง (ดัชนี 9 ขึ้นไป) ได้ x1 เพราะมี hpMul / dmgMul ของตัวเองอยู่แล้ว
+// v29: STEP = 2 -> x1, x3, x5, x7, x9, x11, x13, x15, x17 (ด่าน1 ... ด่าน9) ทั้งเลือดและดาเมจ
+//   (เดิม เลือด STEP 0.2 / ดาเมจ STEP 0.25)
+// ด่านจุติ/เมือง (ดัชนี 9 ขึ้นไป) ได้ x1 เพราะมี hpMul / dmgMul ของตัวเองอยู่แล้ว (ดู RZ_POWER_* ด้านบน)
 // ** ค่า STEP ต้องตรงกับ STAGE_HP_STEP / STAGE_DMG_STEP ใน server.js **
-const STAGE_HP_STEP = 0.2;     // เลือดมอนเพิ่มด่านละเท่านี้
-const STAGE_DMG_STEP = 0.25;   // พลังโจมตีมอนเพิ่มด่านละเท่านี้
+const STAGE_HP_STEP = 2;       // เลือดมอนเพิ่มด่านละเท่านี้
+const STAGE_DMG_STEP = 2;      // พลังโจมตีมอนเพิ่มด่านละเท่านี้
 function stageHpMul(zi)  { return zi < 9 ? 1 + zi * STAGE_HP_STEP  : 1; }
 function stageDmgMul(zi) { return zi < 9 ? 1 + zi * STAGE_DMG_STEP : 1; }
