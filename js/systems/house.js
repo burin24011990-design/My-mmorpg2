@@ -444,14 +444,24 @@
     let picking = (arg && Number.isInteger(arg.plot) && !h.plots[arg.plot]) ? arg.plot : null;
     let rows = [], timer = 0;
 
-    function paintIcon(r, inf) {
-      const sig = inf.st + (inf.crop ? inf.crop.veg : '') + (inf.st === 'grow' ? (inf.frac < 0.5 ? 'a' : 'b') : '');
-      if (sig === r.sig) return;
-      r.sig = sig;
-      r.ic.textContent = '';
-      if (inf.st === 'empty') r.ic.append(el('span', 'hs-plus', '＋'));
-      else if (inf.st === 'ready') r.ic.append(matIcon(inf.crop.veg, 50));
-      else r.ic.append(el('span', '', inf.frac < 0.5 ? '🌱' : '🌿'));
+    function paintIcon(r, inf) {   // โชว์รูปผักที่ปลูก: ตอนโตจะจางและเล็ก ค่อยๆ ใหญ่ขึ้นตามความคืบหน้า พอพร้อมเก็บเต็มสี
+      const sig = inf.st + (inf.crop ? inf.crop.veg : '');
+      if (sig !== r.sig) {
+        r.sig = sig;
+        r.ic.textContent = '';
+        if (inf.st === 'empty') r.ic.append(el('span', 'hs-plus', '＋'));
+        else {
+          const im = matIcon(inf.crop.veg, 56);
+          im.classList.add('hs-vg');
+          if (im.tagName === 'SPAN') im.style.fontSize = '46px';   // ยังไม่มีรูปจริง = ใช้อีโมจิขนาดใหญ่
+          r.ic.append(im);
+        }
+      }
+      const v = r.ic.firstChild;
+      if (v && inf.st !== 'empty') {
+        v.classList.toggle('hs-grow', inf.st === 'grow');
+        v.style.transform = 'scale(' + (inf.st === 'grow' ? (0.55 + 0.45 * inf.frac).toFixed(2) : 1) + ')';
+      }
     }
     function refreshRows() {
       rows.forEach(function (r) {
