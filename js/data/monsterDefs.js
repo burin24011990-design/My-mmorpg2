@@ -22,7 +22,7 @@ const MONSTER_SIZE_NORMAL = [1.0, 1.0, 1.0, 1.0, 1.25, 1.4, 1.55, 1.3, 1.35];  /
 const MONSTER_SIZE_BOSS   = [2.2, 2.2, 2.2, 2.2, 2.6, 2.9, 3.2, 2.9, 3.0];     // มินิบอส (ใหญ่ขึ้น)
 
 const MONSTER_ANIM_RANGES = { idle: [0, 3], attack: [4, 7], walk: [8, 11] };
-const MONSTER_ANIM_FPS = { idle: 4, attack: 9, walk: 5 };   // v29: ลดจากเดิม (6/12/8) ให้ท่าไหลลื่น ขาไม่ขยับรัว
+const MONSTER_ANIM_FPS = { idle: 4, attack: 7, walk: 5 };   // v29: ลดจากเดิม (6/12/8) ให้ท่าไหลลื่น ขาไม่ขยับรัว
 
 // เอฟเฟกต์ตอนตาย: สี/ความเร็ว/แรงโน้มถ่วงของอนุภาค + ท่าของร่างที่กำลังตาย (tween)
 const DEATH_FX = {
