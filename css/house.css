@@ -140,12 +140,16 @@
 .hs-mi { object-fit: contain; flex: 0 0 auto; vertical-align: middle; }
 .hs-ig { display: inline-flex; align-items: center; gap: 4px; }
 
-/* ----- ปุ่ม X ปิดหน้าต่าง (มุมขวาบน ลอยค้างตอนเลื่อน) ----- */
+/* ----- ปุ่ม X ปิดหน้าต่าง (เล็ก ล็อกไว้มุมบนซ้ายของหน้าต่าง) ----- */
 .hs-xwrap { position: sticky; top: 0; height: 0; z-index: 20; }
 .hs-x {
-  position: absolute; top: 2px; right: 2px; width: 44px; height: 44px; padding: 0;
-  font-family: inherit; font-size: 20px; line-height: 1; color: #ffe28a;
-  background: #26090f; border: 2px solid #ffd45c; border-radius: 50%;
+  position: absolute; top: 8px; left: 8px; width: 32px; height: 32px; padding: 0;
+  font-family: inherit; font-size: 15px; line-height: 1; color: #ffe28a;
+  background: #26090f; border: 1.5px solid #8a6a32; border-radius: 50%;
   touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .hs-x:active { background: #ffd45c; color: #26090f; }
+
+/* ----- รูปผักในแปลง ----- */
+.hs-vg { transition: transform .8s linear; transform-origin: 50% 90%; }
+.hs-grow { opacity: .6; filter: saturate(.7); }
