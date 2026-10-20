@@ -11,6 +11,11 @@
 // - v14: แชร์ไอเทมตอน "เก็บเข้าตัว" -- ของดรอปตกที่คนฆ่ามอนเสมอ (บอทเก็บเองได้) พอเก็บ เครื่องส่ง 'lootShare'
 //        เซิร์ฟเวอร์สุ่ม/สลับคนรับตามโหมดปาร์ตี้แล้วส่ง 'lootGet' ให้คนนั้น (ใช้คู่กับ roomMonsters.js v6)
 // - v15: มอนแรงขึ้นตามด่าน -- เลือด x(1 + ด่าน x STAGE_HP_STEP), ดาเมจ x(1 + ด่าน x STAGE_DMG_STEP) (ดู makeMonster)
+// - v16: ปรับความแรงมอนใหม่ (ต้องตรงกับ js/data/zones.js v29)
+//        * ด่าน 1-9: STEP = 2 -> x1, x3, x5, x7 ... x17
+//        * เพิ่มมอนในด่านจุติ (ดัชนี 9-21) -- เดิมห้องของด่านจุติว่างเปล่า ไม่มีมอนเลย | ความแรง x25, x30, x35 ... x85
+//        * ปัดเลือด/ดาเมจมอนเป็นจำนวนเต็ม (แก้ข้อความเป้าหมาย "HP 11482/11481.600000000002")
+//        * เพิ่ม MONSTER_DMG_SCALE (ตัวคูณดาเมจมอนทั้งหมดฝั่งเซิร์ฟเวอร์ ตั้ง 1 = ตามสูตรเดิม)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -21,7 +26,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 
 const WORLD_W = 3600, WORLD_H = 2250;
-const STAGES = 30;                        // 9 ด่านล่ามอน + เมือง (ดัชนี 9 ไม่มีมอน)
+const STAGES = 30;                        // 9 ด่านล่ามอน + 13 ด่านจุติ + เมือง (ดัชนี 22 ไม่มีมอน) | ดัชนีเกินรายการ = ห้องว่าง
 const CHANNELS = 10;
 const ROOMS = 10;
 const ROOM_CAP = 20;
@@ -53,6 +58,18 @@ const ZCFG = [
   { count: 45, ranged: 15, minLv: 71, maxLv: 80 },
   { count: 60, ranged: 20, minLv: 81, maxLv: 90 },
 ];
+
+// ----- ด่านจุติ (ดัชนี 9 เป็นต้นไป) -- ต้องตรงกับ REBIRTH_ZONE_STEPS / RZ_* ใน js/data/zones.js -----
+// power = ตัวคูณเลือดและดาเมจของด่านนั้น = RZ_POWER_FIRST + i x RZ_POWER_STEP  (x25, x30, x35 ... x85)
+// look  = ใช้ขนาด/หน้าตามอนของด่านเดิมลำดับนี้ (0-8) เหมือนฝั่งเกม
+const REBIRTH_ZONE_STEPS = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 24];
+const RZ_FIRST_LV = 100, RZ_LV_STEP = 3;
+const RZ_POWER_FIRST = 25, RZ_POWER_STEP = 5;
+REBIRTH_ZONE_STEPS.forEach((r, i) => {
+  const lv = RZ_FIRST_LV + i * RZ_LV_STEP;
+  ZCFG.push({ count: 60, ranged: 20, minLv: lv, maxLv: lv + 4, look: i % 9, power: RZ_POWER_FIRST + i * RZ_POWER_STEP });
+});
+
 const EPIC_COUNT = 30, EPIC_MULT = 8;
 const NORMAL_HP_MULT = 2, NORMAL_DMG_MULT = 1.5;
 const BOSS_COUNT = 1, BOSS_MULT = 20, BOSS_SPEED = 130;
@@ -64,9 +81,14 @@ const CONTACT_CD = 600;
 const MON_TICK_MS = 100;
 const HIT_MAX_DIST = 1200;
 
+// ตัวคูณดาเมจมอนทั้งหมด (ปรับตรงนี้) | 1 = ตามสูตรเดิม | 0.1 = เหลือ 10% (เท่า MONSTER_DMG_SCALE ฝั่งเกมตอนเล่นออฟไลน์)
+// ถ้ามอนตีแรงจนตายในไม่กี่ที ลดค่านี้ได้เลย (เช่น 0.3 / 0.1)
+const MONSTER_DMG_SCALE = 1;
+
 // ความโหดเพิ่มตามด่าน (ด่านที่ n เริ่มที่ 0): เลือด x(1 + n x HP_STEP), ดาเมจ x(1 + n x DMG_STEP)
+// v16: STEP = 2 -> x1, x3, x5, x7, x9, x11, x13, x15, x17 (ด่านจุติใช้ power ของตัวเองแทน)
 // ** ต้องตรงกับ STAGE_HP_STEP / STAGE_DMG_STEP ใน js/data/zones.js **
-const STAGE_HP_STEP = 0.2, STAGE_DMG_STEP = 0.25;
+const STAGE_HP_STEP = 2, STAGE_DMG_STEP = 2;
 
 // ปาร์ตี้แชร์ EXP/ของ: ไม่จำกัดระยะ -- สมาชิกที่อยู่ "ห้องเดียวกับมอน" (ช่อง/ห้องเดียวกัน) ได้ทุกคน อยู่ตรงไหนของแผนที่ก็ได้
 
@@ -86,8 +108,11 @@ function makeMonster(R, stage, kind) {
   const boss = kind === 'boss', ranged = kind === 'ranged', epic = kind === 'epic';
   const lv = boss ? z.maxLv : rnd(z.minLv, z.maxLv);
   const pt = randPoint();
-  const baseHp = (30 + lv * 8) * (1 + stage * STAGE_HP_STEP);
-  const baseDmg = (5 + Math.floor(lv * 1.5)) * (1 + stage * STAGE_DMG_STEP);
+  const look = z.look !== undefined ? z.look : stage;                    // ดัชนีหน้าตา/ขนาด (ด่านจุติยืมของด่านเดิม)
+  const hpStage = z.power ? z.power : (1 + stage * STAGE_HP_STEP);       // ด่านจุติ = power | ด่านปกติ = 1 + n x STEP
+  const dmgStage = z.power ? z.power : (1 + stage * STAGE_DMG_STEP);
+  const baseHp = (30 + lv * 8) * hpStage;
+  const baseDmg = (5 + Math.floor(lv * 1.5)) * dmgStage * MONSTER_DMG_SCALE;
   const m = {
     id: R.nextId++, kind, stage, lv,
     x: pt.x, y: pt.y, homeX: pt.x, homeY: pt.y, wx: pt.x, wy: pt.y, nextWander: 0,
@@ -99,17 +124,17 @@ function makeMonster(R, stage, kind) {
   };
   let scale;
   if (boss) {
-    scale = SIZE_BOSS[stage] * MUL_BOSS[stage];
-    m.hp = baseHp * BOSS_MULT; m.dmg = baseDmg * BOSS_MULT;
+    scale = SIZE_BOSS[look] * MUL_BOSS[look];
+    m.hp = Math.round(baseHp * BOSS_MULT); m.dmg = Math.max(1, Math.round(baseDmg * BOSS_MULT));
     m.aggro = 220; m.lose = 520; m.leash = 700; m.speed = BOSS_SPEED;
     m.nextTeleport = Date.now() + rnd(BOSS_TELEPORT_MIN_MS, BOSS_TELEPORT_MAX_MS);
   } else if (epic) {
-    scale = SIZE_NORMAL[stage] * MUL_NORMAL[stage] * 1.3;
-    m.hp = baseHp * EPIC_MULT; m.dmg = baseDmg * EPIC_MULT;
+    scale = SIZE_NORMAL[look] * MUL_NORMAL[look] * 1.3;
+    m.hp = Math.round(baseHp * EPIC_MULT); m.dmg = Math.max(1, Math.round(baseDmg * EPIC_MULT));
     m.aggro = 200; m.lose = 420; m.leash = 500; m.speed = 75;
   } else {
-    scale = SIZE_NORMAL[stage] * (ranged ? MUL_RANGED[stage] : MUL_NORMAL[stage]);
-    m.hp = baseHp * NORMAL_HP_MULT; m.dmg = Math.round(baseDmg * NORMAL_DMG_MULT);
+    scale = SIZE_NORMAL[look] * (ranged ? MUL_RANGED[look] : MUL_NORMAL[look]);
+    m.hp = Math.round(baseHp * NORMAL_HP_MULT); m.dmg = Math.max(1, Math.round(baseDmg * NORMAL_DMG_MULT));
     m.aggro = ranged ? 350 : 130; m.lose = ranged ? 480 : 320; m.leash = 450; m.speed = 70;
   }
   m.maxHp = m.hp;
@@ -120,7 +145,7 @@ function makeMonster(R, stage, kind) {
 function spawnRoomMonsters(stage) {
   const R = { mons: new Map(), nextId: 1 };
   const z = ZCFG[stage];
-  if (!z) return R;                          // เมือง = ห้องว่างไม่มีมอน
+  if (!z) return R;                          // เมือง/ดัชนีที่ไม่มีในรายการ = ห้องว่างไม่มีมอน
   const add = kind => { const m = makeMonster(R, stage, kind); R.mons.set(m.id, m); };
   for (let i = 0; i < z.count; i++) add('normal');
   for (let i = 0; i < z.ranged; i++) add('ranged');
