@@ -1,15 +1,24 @@
-// chat.js (ฝั่งเกม) -- แชตโลก / ปาร์ตี้ / ส่วนตัว
+// chat.js (ฝั่งเกม) -- แชตโลก / ปาร์ตี้ / ส่วนตัว + ข้อความระบบ
 // เริ่มต้นอยู่ล่างกลาง-ซ้าย (พ้นปุ่มขวดยา) | กดค้างที่ปุ่ม 💬 แล้วลากเพื่อย้ายได้ (จำตำแหน่งไว้)
 // แนวตั้ง: วางชิดซ้ายล่างและแคบลง เพื่อไม่ให้ทับปุ่มสกิล/แดช (แนวนอนเหมือนเดิมทุกอย่าง)
 // โหลดหลัง social.js ก่อน main.js | ต้องใช้คู่กับ server/chat.js
+// v5: ข้อความแจ้งเตือนจากเกม (toastMsg / บัพ) มาแสดงในกล่องแชตเป็น "[ระบบ] ..." (hudText.js v5 ส่งมาให้)
+//     เพิ่มปุ่ม "ระบบ" ในแถบแท็บ (เปิดกล่องแชตก่อน) กดเพื่อซ่อน/แสดงข้อความระบบจากเกม (จำค่าไว้)
+//     ข้อความระบบจากเกมไม่นับเป็นข้อความที่ยังไม่อ่าน และจางหายเร็วกว่าตอนปิดแชต
 (function () {
   const P = Main.prototype;
   const el = (tag, css, text) => { const e = document.createElement(tag); e.style.cssText = css || ''; if (text != null) e.textContent = text; return e; };
-  const COL = { world: '#ffe28a', party: '#7dff9a', whisper: '#ff9ad5', sys: '#bbbbbb' };
+  const COL = { world: '#ffe28a', party: '#7dff9a', whisper: '#ff9ad5', sys: '#7fd1ff' };
   const LBL = { world: 'โลก', party: 'ปาร์ตี้', whisper: 'ส่วนตัว' };
-  const MAX_LOG = 60;        // เก็บข้อความย้อนหลัง
-  const FADE_MS = 10000;     // ตอนปิดแชต ข้อความจะแสดงกี่ ms
+  const SYS_TXT = '#bbbbbb';      // สีข้อความระบบของแชตเอง (คำแนะนำ/แจ้งผิดพลาด)
+  const GAME_TXT = '#d8ecff';     // สีข้อความระบบจากเกม (ดรอป/บัพ/แจ้งเตือน)
+  const MAX_LOG = 100;       // เก็บข้อความย้อนหลัง
+  const FADE_MS = 10000;     // ตอนปิดแชต ข้อความผู้เล่นจะแสดงกี่ ms
+  const GAME_FADE_MS = 6000; // ตอนปิดแชต ข้อความระบบจากเกมจะแสดงกี่ ms
+  const GAME_DUP_MS = 2000;  // ข้อความระบบจากเกมที่ซ้ำกับบรรทัดล่าสุดภายในเวลานี้ จะไม่ลงซ้ำ
+  const HIDE_KEY = 'chatHideSys';
   const SHADOW = 'text-shadow:-1px 0 #000,1px 0 #000,0 -1px #000,0 1px #000;';
+  const loadHide = () => { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch (e) { return false; } };
 
   // ---------- แนวจอ ----------
   const isPortrait = () =>
@@ -42,22 +51,27 @@
   P.chatInit = function () {
     if (this.chatSt) return;
     const self = this;
-    this.chatSt = { tab: 'world', open: false, log: [], unread: 0, target: '', lastFrom: '', pos: loadPos() };
+    this.chatSt = { tab: 'world', open: false, log: [], unread: 0, target: '', lastFrom: '', pos: loadPos(), hideSys: loadHide() };
     this.socket.on('chatMsg', m => self.chatPush(m));
     this.chatBuild();
     this.chatSys('พิมพ์ /w ชื่อ ข้อความ = กระซิบ | /p = ปาร์ตี้ | /r = ตอบกลับ | กดค้างปุ่ม 💬 เพื่อย้ายแชต');
   };
 
-  P.chatSys = function (text) { if (text) this.chatPush({ ch: 'sys', text: text }); };
+  // game = true -> ข้อความระบบจากเกม (ซ่อนได้ด้วยปุ่ม "ระบบ") | ไม่ใส่ = ข้อความระบบของแชตเอง (แสดงเสมอ)
+  P.chatSys = function (text, game) { if (text) this.chatPush({ ch: 'sys', text: String(text), game: !!game }); };
 
   P.chatPush = function (m) {
     const st = this.chatSt; if (!st) return;
     m.at = Date.now();
+    if (m.game && st.log.length) {                          // กันข้อความระบบซ้ำรัวๆ
+      const last = st.log[st.log.length - 1];
+      if (last && last.game && last.text === m.text && m.at - last.at < GAME_DUP_MS) return;
+    }
     const mine = m.fromId && this.socket && m.fromId === this.socket.id;
     if (m.ch === 'whisper' && !mine) st.lastFrom = m.from;
     st.log.push(m);
     if (st.log.length > MAX_LOG) st.log.shift();
-    if (!st.open && !mine && m.ch !== 'world') st.unread++;   // แจ้งเตือนเฉพาะปาร์ตี้/ส่วนตัว/ระบบ
+    if (!st.open && !mine && m.ch !== 'world' && !m.game) st.unread++;   // แจ้งเตือนเฉพาะปาร์ตี้/ส่วนตัว/ระบบของแชต (ไม่นับระบบจากเกม)
     this.chatRender();
   };
 
@@ -153,10 +167,19 @@
       b.onclick = () => { st.tab = t; self.chatRender(); self.chatLayout(); };
       tabs.appendChild(b); tabBtns[t] = b;
     });
+    // ปุ่ม "ระบบ": เปิด = แสดงข้อความระบบจากเกม | ปิด (ขีดฆ่า) = ซ่อน
+    const sysBtn = el('button', 'cursor:pointer;border-radius:8px;font-family:inherit;padding:0 8px;touch-action:manipulation;pointer-events:auto', 'ระบบ');
+    sysBtn.onclick = () => {
+      st.hideSys = !st.hideSys;
+      try { localStorage.setItem(HIDE_KEY, st.hideSys ? '1' : '0'); } catch (e) {}
+      self.chatRender();
+      if (st.open) setTimeout(() => { log.scrollTop = log.scrollHeight; }, 0);
+    };
+    tabs.appendChild(sysBtn);
     bar.append(tog, tabs);
     root.append(log, inRow, bar);
     document.body.appendChild(root);
-    this._chat = { root, log, inRow, toIn, msgIn, sendBtn, tog, badge, tabs, tabBtns };
+    this._chat = { root, log, inRow, toIn, msgIn, sendBtn, tog, badge, tabs, tabBtns, sysBtn };
 
     window.addEventListener('resize', () => self.chatLayout());
     setInterval(() => { self.chatLayout(); if (!st.open) self.chatRender(); }, 1000);
@@ -199,7 +222,7 @@
     c.toIn.style.width = '30%';
     c.sendBtn.style.fontSize = fs + 'px'; c.sendBtn.style.height = Math.max(28, 26 * k) + 'px';
     c.tog.style.fontSize = Math.max(14, 16 * k) + 'px'; c.tog.style.height = Math.max(28, 26 * k) + 'px';
-    Object.values(c.tabBtns).forEach(b => { b.style.fontSize = fs + 'px'; b.style.height = Math.max(28, 26 * k) + 'px'; });
+    Object.values(c.tabBtns).concat([c.sysBtn]).forEach(b => { b.style.fontSize = fs + 'px'; b.style.height = Math.max(28, 26 * k) + 'px'; });
   };
 
   // ---------- แสดงข้อความ ----------
@@ -219,6 +242,12 @@
       b.style.color = on ? '#26090f' : COL[t];
       b.style.border = '2px solid ' + COL[t];
     });
+    // ปุ่ม "ระบบ": สว่าง = แสดง | มืดและขีดฆ่า = ซ่อน
+    const sOn = !st.hideSys;
+    c.sysBtn.style.background = sOn ? COL.sys : '#26090f';
+    c.sysBtn.style.color = sOn ? '#26090f' : '#8d95a3';
+    c.sysBtn.style.border = '2px solid ' + (sOn ? COL.sys : '#555');
+    c.sysBtn.style.textDecoration = sOn ? 'none' : 'line-through';
     c.badge.style.display = st.unread ? 'block' : 'none';
     c.badge.textContent = st.unread > 9 ? '9+' : String(st.unread);
     // กล่องข้อความ
@@ -229,14 +258,19 @@
     const atBottom = c.log.scrollTop + c.log.clientHeight >= c.log.scrollHeight - 8;
     c.log.textContent = '';
     let list = st.log;
-    if (!open) list = list.filter(m => now - m.at < FADE_MS).slice(-4);
+    if (st.hideSys) list = list.filter(m => !m.game);                       // ซ่อนข้อความระบบจากเกม
+    if (!open) list = list.filter(m => now - m.at < (m.game ? GAME_FADE_MS : FADE_MS)).slice(-4);
     list.forEach(m => c.log.appendChild(this.chatLine(m, me, open)));
     if (open && atBottom) c.log.scrollTop = c.log.scrollHeight;
   };
 
   P.chatLine = function (m, me, canTap) {
     const self = this, line = el('div', SHADOW + 'color:#fff;margin-bottom:1px');
-    if (m.ch === 'sys') { line.style.color = COL.sys; line.textContent = '• ' + m.text; return line; }
+    if (m.ch === 'sys') {
+      line.appendChild(el('span', 'color:' + COL.sys, '[ระบบ] '));
+      line.appendChild(el('span', 'color:' + (m.game ? GAME_TXT : SYS_TXT), m.text));
+      return line;
+    }
     const mine = m.fromId === me;
     const tag = m.ch === 'whisper'
       ? (mine ? '[กระซิบ→' + m.to + '] ' : '[' + m.from + '→คุณ] ')
