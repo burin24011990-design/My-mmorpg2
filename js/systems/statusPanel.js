@@ -1,5 +1,6 @@
 // ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
+// v9: ปุ่ม +1 / +10 / +50 | เพิ่มการ์ด "อัพสเตตัส" STR/INT/VIT/CRI/LUK/SPD (ปุ่ม + / +5 / รีเซ็ต) | ตัวเลขทุกอย่างมาจาก window.STAT_ALLOC (stats.js)
 // v8: ปุ่ม − / + (ปรับขนาด) อยู่มุมซ้ายบน | ปุ่ม ✕ ปิด อยู่มุมขวาบน | ขนาดเล็ก ไม่เบียดชื่อ
 //     ปุ่ม − / + ปรับขนาดหน้าต่างในเกม (จำค่าไว้) | ซ่อนปุ่ม HTML (.hb-t) ตอนเปิด แล้วคืนเมื่อปิด
 //     ชื่อตัวละครอ่านจาก mmo_cloud_lastname | ใส่รูปตัวละครได้ | อุปกรณ์ = เขียว, การ์ด = ฟ้า
@@ -33,7 +34,7 @@
   var GROUPS = [
     { z: '攻', t: 'โจมตี',    c: '#d6403a', k: ['patk', 'ap', 'aspd', 'crit', 'critdmg', 'ppen', 'mpen'] },
     { z: '守', t: 'ป้องกัน',   c: '#3f86c8', k: ['pdef', 'mdef', 'dodge', 'hpregen', 'mpregen'] },
-    { z: '奇', t: 'พิเศษ',     c: '#c9a24a', k: ['cdr', 'mspd', 'lifesteal', 'spellvamp'] }
+    { z: '奇', t: 'พิเศษ',     c: '#c9a24a', k: ['cdr', 'mspd', 'drop', 'mbox', 'lifesteal', 'spellvamp'] }
   ];
 
   function esc(s) {
@@ -140,7 +141,23 @@
       '.wx-chip span em{font-style:normal;font-family:"Noto Serif SC","Mitr",sans-serif;font-weight:900;color:#e6c36a;margin-right:4px}',
       '.wx-chip b{color:#f6dc8c}',
       '.wx-legend{margin-top:7px;text-align:center;font-size:11px;color:#9a8a6a}',
-      '.wx-legend u{text-decoration:none;font-weight:700}'
+      '.wx-legend u{text-decoration:none;font-weight:700}',
+      // ---- การ์ดอัพสเตตัส ----
+      '.wx-alloc{margin-bottom:8px;border:1px solid rgba(201,162,74,.85);border-radius:5px;background:rgba(0,0,0,.42);box-shadow:inset 0 0 14px rgba(0,0,0,.6);overflow:hidden}',
+      '.wx-alloc-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;background:linear-gradient(90deg,rgba(201,162,74,.22),transparent);border-bottom:2px solid #c9a24a;font-size:14px;font-weight:700;color:#e6c36a}',
+      '.wx-pts{background:linear-gradient(#b3261e,#6e100c);border:2px solid #e6c36a;border-radius:4px;padding:0 10px;font-weight:900;color:#fff3cf;white-space:nowrap}',
+      '.wx-pts.zero{background:#2a1a1a;border-color:#6b5330;color:#9a8a6a}',
+      '.wx-ar{display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px dashed rgba(201,162,74,.28)}',
+      '.wx-ar:last-of-type{border-bottom:0}',
+      '.wx-ak{flex:0 0 52px;font-size:15px;font-weight:900;color:var(--c)}',
+      '.wx-an{flex:1;min-width:0;font-size:11px;color:#b9a67e;line-height:1.35}',
+      '.wx-an em{display:block;font-style:normal;color:#d9c6a0}',
+      '.wx-av{flex:0 0 34px;text-align:right;font-size:16px;font-weight:900;color:#fff3cf}',
+      '.wx-up{flex:0 0 auto;min-width:34px;height:28px;padding:0 6px;border:2px solid #c9a24a;border-radius:4px;background:linear-gradient(#2e8f58,#1b5c37);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1}',
+      '.wx-up:active{filter:brightness(1.3)}',
+      '.wx-up.off{background:#2a1f1f;border-color:#4a3a2a;color:#7a6a5a;opacity:.6}',
+      '.wx-alloc-f{display:flex;justify-content:space-between;align-items:center;padding:6px 9px;font-size:11px;color:#9a8a6a}',
+      '.wx-reset{padding:2px 10px;border:1px solid #6b5330;border-radius:4px;background:#2a1214;color:#e6c36a;font-size:11px;cursor:pointer;font-family:inherit}'
     ].join('');
     document.head.appendChild(st);
   }
@@ -255,6 +272,41 @@
     return { eq: eqB, cd: cdB };
   }
 
+  // ---------- การ์ดอัพสเตตัส ----------
+  function perText(key, defs, f) {
+    var per = window.STAT_ALLOC.per[key], out = [];
+    Object.keys(per).forEach(function (sk) {
+      var d = defs[sk];
+      out.push((d ? d.short : sk) + ' +' + f(sk, per[sk]));
+    });
+    return out.join(' • ');
+  }
+  function allocCard(s, defs, f) {
+    var A = window.STAT_ALLOC;
+    if (!A || !s.statPointsLeft || !s.stats || !s.stats.alloc) return '';
+    var left = s.statPointsLeft(), a = s.stats.alloc, rows = '';
+    A.keys.forEach(function (k) {
+      var v = a[k] || 1, maxed = v >= A.max, cost = window.statAllocCost(v);
+      var can1 = !maxed && left >= cost;
+      rows +=
+        '<div class="wx-ar" style="--c:' + A.color[k] + '">' +
+        '<span class="wx-ak">' + A.label[k] + '</span>' +
+        '<span class="wx-an"><em>' + esc(A.desc[k]) + '</em>' + esc(perText(k, defs, f)) +
+        (maxed ? ' • MAX' : ' • ใช้ ' + cost + ' แต้ม') + '</span>' +
+        '<span class="wx-av">' + v + '</span>' +
+        '<button class="wx-up' + (can1 ? '' : ' off') + '" data-k="' + k + '" data-n="1">+</button>' +
+        '<button class="wx-up' + (can1 ? '' : ' off') + '" data-k="' + k + '" data-n="10">+10</button>' +
+        '<button class="wx-up' + (can1 ? '' : ' off') + '" data-k="' + k + '" data-n="50">+50</button>' +
+        '</div>';
+    });
+    return '<div class="wx-alloc">' +
+      '<div class="wx-alloc-h"><span>อัพสเตตัส</span><span class="wx-pts' + (left > 0 ? '' : ' zero') + '">แต้มคงเหลือ ' + left + '</span></div>' +
+      rows +
+      '<div class="wx-alloc-f"><span>' + A.ptsPerLv + ' แต้ม/เลเวล • +' + A.rebirthBonus + ' ต่อจุติ • สูงสุด ' + A.max + '</span>' +
+      '<button class="wx-reset">รีเซ็ตแต้ม' + (A.resetCost > 0 ? ' (' + fmt(A.resetCost) + ' ทอง)' : '') + '</button></div>' +
+      '</div>';
+  }
+
   // ---------- สร้างหน้าต่าง ----------
   function build() {
     if (win) return;
@@ -284,6 +336,19 @@
       if (e.target.closest('.wx-x')) { hide(); return; }
       if (e.target.closest('.wx-zm')) { stepScale(-SCALE_STEP); return; }
       if (e.target.closest('.wx-zp')) { stepScale(SCALE_STEP); return; }
+      // อัพสเตตัส: + / +5
+      var up = e.target.closest('.wx-up');
+      if (up) {
+        var sc = window.__mainScene;
+        if (sc && sc.allocStat) sc.allocStat(up.getAttribute('data-k'), parseInt(up.getAttribute('data-n'), 10) || 1);
+        render(); return;
+      }
+      // รีเซ็ตแต้ม
+      if (e.target.closest('.wx-reset')) {
+        var sc2 = window.__mainScene;
+        if (sc2 && sc2.resetAlloc && window.confirm('รีเซ็ตแต้มสเตตัสทั้งหมดกลับเป็น 1 ?')) sc2.resetAlloc();
+        render(); return;
+      }
       if (e.target.closest('.wx-rm')) {
         try { localStorage.removeItem(PORTRAIT_KEY); } catch (er) {}
         render(); return;
@@ -350,6 +415,7 @@
 
     var top = body.scrollTop;
     body.innerHTML =
+      allocCard(s, defs, f) +
       '<div class="wx-grid">' + cards + '</div>' +
       '<div class="wx-foot">' +
       '<div class="wx-chip"><span><em>銀兩</em>ทอง</span><b>' + fmt(num(st.gold)) + '</b></div>' +
