@@ -8,6 +8,9 @@
   const P = Main.prototype;
   if (!window.FashionData || typeof MAT_DEFS === 'undefined') { console.warn('fashionCraft: ต้องโหลด fashion.js และ houseData.js ก่อน'); return; }
 
+  // ===== โหมดทดสอบ: true = ลองสวมใส่ได้ทุกชิ้นโดยไม่ต้องสร้าง (ไม่ได้โบนัสสถานะ) | ทดสอบเสร็จเปลี่ยนเป็น false แล้วชิ้นที่ยังไม่ได้สร้างจะถูกถอดออกเอง =====
+  const TEST_MODE = true;
+
   // ===== ปรับตรงนี้ =====
   const MAX_CRAFT = 30;                 // สร้างได้สูงสุดกี่ครั้งต่อชิ้น
   const STEP_PCT = 15;                  // ครั้งถัดไปใช้ของเพิ่ม 15% ของราคาตั้งต้น (บวกเพิ่มทีละเท่ากัน)
@@ -121,7 +124,7 @@
       });
       f.crafted = c;
       const w = (f.worn && typeof f.worn === 'object') ? f.worn : {}, nw = {};
-      TYPES.forEach(function (t) { nw[t] = (w[t] && RECIPES[w[t]] && RECIPES[w[t]].type === t && c[w[t]] > 0) ? w[t] : null; });
+      TYPES.forEach(function (t) { nw[t] = (w[t] && RECIPES[w[t]] && RECIPES[w[t]].type === t && (TEST_MODE || c[w[t]] > 0)) ? w[t] : null; });
       f.worn = nw;
     }
     return f;
@@ -276,6 +279,7 @@
       sum.append(el('div', 'hs-sub', 'โบนัสถาวรรวม: ' + (ks.length ? ks.map(function (k) { return fmtVal(k, b[k]); }).join(' · ') : 'ยังไม่มี')));
       const wn = TYPES.map(function (t) { return CAT[t].label + ': ' + (f.worn[t] ? RECIPES[f.worn[t]].name : '-'); }).join(' | ');
       sum.append(el('div', 'hs-sub', 'สวมอยู่ → ' + wn));
+      if (TEST_MODE) sum.append(el('div', 'hs-sub', '🧪 โหมดทดสอบ: กด "ลองใส่" ได้ทุกชิ้นโดยไม่ต้องสร้าง (ลองใส่ไม่ได้โบนัสสถานะ)'));
     }
     function doCraft(r, times) {
       const had = fstate(m).crafted[r.id] || 0;
@@ -338,14 +342,14 @@
           row.append(ing);
         } else row.append(el('div', 'hs-ok', '✔ ครบ ' + MAX_CRAFT + ' ครั้ง (โบนัสพิเศษ +' + COMPLETE_BONUS + ' ครั้ง)'));
         const bt = el('div', 'hs-bt');
-        bt.style.gridTemplateColumns = k > 0 ? '1fr 1fr 1fr' : '1fr 1fr';
+        bt.style.gridTemplateColumns = (k > 0 || TEST_MODE) ? '1fr 1fr 1fr' : '1fr 1fr';
         const b1 = el('button', 'hs-mini', '🛠️ ×1'), b10 = el('button', 'hs-mini', '🛠️ ×10');
         b1.disabled = !can; b10.disabled = !can;
         b1.addEventListener('click', function () { doCraft(r, 1); });
         b10.addEventListener('click', function () { doCraft(r, 10); });
         bt.append(b1, b10);
-        if (k > 0) {
-          const bw = el('button', 'hs-mini', worn ? 'ถอด' : '👗 สวมใส่');
+        if (k > 0 || TEST_MODE) {
+          const bw = el('button', 'hs-mini', worn ? 'ถอด' : (k > 0 ? '👗 สวมใส่' : '🧪 ลองใส่'));
           bw.addEventListener('click', function () { setWorn(m, r, !worn); draw(); });
           bt.append(bw);
         }
