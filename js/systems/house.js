@@ -1,9 +1,10 @@
-// ===== ระบบบ้าน v2: แมพบ้านส่วนตัว + ตกปลา + แปลงผัก + สมุดอาหาร 100 เมนู + ร้านค้า + ดรอปวัตถุดิบ =====
+// ===== ระบบบ้าน v3: แมพบ้านส่วนตัว + ตกปลา + แปลงผัก + สมุดอาหาร 100 เมนู + ร้านค้า + แฟชั่น + ดรอปวัตถุดิบ =====
 // ไฟล์: js/systems/house.js | โหลด "หลัง" town.js (และ stats.js) และหลัง houseData.js ก่อน js/main.js
 // - ประตู "บ้านของฉัน" ในเมือง (เพิ่มผ่าน TOWN_NPCS) -> เข้าแมพบ้านส่วนตัว: เมืองถูกซ่อนชั่วคราว ผู้เล่นอื่นถูกซ่อนในเครื่องเรา
-// - บ้านเป็นของใครของมัน: ข้อมูลอยู่ที่ scene.house (เซฟผ่าน save.js) { v, plots, cookbook, fished, gift2 }
+// - บ้านเป็นของใครของมัน: ข้อมูลอยู่ที่ scene.house (เซฟผ่าน save.js) { v, plots, cookbook, fished, gift2, fashion }
 // - สถานะถาวรจากสมุดอาหารบวกเข้าสเตตัสผ่านการครอบ recalcStats (ไม่ต้องแก้ stats.js)
 // - ดรอปวัตถุดิบจากมอนผ่านการครอบ dropLoot (ไม่ต้องแก้ monsters.js)
+// - แท็บ "แฟชั่น" เรียก window.FashionCraft.view จาก fashionCraft.js (โหลดหลังไฟล์นี้ จึงเรียกใช้ตอนเปิดแท็บ)
 // หมายเหตุ v2: เวลาโตของผัก/ผลตกปลา/การทำอาหารคิดในเครื่อง (ยังไม่กันโกง) ขั้นถัดไปค่อยย้ายไป Firebase Functions
 
 (function () {
@@ -37,6 +38,7 @@
         if (n > 0) cb[r.id] = Math.min(COOK_MAX_BOOKS, n);
       });
       h.cookbook = cb;
+      // h.fashion ไม่ต้องจัดการที่นี่ (fashionCraft.js ตรวจสอบเอง) แต่ต้องไม่ถูกลบ
     }
     return h;
   };
@@ -686,6 +688,15 @@
     refreshAll();
   }
 
+  // ---------- แฟชั่น (ปีก / หาง / สัตว์เลี้ยง) : ตัวหน้าต่างอยู่ใน fashionCraft.js ----------
+  function fashionTab(m, card, body, arg) {
+    if (window.FashionCraft && typeof window.FashionCraft.view === 'function') {
+      return window.FashionCraft.view(m, card, body, arg) || null;
+    }
+    body.append(el('div', 'hs-note', 'ยังไม่ได้โหลดระบบแฟชั่น (ตรวจว่า fashionCraft.js และ fashion.js อยู่ใน index.html)'));
+    return null;
+  }
+
   // ---------- กันการกดทะลุหน้าต่าง ----------
   // หน้าต่างบ้านเป็น DOM ลอยเหนือเกม Phaser ซึ่งฟังเหตุการณ์สัมผัสที่ window ทำให้การแตะบนหน้าต่างไปโดนปุ่ม/สกิลที่อยู่ข้างหลัง
   // จึงหยุดการส่งต่อเหตุการณ์จากหน้าต่าง และปิด input ของ Phaser ชั่วคราวระหว่างเปิดหน้าต่าง (คืนค่าเดิมเมื่อหน้าต่างปิด)
@@ -718,7 +729,7 @@
     }
     const card = townDomCard(m, '🏠 บ้านของฉัน');
     card.classList.add('hs-card');
-    // ปุ่ม X มุมขวาบน (ทุกแท็บ) -> กดปุ่ม "ปิด" เดิมของหน้าต่าง
+    // ปุ่ม X มุมบนซ้าย (ทุกแท็บ) -> กดปุ่ม "ปิด" เดิมของหน้าต่าง
     const xw = el('div', 'hs-xwrap'), xb = el('button', 'hs-x', '✕');
     xb.addEventListener('click', function () {
       const cb = Array.prototype.slice.call(card.querySelectorAll('button')).filter(function (b) { return b.textContent.trim() === 'ปิด'; })[0];
@@ -729,7 +740,13 @@
     shieldInput(m, card);
     const tabs = el('div', 'hs-tabs'), body = el('div', 'hs-body');
     card.append(tabs, body);
-    const TABS = [['fish', '🎣', 'ตกปลา', fishView], ['farm', '🥬', 'แปลงผัก', farmView], ['cook', '🍳', 'ทำอาหาร', cookView], ['shop', '🛒', 'ร้านค้า', shopView]];
+    const TABS = [
+      ['fish', '🎣', 'ตกปลา', fishView],
+      ['farm', '🥬', 'แปลงผัก', farmView],
+      ['cook', '🍳', 'ทำอาหาร', cookView],
+      ['fashion', '👗', 'แฟชั่น', fashionTab],
+      ['shop', '🛒', 'ร้านค้า', shopView],
+    ];
     let cleanup = null;
     function show(key, a) {
       if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
@@ -741,7 +758,7 @@
         b.addEventListener('click', function () { show(t[0]); });
         tabs.append(b);
       });
-      const t = TABS.filter(function (x) { return x[0] === key; })[0];
+      const t = TABS.filter(function (x) { return x[0] === key; })[0] || TABS[0];
       cleanup = t[3](m, card, body, a) || null;
     }
     show(tab || 'fish', arg);
@@ -1385,6 +1402,7 @@
   // ================= กัน "จัดกระเป๋า" ทำวัตถุดิบเพี้ยน =================
   // sortBag เดิมไม่รู้จักไอเทมชนิด material (เคยรวมวัตถุดิบทุกชนิดเป็นกองเดียว) จึงถอดวัตถุดิบออกก่อนเรียง
   // แล้วใส่กลับตามชนิดเดิม (รวมกองซ้ำให้ด้วย) ติดตั้งหลังโหลดทุกสคริปต์ครบ เผื่อ sortBag ถูกประกาศในไฟล์ที่โหลดทีหลัง
+  // (วนตาม MAT_DEFS ตอนเรียกใช้ จึงรวมวัตถุดิบแฟชั่นที่ fashionCraft.js เพิ่มเข้ามาด้วย)
   function installSortFix() {
     const o = P.sortBag;
     if (typeof o !== 'function' || o._houseWrapped) return;
