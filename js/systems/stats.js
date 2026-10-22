@@ -1,8 +1,10 @@
-// ===== ระบบสเตตัสแบบ RoV =====
-// ค่ารวม = พื้นฐานจากเลเวล + อุปกรณ์ + บัพชั่วคราว | ดาเมจสกิล = ค่าฐาน + ตัวคูณ x สเตตัส
+// ===== ระบบสเตตัส: อัพแต้มแบบ Ragnarok (STR / INT / VIT / CRI / LUK / SPD) =====
+// ค่ารวม = พื้นฐานจากเลเวล + แต้มที่อัพ + อุปกรณ์ + บัพชั่วคราว | ดาเมจสกิล = ค่าฐาน + ตัวคูณ x สเตตัส
 // โหลดหลัง priest.js และก่อน main.js
-// v+: แยกการคำนวณดาเมจที่ผู้เล่นทำ (เกราะมอน/ทะลุเกราะ/คริ/ดูดเลือด) ออกเป็น P.calcHit
-//     เพื่อให้ roomMonsters.js (โหมดห้องออนไลน์) เรียกใช้ได้ด้วย -- แก้ปัญหา "ไม่คริ" ในโหมดห้อง
+// v+: ระบบอัพแต้ม 6 ตัว (ดูตาราง ALLOC ด้านล่าง ปรับสมดุลได้ที่นั่นที่เดียว)
+//     แต้มคงเหลือ = แต้มที่ได้ตามเลเวล - แต้มที่ใช้ไป (คำนวณสดทุกครั้ง จึงไม่ต้องเซฟแต้มแยก / ตัวละครเก่าได้แต้มย้อนหลังอัตโนมัติ)
+//     LUK ให้ drop% (อัตราดรอปของ/กล่อง ใช้ผ่าน lukDrop.js) และ mbox% (โบนัสกล่องเงิน ต้องให้เซิร์ฟเวอร์ econ.js ใช้)
+//     แต้มสเตตัสเก็บข้ามการจุติ + ได้โบนัสต่อจุติ (ALLOC.rebirthBonus) | ค่าต่อแต้มปรับให้ชนเพดานใกล้ 200 พอดี
 (function () {
   const P = Main.prototype;
 
@@ -12,6 +14,29 @@
   const MOB_DEF_PER_LV = 0.8;                // เกราะมอนต่อเลเวลมอน
   const BOSS_DEF_MULT = 1.5;                 // มินิบอสเกราะเป็นกี่เท่า
   const MAGIC_CLASSES = { mage: true, priest: true };   // สายที่ใช้พลังเวท (ที่เหลือใช้โจมตีกายภาพ)
+
+  // ---------- ตารางอัพแต้ม (ปรับสมดุลตรงนี้) ----------
+  // ทุกสเตตัสเริ่มที่ 1 | แต้มที่ใช้อัพจาก v -> v+1 = floor((v-1)/10) + 2 (เหมือน Ragnarok)
+  // ผลต่อ 1 แต้มที่เพิ่ม (นับจาก 1) อยู่ใน per
+  const ALLOC = {
+    keys: ['str', 'int', 'vit', 'cri', 'luk', 'spd'],
+    ptsPerLv: 5,        // แต้มที่ได้ต่อ 1 เลเวล (แต้มทั้งหมดเก็บข้ามการจุติ ไม่หาย)
+    rebirthBonus: 100,  // แต้มโบนัสที่ได้เพิ่มทุกครั้งที่จุติ 1 ขั้น (นอกเหนือจากแต้มเลเวลที่เก็บไว้)
+    max: 225,           // ค่าสูงสุดของแต่ละสเตตัส
+    resetCost: 0,       // ค่ารีเซ็ตแต้ม (ทอง) 0 = ฟรี
+    label: { str: 'STR', int: 'INT', vit: 'VIT', cri: 'CRI', luk: 'LUK', spd: 'SPD' },
+    desc:  { str: 'พลังโจมตีกายภาพ', int: 'พลังเวท / MP', vit: 'HP / เกราะ', cri: 'คริติคอล', luk: 'ดรอป / กล่องเงิน', spd: 'ตีเร็ว / ลดCD' },
+    color: { str: '#d6403a', int: '#5db0ff', vit: '#3fbf6f', cri: '#ff9a3c', luk: '#e6c36a', spd: '#c78bff' },
+    per: {
+      str: { patk: 2, pdef: 0.3 },
+      int: { ap: 2, mp: 5, mpregen: 0.03 },
+      vit: { hp: 12, pdef: 0.4, mdef: 0.4, hpregen: 0.02 },
+      cri: { crit: 0.25, critdmg: 1.0 },
+      luk: { drop: 0.4, mbox: 0.4 },
+      spd: { aspd: 0.4, cdr: 0.15, mspd: 0.1 },
+    },
+  };
+  const costAt = v => Math.floor((v - 1) / 10) + 2;   // แต้มที่ต้องใช้อัพจาก v -> v+1
 
   // ---------- ตารางสเตตัส (เพิ่มสเตตัสใหม่: เพิ่มบรรทัดที่นี่ + ใส่ใน ITEM_STATS ถ้าอุปกรณ์ให้ค่านี้) ----------
   // fmt: int = จำนวนเต็ม | dec = ทศนิยม 1 ตำแหน่ง | pct = เปอร์เซ็นต์ | base = ค่าเริ่มต้น | cap = เพดาน
@@ -23,8 +48,8 @@
     pdef:      { label: 'เกราะกายภาพ',        short: 'เกราะ',    fmt: 'int' },
     mdef:      { label: 'เกราะเวท',           short: 'เกราะเวท', fmt: 'int' },
     aspd:      { label: 'ความเร็วโจมตี',      short: 'ตีเร็ว',   fmt: 'pct', cap: 150 },
-    crit:      { label: 'คริติคอล',           short: 'คริ',      fmt: 'pct', cap: 100 },
-    critdmg:   { label: 'ความแรงคริติคอล',    short: 'คริแรง',   fmt: 'pct', base: 200, cap: 400 },
+    crit:      { label: 'CRI โอกาสคริ',       short: 'CRI',      fmt: 'pct', cap: 100 },
+    critdmg:   { label: 'CRI ความแรง',        short: 'CRIแรง',   fmt: 'pct', base: 200, cap: 700 },
     cdr:       { label: 'ลดคูลดาวน์',         short: 'ลดCD',     fmt: 'pct', cap: 40 },
     mspd:      { label: 'ความเร็วเดิน',       short: 'เดินเร็ว', fmt: 'pct', cap: 60 },
     ppen:      { label: 'ทะลุเกราะกายภาพ',    short: 'ทะลุเกราะ', fmt: 'pct', cap: 60, hideZero: true },
@@ -34,6 +59,8 @@
     hpregen:   { label: 'ฟื้น HP/วินาที',      short: 'ฟื้นHP',   fmt: 'dec', hideZero: true },
     mpregen:   { label: 'ฟื้น MP/วินาที',      short: 'ฟื้นMP',   fmt: 'dec', hideZero: true },
     dodge:     { label: 'หลบหลีก',            short: 'หลบ',      fmt: 'pct', cap: 50, hideZero: true },
+    drop:      { label: 'อัตราดรอปของ/กล่อง', short: 'ดรอป',     fmt: 'pct', cap: 100, hideZero: true },
+    mbox:      { label: 'โบนัสกล่องเงิน',      short: 'กล่องเงิน', fmt: 'pct', cap: 100, hideZero: true },
   };
 
   // ---------- สเตตัสต่อชิ้นอุปกรณ์ (ค่าต่อ 1 เลเวลไอเทม x (1 + ★ x 0.08 + บวก x 0.05)) ----------
@@ -80,11 +107,82 @@
   }
   window.STAT_DEFS = STAT_DEFS;
   window.fmtStat = fmtStat;
+  window.STAT_ALLOC = ALLOC;
+  window.statAllocCost = costAt;
   // ข้อความบรรทัดสเตตัสในหน้ารายละเอียดไอเทม (inventoryPanel.js เรียกใช้)
   window.statLine = function (k, v) {
     const d = STAT_DEFS[k];
     return (d ? d.short : k) + ' +' + fmtStat(k, v);
   };
+
+  // ---------- แต้มสเตตัส ----------
+  function allocOf(st) {
+    if (!st.alloc || typeof st.alloc !== 'object') st.alloc = {};
+    ALLOC.keys.forEach(k => {
+      let v = Math.floor(Number(st.alloc[k]));
+      if (!(v >= 1)) v = 1;
+      if (v > ALLOC.max) v = ALLOC.max;
+      st.alloc[k] = v;
+    });
+    return st.alloc;
+  }
+  function spentOf(a) {
+    let t = 0;
+    ALLOC.keys.forEach(k => { for (let v = 1; v < a[k]; v++) t += costAt(v); });
+    return t;
+  }
+  // แต้มที่ได้ต่อการจุติ 1 ขั้น = แต้มเลเวลทั้งหมดของชีวิตที่เพิ่งจบ (ที่ LEVEL_CAP) + โบนัสจุติ
+  P.statPointsPerRebirth = function () {
+    const cap = (typeof LEVEL_CAP !== 'undefined') ? LEVEL_CAP : 90;
+    return (cap - 1) * ALLOC.ptsPerLv + ALLOC.rebirthBonus;
+  };
+  // แต้มที่ได้ทั้งหมด = แต้มเลเวลปัจจุบัน + แต้มสะสมจากทุกการจุติ (คิดจาก stats.rebirth จึงย้อนหลังให้ตัวละครเก่าด้วย)
+  P.statPointsEarned = function () {
+    const r = Math.max(0, Math.floor(this.stats.rebirth || 0));
+    return Math.max(0, ((this.stats.level || 1) - 1) * ALLOC.ptsPerLv + r * this.statPointsPerRebirth());
+  };
+  // แต้มคงเหลือ (ถ้าเซฟผิดปกติจนใช้เกิน -> รีเซ็ตให้เองเพื่อกันโกง/บั๊ก)
+  P.statPointsLeft = function () {
+    const a = allocOf(this.stats);
+    let left = this.statPointsEarned() - spentOf(a);
+    if (left < 0) {
+      ALLOC.keys.forEach(k => { a[k] = 1; });
+      left = this.statPointsEarned();
+      this._statDirty = true;
+    }
+    return left;
+  };
+  // อัพสเตตัส key ทีละ n แต้ม (n=1 หรือ 5) คืนจำนวนครั้งที่อัพได้จริง
+  P.allocStat = function (key, n) {
+    if (ALLOC.keys.indexOf(key) < 0) return 0;
+    const a = allocOf(this.stats);
+    let done = 0;
+    for (let i = 0; i < (n || 1); i++) {
+      const c = costAt(a[key]);
+      if (a[key] >= ALLOC.max || this.statPointsLeft() < c) break;
+      a[key]++; done++;
+    }
+    if (done) {
+      this._statDirty = true;
+      this.computeAtk();
+      if (this.saveSoon) this.saveSoon();
+    }
+    return done;
+  };
+  // รีเซ็ตแต้มทั้งหมดกลับเป็น 1 (ตามค่า ALLOC.resetCost)
+  P.resetAlloc = function () {
+    if ((this.stats.gold || 0) < ALLOC.resetCost) { this.toastMsg && this.toastMsg('ทองไม่พอ'); return false; }
+    this.stats.gold -= ALLOC.resetCost;
+    const a = allocOf(this.stats);
+    ALLOC.keys.forEach(k => { a[k] = 1; });
+    this._statDirty = true;
+    this.computeAtk();
+    if (this.saveSoon) this.saveSoon();
+    return true;
+  };
+  // ตัวคูณจาก LUK: ใช้ในโค้ดดรอปของมอน เช่น chance *= scene.dropMul(); gold = Math.round(gold * scene.goldMul())
+  P.dropMul = function () { return 1 + (this.getStats().drop || 0) / 100; };
+  P.moneyMul = function () { return 1 + (this.getStats().mbox || 0) / 100; };   // โบนัสกล่องเงิน (ต้องให้เซิร์ฟเวอร์ใช้ ดู serverBoxes.js / econ.js)
 
   // ---------- สเตตัสของไอเทม ----------
   function rawItemStats(item) {
@@ -118,6 +216,15 @@
     out.hp = st.maxHp || 100; out.mp = st.maxMp || 50;
     out.patk = st.baseAtk || 10; out.ap = st.baseAtk || 10;
     out.pdef = BASE_DEF_PER_LV * lv; out.mdef = BASE_DEF_PER_LV * lv;
+
+    // แต้มที่อัพ (นับจาก 1)
+    const a = allocOf(st);
+    ALLOC.keys.forEach(k => {
+      const n = a[k] - 1;
+      if (n <= 0) return;
+      const per = ALLOC.per[k];
+      Object.keys(per).forEach(s => { out[s] = (out[s] || 0) + per[s] * n; });
+    });
 
     const eq = this.equipment || {};
     EQUIP_SLOT_KEYS.forEach(k => {
@@ -157,6 +264,7 @@
   };
 
   P.computeAtk = function () {
+    if (this.stats) this.statPointsLeft();   // ตรวจแต้มที่ใช้เกิน (ซ่อมให้เอง)
     this._statDirty = true;
     this.getStats();
     this.stats.hp = Math.min(this.stats.hp, this.maxHp());
@@ -393,7 +501,7 @@
         const t = s.sid && skillInfo(s.sid, typeof s.lv === 'number' ? s.lv : 1, S);
         return t ? Object.assign({}, s, { info: t }) : s;
       });
-      return Object.assign({}, d, { stats: stats, skills: fix(d.skills), specialSkills: fix(d.specialSkills) });
+      return Object.assign({}, d, { stats: stats, statPoints: sc.statPointsLeft ? sc.statPointsLeft() : 0, skills: fix(d.skills), specialSkills: fix(d.specialSkills) });
     });
     return true;
   }
