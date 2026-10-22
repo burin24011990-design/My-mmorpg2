@@ -367,6 +367,7 @@
   // รูปโหลดตอนสวมครั้งแรก (assets/fashion/) | ยังไม่มีไฟล์รูป = โชว์อีโมจิแทน เกมไม่พัง
   // ปีก: ใช้ภาพ front (หันลง/ข้าง) และ back (หันขึ้น) แยกไฟล์ wing_XX_front.png / wing_XX_back.png | หาง: ภาพด้านข้างชี้ขวา | สัตว์เลี้ยง: แผ่น 3 มุมมอง หน้า/ข้าง/หลัง
   const WING_W = 116, TAIL_W = 60, PET_W = 48;
+  const WING_SIDE_RATIO = 0.6;   // ตอนหันข้าง ปีกกว้างเหลือกี่เท่าของตอนหันตรง (สูงเท่าเดิม) | อยากให้แคบลงอีกใส่ 0.5, อยากให้กว้างขึ้นใส่ 0.75
   const LOAD = {};
   function ensureTex(m, key, path, isPet) {
     if (m.textures.exists(key)) return true;
@@ -433,7 +434,10 @@
       // หันหน้า(ลง) = เห็นปีกอยู่ข้างหลังตัว ใช้ภาพ front | หันหลัง(ขึ้น) = ปีกกางทับหลังตัว ใช้ภาพ back | หันข้าง = ใช้ภาพ front บีบให้แคบ
       const up = d === 'up', side = (d === 'left' || d === 'right'), r = wo.r;
       const real = visual(m, wo, 'fm_' + r.id + (up ? '_back' : '_front'), up ? r.img.back : r.img.front, '🪽', false);
-      if (real) fit(wo.obj, side ? WING_W * 0.6 : WING_W);
+      if (real) {   // หันข้าง: บีบเฉพาะความกว้าง ความสูงเท่าตอนหันตรง
+        fit(wo.obj, WING_W);
+        if (side) wo.obj.setDisplaySize(WING_W * WING_SIDE_RATIO, wo.obj.displayHeight);
+      }
       wo.obj.setPosition(p.x + (side ? (d === 'right' ? -12 : 12) : 0), p.y - 10);
       wo.obj.setDepth(up ? dep + 0.05 : dep - 0.05).setVisible(vis);
     }
