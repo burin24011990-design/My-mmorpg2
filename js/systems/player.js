@@ -1,7 +1,11 @@
 // ===== สเตตัสผู้เล่น: ATK/HP/MP, เลเวล, EXP =====
+// v+: เพิ่ม stats.alloc (STR/INT/VIT/CRI/LUK/SPD เริ่มที่ 1) -- แต้มคงเหลือคำนวณจากเลเวล ดู stats.js
 Object.assign(Main.prototype, {
   initPlayerState() {
-    this.stats = { level: 1, exp: 0, expNext: levelExpNeeded(1), hp: 100, maxHp: 100, mp: 50, maxMp: 50, baseAtk: 10, gold: 0 };
+    this.stats = {
+      level: 1, exp: 0, expNext: levelExpNeeded(1), hp: 100, maxHp: 100, mp: 50, maxMp: 50, baseAtk: 10, gold: 0,
+      alloc: { str: 1, int: 1, vit: 1, cri: 1, luk: 1, spd: 1 },
+    };
     this.equipHpBonus = 0; this.equipMpBonus = 0; this.equipDefBonus = 0;
     this.learnedSkills = new Set(['sw_slash']);
     this.slots = ['sw_slash', null, null, null];
@@ -36,14 +40,19 @@ Object.assign(Main.prototype, {
   gainExp(n) {
     if (this.stats.level >= LEVEL_CAP) return;
     this.stats.exp += n;
+    let ups = 0;
     while (this.stats.level < LEVEL_CAP && this.stats.exp >= this.stats.expNext) {
       this.stats.exp -= this.stats.expNext;
       this.stats.level++;
+      ups++;
       this.stats.expNext = levelExpNeeded(this.stats.level);
       this.stats.maxHp += 15; this.stats.maxMp += 8; this.stats.baseAtk += 3;
       this.computeAtk();
       this.stats.hp = this.maxHp(); this.stats.mp = this.maxMp();
       this.toastMsg('เลเวลอัพ! ตอนนี้เลเวล ' + this.stats.level);
+    }
+    if (ups && window.STAT_ALLOC) {
+      setTimeout(() => { try { this.toastMsg('ได้แต้มสเตตัส +' + (ups * window.STAT_ALLOC.ptsPerLv)); } catch (e) {} }, 1200);
     }
     if (this.stats.level >= LEVEL_CAP) this.stats.exp = 0;
   },
