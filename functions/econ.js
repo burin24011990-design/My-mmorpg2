@@ -2,6 +2,7 @@
 // ใน functions/index.js ต้องมี:  Object.assign(exports, require('./econ'));
 // ชื่อฟังก์ชันต้องไม่ซ้ำกับของตลาด (ตลาดใช้ getWallet, listItem, buyItem, ... อยู่แล้ว)
 // v2: importGold — บัญชีที่สร้างหลัง NEW_ACCOUNT_FROM ย้ายทองจากเครื่องขึ้นเซิร์ฟเวอร์ได้ไม่เกิน NEW_ACCOUNT_IMPORT_CAP
+// v3: reportKills รับ mbox (โบนัสกล่องเงินจาก LUK %) คูณโอกาสได้กล่องทุกสี ตัดเพดานที่ MBOX_MAX
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -29,6 +30,7 @@ const BUCKET_MAX = 120;
 const MIN_REPORT_GAP_MS = 10000;
 const MAX_REPORT_KILLS = 150;
 const DAY_CAP = { blue: 3000, red: 800, gold: 80 };
+const MBOX_MAX = 100;   // โบนัสกล่องเงินจาก LUK สูงสุดกี่ % (ไม่ให้เกินนี้ ไม่ว่าไคลเอนต์ส่งมาเท่าไร)
 
 // ----- กระเป๋าทอง -----
 const IMPORT_CAP = 1000000000;   // ทองสูงสุดที่ย้ายขึ้นเซิร์ฟเวอร์ "ครั้งเดียว" สำหรับบัญชีเก่า (ลดลงให้ใกล้ทองสูงสุดของผู้เล่นจริงได้)
@@ -64,6 +66,11 @@ exports.reportKills = onCall(OPT, async (req) => {
   const n = cnt(k.normal), r = cnt(k.ranged), b = cnt(k.boss);
   if (n < 0 || r < 0 || b < 0 || n + r + b < 1 || n + r + b > MAX_REPORT_KILLS) bad('ข้อมูลไม่ถูกต้อง');
 
+  // โบนัสกล่องเงินจาก LUK: คูณโอกาสได้กล่องทุกสี (ตัดเพดาน 0..MBOX_MAX)
+  const mb = Math.max(0, Math.min(MBOX_MAX, Number(d.mbox) || 0));
+  const mul = 1 + mb / 100;
+  const pGold = DROP.gold * mul, pRed = DROP.red * mul, pBlue = DROP.blue * mul;
+
   const ref = db.collection('econ').doc(uid);
   const now = Date.now();
   return db.runTransaction(async (tx) => {
@@ -87,9 +94,9 @@ exports.reportKills = onCall(OPT, async (req) => {
     for (let i = 0; i < rolls; i++) {
       const x = rnd();
       let c = null;
-      if (x < DROP.gold) c = 'gold';
-      else if (x < DROP.gold + DROP.red) c = 'red';
-      else if (x < DROP.gold + DROP.red + DROP.blue) c = 'blue';
+      if (x < pGold) c = 'gold';
+      else if (x < pGold + pRed) c = 'red';
+      else if (x < pGold + pRed + pBlue) c = 'blue';
       if (c && (dayBoxes[c] || 0) + got[c] < DAY_CAP[c]) got[c]++;
     }
     const have = e.boxes || {};
