@@ -29,8 +29,8 @@
     color: { str: '#d6403a', int: '#5db0ff', vit: '#3fbf6f', cri: '#ff9a3c', luk: '#e6c36a', spd: '#c78bff' },
     per: {
       str: { patk: 2, pdef: 0.3 },
-      int: { ap: 2, mp: 5, mpregen: 0.03 },
-      vit: { hp: 12, pdef: 0.4, mdef: 0.4, hpregen: 0.02 },
+      int: { ap: 2, mp: 5, mpregen: 0.05 },
+      vit: { hp: 12, pdef: 0.4, mdef: 0.4, hpregen: 0.1 },
       cri: { crit: 0.25, critdmg: 1.0 },
       luk: { drop: 0.4, mbox: 0.4 },
       spd: { aspd: 0.4, cdr: 0.15, mspd: 0.1 },
