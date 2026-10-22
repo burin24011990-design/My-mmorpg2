@@ -4,6 +4,7 @@
 // SERVER_GOLD = false : ทำงานเหมือนเดิม (ทองอยู่ในเครื่อง)
 // SERVER_GOLD = true  : ย้ายทองขึ้นเซิร์ฟเวอร์ แล้วใช้ยอดเซิร์ฟเวอร์เป็นหลัก
 //                       *** อย่าเปิด จนกว่าจะเปลี่ยนทุกจุดที่บวก/หักทองให้ผ่านเซิร์ฟเวอร์ ***
+// v+: ส่งโบนัสกล่องเงินจาก LUK (mbox %) ไปกับ reportKills (เซิร์ฟเวอร์ตัดเพดานซ้ำเอง)
 (function () {
   const SERVER_GOLD = false;
   const REGION = 'asia-southeast1';
@@ -31,6 +32,10 @@
     });
   }
   function rid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+  // โบนัสกล่องเงินจาก LUK (%) -- เซิร์ฟเวอร์ตรวจเพดานซ้ำเอง
+  function curMbox() {
+    try { const m = sc().getStats().mbox || 0; return Math.max(0, Math.min(100, Math.round(m * 10) / 10)); } catch (e) { return 0; }
+  }
   function total(z) { return z.normal + z.ranged + z.boss; }
   function setGold(v) {
     const s = sc();
@@ -58,7 +63,7 @@
     if (!zid) return;
     const sent = take(pend[zid]);
     busy = true;
-    callRetry('reportKills', { zone: Number(zid), kills: sent }, 2).then(function (r) {
+    callRetry('reportKills', { zone: Number(zid), kills: sent, mbox: curMbox() }, 2).then(function (r) {
       if (!r.ok) { nextOk = Date.now() + (r.retryIn || 10000); return; }
       KINDS.forEach(function (k) { pend[zid][k] -= sent[k]; });
       SB.boxes = r.boxes;
