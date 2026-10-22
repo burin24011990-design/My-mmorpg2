@@ -7,6 +7,8 @@
 // v2: แก้ไอเทมหายหลังออกเกม -- เดิมตัวตรวจไอเทมตอนโหลดไม่รู้จัก การ์ด (card) / กุญแจถอดการ์ด (cardkey) / หินพลังวิเศษ (magicstone)
 //     จึงทิ้งทั้งหมด + ตรวจหินออฟ/หินลบออฟเข้มเกิน | ตอนนี้: รู้จักทุกชนิด, ตรวจแบบหลวมขึ้น (ซ่อมจำนวนให้เป็นจำนวนเต็ม),
 //     ชนิดที่ไม่รู้จักแต่หน้าตาเป็นไอเทมซ้อนได้ (มี kind + count) จะ "เก็บไว้" ไม่ทิ้ง, และถ้ามีของถูกข้ามจะแจ้งเตือนพร้อมชื่อชนิด
+// v3: โหลด stats.alloc (STR/INT/VIT/CRI/LUK/SPD) -- ตัวละครเก่าที่ไม่มีฟิลด์นี้จะเริ่มที่ 1 ทั้งหมด และได้แต้มย้อนหลังตามเลเวลอัตโนมัติ
+//     (แต้มคงเหลือคำนวณจากเลเวล - แต้มที่ใช้ ดู stats.js จึงไม่ต้องเซฟแต้มแยก)
 
 const SAVE_KEY = 'my_mmorpg_save_v1';
 
@@ -31,7 +33,7 @@ Object.assign(Main.prototype, {
     try {
       const data = {
         v: 1,
-        stats: this.stats,
+        stats: this.stats,                  // รวม stats.alloc (แต้มสเตตัสที่อัพ)
         bag: this.bag,                      // หนังสือสกิลเก็บอยู่ในกระเป๋าเป็นไอเทม
         equipment: this.equipment,
         learned: [...this.learnedSkills],
@@ -50,8 +52,8 @@ Object.assign(Main.prototype, {
       data.savedAt = Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
 
-      // เหตุการณ์สำคัญ (เลเวล / อุปกรณ์ที่สวม / จำนวนสกิลที่เรียน เปลี่ยน) -> ขอให้คลาวด์อัปโหลดเร็วขึ้น
-      const key = this.stats.level + '|' + JSON.stringify(this.equipment) + '|' + this.learnedSkills.size;
+      // เหตุการณ์สำคัญ (เลเวล / อุปกรณ์ที่สวม / จำนวนสกิลที่เรียน / แต้มสเตตัส เปลี่ยน) -> ขอให้คลาวด์อัปโหลดเร็วขึ้น
+      const key = this.stats.level + '|' + JSON.stringify(this.equipment) + '|' + this.learnedSkills.size + '|' + JSON.stringify(this.stats.alloc || {});
       if (this._lastKey && key !== this._lastKey && window.CloudSave) window.CloudSave.soon();
       this._lastKey = key;
     } catch (e) { /* พื้นที่เต็ม/ถูกบล็อก: ข้าม */ }
@@ -117,6 +119,20 @@ Object.assign(Main.prototype, {
       });
       this.stats.level = Phaser.Math.Clamp(Math.floor(this.stats.level), 1, LEVEL_CAP);
       this.stats.expNext = levelExpNeeded(this.stats.level);
+
+      // แต้มสเตตัสที่อัพ (STR/INT/VIT/CRI/LUK/SPD): ไม่มี/ผิดปกติ = 1 | แต้มที่ใช้เกินที่ได้ตามเลเวล stats.js จะรีเซ็ตให้เอง
+      {
+        const al = (s.alloc && typeof s.alloc === 'object') ? s.alloc : {};
+        const maxA = (window.STAT_ALLOC && window.STAT_ALLOC.max) || 200;
+        this.stats.alloc = {};
+        ['str', 'int', 'vit', 'cri', 'luk', 'spd'].forEach(k => {
+          const v = Math.floor(Number(al[k]));
+          this.stats.alloc[k] = (v >= 1 && v <= maxA) ? v : 1;
+        });
+      }
+
+      // ขั้นจุติต้องโหลดตรงนี้ (ก่อน computeAtk) เพราะแต้มสเตตัสที่ได้ทั้งหมดคิดจากขั้นจุติ ไม่งั้นตัวละครที่จุติแล้วจะถูกรีเซ็ตแต้ม
+      { const rb0 = Math.floor(Number(s.rebirth)); this.stats.rebirth = (rb0 > 0 && rb0 <= 24) ? rb0 : 0; }
 
       const stackCap = kind => {
         if (kind === 'card' || kind === 'cardkey') return (typeof MAX_CARD_STACK !== 'undefined') ? MAX_CARD_STACK : 999;
