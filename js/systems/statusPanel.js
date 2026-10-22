@@ -159,6 +159,14 @@
       '.wx-up:active{filter:brightness(1.3)}',
       '.wx-up.off{background:#2a1f1f;border-color:#4a3a2a;color:#7a6a5a;opacity:.6}',
       '.wx-alloc-f{display:flex;justify-content:space-between;align-items:center;padding:6px 9px;font-size:11px;color:#9a8a6a}',
+      '.wx-modal{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;background:rgba(6,2,2,.78);border-radius:4px}',
+      '.wx-mbox{position:relative;width:min(88%,380px);box-sizing:border-box;padding:14px 16px 14px;text-align:center;border:3px solid #c9a24a;border-radius:6px;background:radial-gradient(ellipse at 50% 0%,rgba(140,24,24,.45),transparent 70%),linear-gradient(#2a1010,#110505);box-shadow:0 0 0 2px #3b0d0d,0 0 0 4px rgba(201,162,74,.45),0 8px 30px rgba(0,0,0,.85)}',
+      '.wx-mbox .wx-mt{font-size:16px;font-weight:900;color:#f6dc8c;text-shadow:0 2px 0 #5a1010;letter-spacing:1px;margin-bottom:6px}',
+      '.wx-mbox .wx-mm{font-size:13px;color:#e6d3a8;line-height:1.5;margin-bottom:12px}',
+      '.wx-mbtns{display:flex;gap:10px;justify-content:center}',
+      '.wx-mbtns button{flex:1;max-width:150px;height:32px;border:2px solid #c9a24a;border-radius:4px;font-family:inherit;font-size:14px;font-weight:700;color:#ffe9b0;cursor:pointer;background:linear-gradient(#7a1510,#3b0907)}',
+      '.wx-mbtns button.ok{background:linear-gradient(#b3261e,#6e100c);color:#fff3cf}',
+      '.wx-mbtns button:active{filter:brightness(1.3)}',
       '.wx-reset{padding:2px 10px;border:1px solid #6b5330;border-radius:4px;background:#2a1214;color:#e6c36a;font-size:11px;cursor:pointer;font-family:inherit}'
     ].join('');
     document.head.appendChild(st);
@@ -311,6 +319,22 @@
       '</div>';
   }
 
+  // ---------- กล่องยืนยันแบบเข้าธีม (แทน window.confirm ของเบราว์เซอร์) ----------
+  function askConfirm(title, msg, okText, onOk) {
+    if (!win) return;
+    var old = win.querySelector('.wx-modal'); if (old) old.remove();
+    var m = document.createElement('div');
+    m.className = 'wx-modal';
+    m.innerHTML = '<div class="wx-mbox"><div class="wx-mt">' + esc(title) + '</div><div class="wx-mm">' + esc(msg) +
+      '</div><div class="wx-mbtns"><button class="no">ยกเลิก</button><button class="ok">' + esc(okText) + '</button></div></div>';
+    m.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (ev.target.closest('.ok')) { m.remove(); onOk(); }
+      else if (ev.target.closest('.no') || ev.target === m) m.remove();
+    });
+    win.appendChild(m);
+  }
+
   // ---------- สร้างหน้าต่าง ----------
   function build() {
     if (win) return;
@@ -350,11 +374,17 @@
         if (sc && sc.allocStat) sc.allocStat(up.getAttribute('data-k'), parseInt(up.getAttribute('data-n'), 10) || 1);
         render(); return;
       }
-      // รีเซ็ตแต้ม
+      // รีเซ็ตแต้ม (กล่องยืนยันเข้าธีม)
       if (e.target.closest('.wx-reset')) {
-        var sc2 = window.__mainScene;
-        if (sc2 && sc2.resetAlloc && window.confirm('รีเซ็ตแต้มสเตตัสทั้งหมดกลับเป็น 1 ?')) sc2.resetAlloc();
-        render(); return;
+        var A2 = window.STAT_ALLOC || {};
+        askConfirm('รีเซ็ตแต้มสเตตัส',
+          'สเตตัสทั้ง 6 ตัวจะกลับเป็น 1 และคืนแต้มทั้งหมดให้นำไปแจกใหม่' + (A2.resetCost > 0 ? ' (เสีย ' + fmt(A2.resetCost) + ' ทอง)' : ''),
+          'รีเซ็ต', function () {
+            var sc2 = window.__mainScene;
+            if (sc2 && sc2.resetAlloc) sc2.resetAlloc();
+            render();
+          });
+        return;
       }
       if (e.target.closest('.wx-rm')) {
         try { localStorage.removeItem(PORTRAIT_KEY); } catch (er) {}
