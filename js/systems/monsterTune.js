@@ -40,6 +40,24 @@
     return e;
   }
 
+  // ===== ตัวตรวจสอบ (เปิดไว้ก่อน แล้วปิดเป็น false ทีหลัง) =====
+  // เข้าด่านแล้วจะขึ้นข้อความบอกว่าไฟล์นี้ทำงานไหม / เป็นมอนในเครื่องหรือโหมดห้องออนไลน์ / มีมอนกี่ตัว / มี Epic กี่ตัว
+  const DEBUG = true;
+  if (DEBUG) {
+    const _ls = P.loadStage;
+    P.loadStage = function () {
+      const r = _ls.apply(this, arguments);
+      setTimeout(() => {
+        try {
+          const list = this.enemies ? this.enemies.getChildren() : [];
+          const epics = list.filter(e => e.isEpic).length;
+          this.toastMsg('[tune] ' + (this.rmActive ? 'โหมดห้องออนไลน์ (มอนมาจากเซิร์ฟเวอร์)' : 'มอนในเครื่อง') + ' | มอน ' + list.length + ' | Epic ' + epics);
+        } catch (e) {}
+      }, 2500);
+      return r;
+    };
+  }
+
   ['spawnEnemyInZone', 'spawnBoss', 'spawnEpic'].forEach(function (name) {
     const orig = P[name];
     if (typeof orig !== 'function') return;
