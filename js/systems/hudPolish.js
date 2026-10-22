@@ -1,10 +1,12 @@
 /* hudPolish.js — HUD เลือด/มานา/EXP + ป้ายเลเวล แบบสวย (ต่อเข้ากับ Main.updateHud แล้ว)
  * วางที่ js/systems/hudPolish.js และใส่ใน index.html "ก่อน" js/main.js (หลัง statusPanel.js):
- *   <script src="js/systems/hudPolish.js?v=1"></script>
+ *   <script src="js/systems/hudPolish.js?v=4"></script>
  * ปรับขนาด/ตำแหน่ง: แก้ HP_HUD_X, HP_HUD_Y, HP_HUD_SCALE ด้านล่าง
  *
  * (ลดแลค) เดิมเขียน DOM ทุกเฟรม (textContent / style.width ของทุกหลอด + getElementById ซ้ำๆ)
  *         ตอนนี้เก็บ element ไว้ใช้ซ้ำ และเขียนเฉพาะเมื่อค่าเปลี่ยนจริง
+ * v4: แสดงชื่อตัวละครในกรอบ (บรรทัดเหนือหลอด HP) และซ่อนชื่อเหนือหัว (myLabel จาก network.js)
+ *     ถ้าจุติแล้วจะต่อท้ายชื่อด้วย "☯ จุติ N"
  */
 (function () {
   var HP_HUD_X = 3, HP_HUD_Y = 4;   // ตำแหน่งในพิกัดเกม (มุมซ้ายบน)
@@ -24,7 +26,7 @@
   #hp-hud .plate{margin-left:-12px;padding:4px 9px 5px 17px;width:128px;box-sizing:content-box;
     background:linear-gradient(180deg,var(--lac2),var(--lac));border:1.5px solid var(--gold-d);
     border-radius:0 12px 12px 0;box-shadow:0 3px 8px rgba(0,0,0,.55),inset 0 0 0 1px rgba(255,212,92,.18)}
-  #hp-hud .nm{font-size:10.5px;font-weight:500;color:#ffe9b0;text-shadow:0 1px 2px #000;white-space:nowrap;
+  #hp-hud .nm{font-size:10px;font-weight:500;color:#ffe9b0;text-shadow:0 1px 2px #000;white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;max-width:128px;margin-bottom:1px}
   #hp-hud .nm:empty{display:none}
   #hp-hud .bar{position:relative;height:11px;margin-top:2px;border-radius:7px;background:#12060a;border:1px solid #000;
@@ -71,8 +73,23 @@
     hp: mkBar('hh-hp'), mp: mkBar('hh-mp'), xp: mkBar('hh-xp'),
     g: el.querySelector('#hh-g'), gVal: '',
     k: el.querySelector('#hh-k'), kVal: '',
-    pos: ''                         // ค่า left|top|scale ล่าสุด
+    pos: '',                        // ค่า left|top|scale ล่าสุด
+    name: ''                        // ชื่อตัวละครที่จำไว้
   };
+
+  // ชื่อตัวละคร: เอาจากป้ายชื่อเหนือหัว (network.js) แล้วซ่อนป้ายนั้น | ถ้าไม่มี (ออฟไลน์) ใช้ช่องชื่อหน้าเริ่มเกม
+  function readName(scene) {
+    var lab = scene.myLabel;
+    if (lab && lab.scene) {
+      if (lab.text) R.name = String(lab.text);
+      if (lab.visible) lab.setVisible(false);
+    }
+    if (!R.name) {
+      var inp = document.getElementById('in-name');
+      if (inp && inp.value) R.name = String(inp.value).trim();
+    }
+    return R.name;
+  }
 
   // เขียนเฉพาะตอนค่าเปลี่ยน
   function setBar(b, v, max, pct, isHp) {
@@ -118,9 +135,10 @@
       var s = this.stats; if (!s) return;
       var lvs = String(s.level);
       if (lvs !== R.lvVal) { R.lvVal = lvs; R.lv.textContent = lvs; R.lv.className = lvs.length >= 3 ? 's3' : ''; }
-      // ขั้นจุติเก็บที่ stats.rebirth (rebirth.js) -- แสดงเฉพาะเมื่อจุติแล้ว
+      // ชื่อตัวละคร + ขั้นจุติ (rebirth.js เก็บที่ stats.rebirth -- แสดงเฉพาะเมื่อจุติแล้ว)
       var rbn = Math.floor(s.rebirth || 0);
-      var nmv = rbn > 0 ? '☯ จุติ ' + rbn : '';
+      var nmv = readName(this);
+      if (rbn > 0) nmv = (nmv ? nmv + '  ' : '') + '☯ จุติ ' + rbn;
       if (nmv !== R.nmVal) { R.nmVal = nmv; R.nm.textContent = nmv; }
       setBar(R.hp, s.hp, this.maxHp(), false, true);
       setBar(R.mp, s.mp, this.maxMp());
