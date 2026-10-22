@@ -16,6 +16,8 @@
 //        * เพิ่มมอนในด่านจุติ (ดัชนี 9-21) -- เดิมห้องของด่านจุติว่างเปล่า ไม่มีมอนเลย | ความแรง x25, x30, x35 ... x85
 //        * ปัดเลือด/ดาเมจมอนเป็นจำนวนเต็ม (แก้ข้อความเป้าหมาย "HP 11482/11481.600000000002")
 //        * เพิ่ม MONSTER_DMG_SCALE (ตัวคูณดาเมจมอนทั้งหมดฝั่งเซิร์ฟเวอร์ ตั้ง 1 = ตามสูตรเดิม)
+// - v17: ปิดมอน Epic (EPIC_COUNT = 0) | เพิ่มจำนวนมอนธรรมดา/ยิงไกลต่อห้อง x COUNT_MUL (2) | เพิ่มตัวปรับเลือด/ดาเมจ MON_TUNE
+//        (ตัวปรับเลือด/ดาเมจนี้คือตัวเดียวกับ monsterTune.js ฝั่งเกม แต่ใช้กับโหมดห้องออนไลน์)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -70,7 +72,7 @@ REBIRTH_ZONE_STEPS.forEach((r, i) => {
   ZCFG.push({ count: 60, ranged: 20, minLv: lv, maxLv: lv + 4, look: i % 9, power: RZ_POWER_FIRST + i * RZ_POWER_STEP });
 });
 
-const EPIC_COUNT = 30, EPIC_MULT = 8;
+const EPIC_COUNT = 0, EPIC_MULT = 8;      // v17: EPIC_COUNT = 0 = ไม่มี Epic (เดิม 30) | ถ้าอยากให้กลับมา ใส่เลขจำนวนต่อห้อง
 const NORMAL_HP_MULT = 2, NORMAL_DMG_MULT = 1.5;
 const BOSS_COUNT = 1, BOSS_MULT = 20, BOSS_SPEED = 130;
 const BOSS_TELEPORT_MIN_MS = 5 * 60000, BOSS_TELEPORT_MAX_MS = 10 * 60000;
@@ -84,6 +86,19 @@ const HIT_MAX_DIST = 1200;
 // ตัวคูณดาเมจมอนทั้งหมด (ปรับตรงนี้) | 1 = ตามสูตรเดิม | 0.1 = เหลือ 10% (เท่า MONSTER_DMG_SCALE ฝั่งเกมตอนเล่นออฟไลน์)
 // ถ้ามอนตีแรงจนตายในไม่กี่ที ลดค่านี้ได้เลย (เช่น 0.3 / 0.1)
 const MONSTER_DMG_SCALE = 1;
+
+// v17: จำนวนมอนธรรมดา/ยิงไกลต่อห้อง x เท่านี้ (1 = เท่าเดิม) -- ถ้าเซิร์ฟเวอร์/มือถือเริ่มหน่วง ลดเป็น 1.5
+const COUNT_MUL = 2;
+
+// v17: ตัวปรับเลือด/ดาเมจมอนแยกตามชนิด (คูณทับหลังคำนวณสูตรทั้งหมดแล้ว)
+// hp  = ตัวคูณเลือด (1 = เท่าเดิม, 0.5 = เหลือครึ่งเดียว)
+// dmg = ตัวคูณดาเมจ (1 = เท่าเดิม, 1.5 = แรงขึ้น 1.5 เท่า)
+const MON_TUNE = {
+  normal: { hp: 0.5, dmg: 1 },
+  ranged: { hp: 0.5, dmg: 1 },
+  epic:   { hp: 0.5, dmg: 1 },
+  boss:   { hp: 0.5, dmg: 1 },
+};
 
 // ความโหดเพิ่มตามด่าน (ด่านที่ n เริ่มที่ 0): เลือด x(1 + n x HP_STEP), ดาเมจ x(1 + n x DMG_STEP)
 // v16: STEP = 2 -> x1, x3, x5, x7, x9, x11, x13, x15, x17 (ด่านจุติใช้ power ของตัวเองแทน)
@@ -137,6 +152,10 @@ function makeMonster(R, stage, kind) {
     m.hp = Math.round(baseHp * NORMAL_HP_MULT); m.dmg = Math.max(1, Math.round(baseDmg * NORMAL_DMG_MULT));
     m.aggro = ranged ? 350 : 130; m.lose = ranged ? 480 : 320; m.leash = 450; m.speed = 70;
   }
+  // v17: ตัวปรับเลือด/ดาเมจตามชนิดมอน
+  const tune = MON_TUNE[kind] || MON_TUNE.normal;
+  m.hp = Math.max(1, Math.round(m.hp * tune.hp));
+  m.dmg = Math.max(1, Math.round(m.dmg * tune.dmg));
   m.maxHp = m.hp;
   m.hitRange = (boss ? 40 : 26) * scale;
   return m;
@@ -147,8 +166,9 @@ function spawnRoomMonsters(stage) {
   const z = ZCFG[stage];
   if (!z) return R;                          // เมือง/ดัชนีที่ไม่มีในรายการ = ห้องว่างไม่มีมอน
   const add = kind => { const m = makeMonster(R, stage, kind); R.mons.set(m.id, m); };
-  for (let i = 0; i < z.count; i++) add('normal');
-  for (let i = 0; i < z.ranged; i++) add('ranged');
+  const nNormal = Math.round(z.count * COUNT_MUL), nRanged = Math.round(z.ranged * COUNT_MUL);
+  for (let i = 0; i < nNormal; i++) add('normal');
+  for (let i = 0; i < nRanged; i++) add('ranged');
   for (let i = 0; i < EPIC_COUNT; i++) add('epic');
   for (let i = 0; i < BOSS_COUNT; i++) add('boss');
   return R;
