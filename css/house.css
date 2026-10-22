@@ -1,20 +1,20 @@
-/* ===== ระบบบ้าน v3 (หน้าต่างตกปลา / แปลงผัก / ทำอาหาร / ร้านค้า จัดวางใหม่) ===== */
+/* ===== ระบบบ้าน v4 (หน้าต่างตกปลา / แปลงผัก / ทำอาหาร / แฟชั่น / ร้านค้า) ===== */
 .hs-card { text-align: center; width: min(560px, 94vw) !important; max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 
-/* ----- แท็บบน: ไอคอนบน ตัวหนังสือล่าง 4 ช่องเท่ากัน ----- */
-.hs-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 12px; }
+/* ----- แท็บบน: ไอคอนบน ตัวหนังสือล่าง 5 ช่องเท่ากัน ----- */
+.hs-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 12px; }
 .hs-tab {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  min-height: 60px; padding: 4px 2px; font-family: inherit; font-size: 12px; line-height: 1.2;
+  min-height: 60px; padding: 4px 1px; font-family: inherit; font-size: 12px; line-height: 1.2;
   border-radius: 12px; border: 2px solid #8a6a32; background: #26090f; color: #ffe28a;
-  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; min-width: 0;
 }
-.hs-ti { font-size: 24px; line-height: 1; }
-.hs-tl { font-size: 12px; white-space: nowrap; }
+.hs-ti { font-size: 22px; line-height: 1; }
+.hs-tl { font-size: 11px; white-space: nowrap; }
 .hs-tab.on { background: linear-gradient(180deg, #ffe07a, #ffc83d); color: #26090f; border-color: #ffd45c; box-shadow: 0 0 10px rgba(255, 212, 92, .45); }
-/* แท็บย่อย (ระดับเมนูอาหาร) 5 ช่อง */
+/* แท็บย่อย (ระดับเมนูอาหาร / หมวดและระดับแฟชั่น) : จำนวนช่องปรับได้ที่ตัวโค้ด */
 .hs-sub-tabs { grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 0; }
-.hs-sub-tabs .hs-tab { min-height: 38px; font-size: 12px; flex-direction: row; border-radius: 10px; }
+.hs-sub-tabs .hs-tab { min-height: 38px; font-size: 12px; flex-direction: row; border-radius: 10px; white-space: nowrap; }
 
 .hs-body { display: flex; flex-direction: column; gap: 10px; }
 .hs-list { display: flex; flex-direction: column; gap: 10px; }
@@ -118,7 +118,7 @@
 .hs-pgf { height: 100%; width: 0; background: #5be35b; transition: width .8s linear; }
 .hs-plot .hs-mini { margin-top: 4px; }
 
-/* ----- ทำอาหาร: การ์ดเมนู ----- */
+/* ----- ทำอาหาร + แฟชั่น: การ์ดรายการ ----- */
 .hs-dish { background: #3a1018; border-radius: 12px; padding: 10px; text-align: left; border: 1px solid #5a2028; display: flex; flex-direction: column; gap: 6px; }
 .hs-dish.can { border-color: #ffd45c; }
 .hs-dish.max { border-color: #5ee08a; }
@@ -153,3 +153,10 @@
 /* ----- รูปผักในแปลง ----- */
 .hs-vg { transition: transform .8s linear; transform-origin: 50% 90%; }
 .hs-grow { opacity: .6; filter: saturate(.7); }
+
+/* ----- จอแคบมาก: ย่อแท็บให้ 5 ช่องพอดี ----- */
+@media (max-width: 360px) {
+  .hs-tab { min-height: 54px; }
+  .hs-ti { font-size: 20px; }
+  .hs-tl { font-size: 10px; }
+}
