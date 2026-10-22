@@ -1,6 +1,6 @@
 // ===== หน้าต่างสเตตัสแนวกำลังภายใน (ยุทธภพ) =====
 // โหลดหลัง pixelPanels.js / pixelBridge.js / stats.js (วางก่อน main.js)
-// v9: ปุ่ม +1 / +10 / +50 | เพิ่มการ์ด "อัพสเตตัส" STR/INT/VIT/CRI/LUK/SPD (ปุ่ม + / +5 / รีเซ็ต) | ตัวเลขทุกอย่างมาจาก window.STAT_ALLOC (stats.js)
+// v9: หน้าต่างกระชับ (ไม่มีหลอด HP/MP/EXP, รายละเอียดสเตตัสซ่อน แตะชื่อเพื่อดู, แถวสเตตัส 2 คอลัมน์ในจอแนวนอน) | ปุ่ม +1 / +10 / +50 | เพิ่มการ์ด "อัพสเตตัส" STR/INT/VIT/CRI/LUK/SPD (ปุ่ม + / +5 / รีเซ็ต) | ตัวเลขทุกอย่างมาจาก window.STAT_ALLOC (stats.js)
 // v8: ปุ่ม − / + (ปรับขนาด) อยู่มุมซ้ายบน | ปุ่ม ✕ ปิด อยู่มุมขวาบน | ขนาดเล็ก ไม่เบียดชื่อ
 //     ปุ่ม − / + ปรับขนาดหน้าต่างในเกม (จำค่าไว้) | ซ่อนปุ่ม HTML (.hb-t) ตอนเปิด แล้วคืนเมื่อปิด
 //     ชื่อตัวละครอ่านจาก mmo_cloud_lastname | ใส่รูปตัวละครได้ | อุปกรณ์ = เขียว, การ์ด = ฟ้า
@@ -33,7 +33,7 @@
 
   var GROUPS = [
     { z: '攻', t: 'โจมตี',    c: '#d6403a', k: ['patk', 'ap', 'aspd', 'crit', 'critdmg', 'ppen', 'mpen'] },
-    { z: '守', t: 'ป้องกัน',   c: '#3f86c8', k: ['pdef', 'mdef', 'dodge', 'hpregen', 'mpregen'] },
+    { z: '守', t: 'ป้องกัน',   c: '#3f86c8', k: ['hp', 'mp', 'pdef', 'mdef', 'dodge', 'hpregen', 'mpregen'] },
     { z: '奇', t: 'พิเศษ',     c: '#c9a24a', k: ['cdr', 'mspd', 'drop', 'mbox', 'lifesteal', 'spellvamp'] }
   ];
 
@@ -99,13 +99,13 @@
       '.wx-banner{text-align:center;font-size:11px;letter-spacing:3px;color:#c9a24a;margin:-2px 0 6px;display:flex;align-items:center;gap:8px;padding:0 calc(var(--inv,1) * 60px + 6px);white-space:nowrap}',
       '.wx-banner:before,.wx-banner:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,#c9a24a,transparent)}',
       '.wx-banner b{font-weight:900;font-size:13px;color:#e6c36a;text-shadow:0 0 6px rgba(201,162,74,.5)}',
-      '.wx-head{display:flex;align-items:center;gap:12px;flex:0 0 auto}',
-      '.wx-pt{position:relative;flex:0 0 auto;width:clamp(54px,17vh,92px);height:clamp(54px,17vh,92px);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:clamp(28px,9vh,50px);',
+      '.wx-head{display:flex;align-items:center;gap:10px;flex:0 0 auto;margin-bottom:6px}',
+      '.wx-pt{position:relative;flex:0 0 auto;width:clamp(38px,11vh,58px);height:clamp(38px,11vh,58px);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,6vh,30px);',
       'background:radial-gradient(circle at 35% 30%,#4a1414,#170707);border:3px solid #e6c36a;box-shadow:0 0 0 2px #5a1010,0 0 0 4px #c9a24a,0 0 14px rgba(0,0,0,.9);overflow:hidden}',
       '.wx-pt img{width:100%;height:100%;object-fit:cover;pointer-events:none}',
-      '.wx-cam{position:absolute;right:0;bottom:0;left:0;text-align:center;font-size:10px;line-height:1.5;background:rgba(0,0,0,.6);color:#e6c36a;font-family:inherit;white-space:nowrap}',
+      '.wx-cam{position:absolute;right:0;bottom:0;left:0;text-align:center;font-size:9px;line-height:1.3;background:rgba(0,0,0,.6);color:#e6c36a;font-family:inherit;white-space:nowrap}',
       '.wx-id{flex:1;min-width:0}',
-      '.wx-name{font-size:clamp(18px,5.4vh,28px);font-weight:900;color:#f6dc8c;letter-spacing:1px;text-shadow:0 2px 0 #5a1010,0 0 10px rgba(201,162,74,.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wx-name{font-size:clamp(15px,4.2vh,22px);font-weight:900;color:#f6dc8c;letter-spacing:1px;text-shadow:0 2px 0 #5a1010,0 0 10px rgba(201,162,74,.45);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.wx-meta{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}',
       '.wx-meta span{white-space:nowrap}',
       '.wx-lv{background:linear-gradient(#b3261e,#6e100c);border:2px solid #e6c36a;border-radius:4px;padding:1px 9px;font-weight:900;font-size:14px;color:#fff3cf;box-shadow:0 0 6px rgba(0,0,0,.7)}',
@@ -147,13 +147,15 @@
       '.wx-alloc-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 9px;background:linear-gradient(90deg,rgba(201,162,74,.22),transparent);border-bottom:2px solid #c9a24a;font-size:14px;font-weight:700;color:#e6c36a}',
       '.wx-pts{background:linear-gradient(#b3261e,#6e100c);border:2px solid #e6c36a;border-radius:4px;padding:0 10px;font-weight:900;color:#fff3cf;white-space:nowrap}',
       '.wx-pts.zero{background:#2a1a1a;border-color:#6b5330;color:#9a8a6a}',
-      '.wx-ar{display:flex;align-items:center;gap:8px;padding:6px 9px;border-bottom:1px dashed rgba(201,162,74,.28)}',
+      '.wx-arows{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr))}',
+      '.wx-ar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 9px;border-bottom:1px dashed rgba(201,162,74,.28)}',
       '.wx-ar:last-of-type{border-bottom:0}',
-      '.wx-ak{flex:0 0 52px;font-size:15px;font-weight:900;color:var(--c)}',
-      '.wx-an{flex:1;min-width:0;font-size:11px;color:#b9a67e;line-height:1.35}',
-      '.wx-an em{display:block;font-style:normal;color:#d9c6a0}',
-      '.wx-av{flex:0 0 34px;text-align:right;font-size:16px;font-weight:900;color:#fff3cf}',
-      '.wx-up{flex:0 0 auto;min-width:34px;height:28px;padding:0 6px;border:2px solid #c9a24a;border-radius:4px;background:linear-gradient(#2e8f58,#1b5c37);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1}',
+      '.wx-ak{flex:0 0 46px;font-size:15px;font-weight:900;color:var(--c);cursor:pointer;text-decoration:underline dotted rgba(255,255,255,.3)}',
+      '.wx-an{display:none;flex:1 1 100%;font-size:11px;color:#b9a67e;line-height:1.4;padding-bottom:2px}',
+      '.wx-an.open{display:block}',
+      '.wx-an em{font-style:normal;color:#d9c6a0}',
+      '.wx-av{flex:1 1 auto;text-align:right;font-size:16px;font-weight:900;color:#fff3cf}',
+      '.wx-up{flex:0 0 auto;min-width:34px;height:26px;padding:0 6px;border:2px solid #c9a24a;border-radius:4px;background:linear-gradient(#2e8f58,#1b5c37);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1}',
       '.wx-up:active{filter:brightness(1.3)}',
       '.wx-up.off{background:#2a1f1f;border-color:#4a3a2a;color:#7a6a5a;opacity:.6}',
       '.wx-alloc-f{display:flex;justify-content:space-between;align-items:center;padding:6px 9px;font-size:11px;color:#9a8a6a}',
@@ -273,36 +275,38 @@
   }
 
   // ---------- การ์ดอัพสเตตัส ----------
-  function perText(key, defs, f) {
+  var openDesc = {};   // แตะชื่อสเตตัสเพื่อสลับแสดง/ซ่อนรายละเอียด (ค่าเริ่มต้น = ซ่อน)
+  function fmtN(v) { return String(Math.round(v * 100) / 100); }
+  function perText(key, lvl, defs) {
     var per = window.STAT_ALLOC.per[key], out = [];
     Object.keys(per).forEach(function (sk) {
-      var d = defs[sk];
-      out.push((d ? d.short : sk) + ' +' + f(sk, per[sk]));
+      var d = defs[sk], u = (d && d.fmt === 'pct') ? '%' : '';
+      out.push((d ? d.short : sk) + ' +' + fmtN(per[sk] * (lvl - 1)) + u + ' <small style="color:#8a7a5a">(+' + fmtN(per[sk]) + u + '/แต้ม)</small>');
     });
     return out.join(' • ');
   }
-  function allocCard(s, defs, f) {
+  function allocCard(s, defs) {
     var A = window.STAT_ALLOC;
     if (!A || !s.statPointsLeft || !s.stats || !s.stats.alloc) return '';
     var left = s.statPointsLeft(), a = s.stats.alloc, rows = '';
     A.keys.forEach(function (k) {
       var v = a[k] || 1, maxed = v >= A.max, cost = window.statAllocCost(v);
-      var can1 = !maxed && left >= cost;
+      var can1 = !maxed && left >= cost, off = can1 ? '' : ' off';
       rows +=
         '<div class="wx-ar" style="--c:' + A.color[k] + '">' +
-        '<span class="wx-ak">' + A.label[k] + '</span>' +
-        '<span class="wx-an"><em>' + esc(A.desc[k]) + '</em>' + esc(perText(k, defs, f)) +
-        (maxed ? ' • MAX' : ' • ใช้ ' + cost + ' แต้ม') + '</span>' +
+        '<span class="wx-ak" data-d="' + k + '">' + A.label[k] + '</span>' +
         '<span class="wx-av">' + v + '</span>' +
-        '<button class="wx-up' + (can1 ? '' : ' off') + '" data-k="' + k + '" data-n="1">+</button>' +
-        '<button class="wx-up' + (can1 ? '' : ' off') + '" data-k="' + k + '" data-n="10">+10</button>' +
-        '<button class="wx-up' + (can1 ? '' : ' off') + '" data-k="' + k + '" data-n="50">+50</button>' +
+        '<button class="wx-up' + off + '" data-k="' + k + '" data-n="1">+</button>' +
+        '<button class="wx-up' + off + '" data-k="' + k + '" data-n="10">+10</button>' +
+        '<button class="wx-up' + off + '" data-k="' + k + '" data-n="50">+50</button>' +
+        '<span class="wx-an' + (openDesc[k] ? ' open' : '') + '"><em>' + esc(A.desc[k]) + '</em> • ' + perText(k, v, defs) +
+        (maxed ? ' • MAX' : ' • แต้มถัดไปใช้ ' + cost) + '</span>' +
         '</div>';
     });
     return '<div class="wx-alloc">' +
       '<div class="wx-alloc-h"><span>อัพสเตตัส</span><span class="wx-pts' + (left > 0 ? '' : ' zero') + '">แต้มคงเหลือ ' + left + '</span></div>' +
-      rows +
-      '<div class="wx-alloc-f"><span>' + A.ptsPerLv + ' แต้ม/เลเวล • +' + A.rebirthBonus + ' ต่อจุติ • สูงสุด ' + A.max + '</span>' +
+      '<div class="wx-arows">' + rows + '</div>' +
+      '<div class="wx-alloc-f"><span>แตะชื่อสเตตัสเพื่อดูรายละเอียด • สูงสุด ' + A.max + '</span>' +
       '<button class="wx-reset">รีเซ็ตแต้ม' + (A.resetCost > 0 ? ' (' + fmt(A.resetCost) + ' ทอง)' : '') + '</button></div>' +
       '</div>';
   }
@@ -319,7 +323,7 @@
       '<button class="wx-zp" aria-label="ขยาย">+</button></div>' +
       '<div class="wx-tools"><button class="wx-x" aria-label="ปิด">✕</button></div>' +
       '<div class="wx-banner"><b>俠客錄</b><span>ทำเนียบยอดยุทธ์</span></div>' +
-      '<div class="wx-head"></div><div class="wx-bars"></div>' +
+      '<div class="wx-head"></div>' +
       '<div class="wx-scroll"></div>';
     layer.appendChild(win);
     body = win.querySelector('.wx-scroll');
@@ -336,7 +340,10 @@
       if (e.target.closest('.wx-x')) { hide(); return; }
       if (e.target.closest('.wx-zm')) { stepScale(-SCALE_STEP); return; }
       if (e.target.closest('.wx-zp')) { stepScale(SCALE_STEP); return; }
-      // อัพสเตตัส: + / +5
+      // แตะชื่อสเตตัส: สลับแสดงรายละเอียด
+      var dk = e.target.closest('.wx-ak');
+      if (dk) { var kk = dk.getAttribute('data-d'); openDesc[kk] = !openDesc[kk]; render(); return; }
+      // อัพสเตตัส: + / +10 / +50
       var up = e.target.closest('.wx-up');
       if (up) {
         var sc = window.__mainScene;
@@ -365,7 +372,6 @@
     build();
     var s = window.__mainScene;
     var head = win.querySelector('.wx-head');
-    var bars = win.querySelector('.wx-bars');
     if (!s || !s.stats || !s.getStats) {
       head.innerHTML = '<div class="wx-id"><div class="wx-name">กำลังโหลด...</div></div>';
       return;
@@ -383,17 +389,13 @@
     head.innerHTML =
       '<div class="wx-pt" title="แตะเพื่อเปลี่ยนรูป">' +
       (pic ? '<img src="' + esc(pic) + '" alt="">' : PORTRAIT_EMOJI) +
-      '<span class="wx-cam">📷 เปลี่ยนรูป</span></div>' +
+      '<span class="wx-cam">📷</span></div>' +
       '<div class="wx-id"><div class="wx-name">' + esc(playerName(s)) + '</div>' +
       '<div class="wx-meta"><span class="wx-lv">Lv. ' + lv + '</span>' +
       '<span class="wx-rank">' + esc(rankOf(lv)) + '</span>' +
       (cls ? '<span class="wx-cls">' + esc(cls) + '</span>' : '') +
       (hasCustomPortrait() ? '<span class="wx-rm">ลบรูป</span>' : '') + '</div></div>';
 
-    bars.innerHTML =
-      '<div class="wx-bar hp"><i style="width:' + pct(hpMax ? hp / hpMax * 100 : 0) + '%"></i><b><span><em>血</em>HP</span><span>' + fmt(hp) + ' / ' + fmt(hpMax) + '</span></b></div>' +
-      '<div class="wx-bar mp"><i style="width:' + pct(mpMax ? mp / mpMax * 100 : 0) + '%"></i><b><span><em>氣</em>MP</span><span>' + fmt(mp) + ' / ' + fmt(mpMax) + '</span></b></div>' +
-      '<div class="wx-bar xp"><i style="width:' + pct(exp) + '%"></i><b><span><em>經驗</em>EXP</span><span>' + exp + '%</span></b></div>';
 
     var defs = window.STAT_DEFS || {};
     var f = window.fmtStat || function (k, v) { return Math.round(v); };
@@ -415,7 +417,7 @@
 
     var top = body.scrollTop;
     body.innerHTML =
-      allocCard(s, defs, f) +
+      allocCard(s, defs) +
       '<div class="wx-grid">' + cards + '</div>' +
       '<div class="wx-foot">' +
       '<div class="wx-chip"><span><em>銀兩</em>ทอง</span><b>' + fmt(num(st.gold)) + '</b></div>' +
