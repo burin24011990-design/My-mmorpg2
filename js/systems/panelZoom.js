@@ -1,12 +1,14 @@
 // ===== ปุ่ม − / + ย่อ-ขยายหน้าต่าง กระเป๋า / สกิล / อุปกรณ์ =====
 // ไม่ต้องแก้ไฟล์เดิม: ใช้คุณสมบัติ CSS "scale" (แยกจาก transform ที่ไฟล์เดิมใช้อยู่)
 // ต้องโหลดหลัง bagWindow.js และ pixelPanels.js (วางก่อน main.js ได้เลย)
+// v2: ปุ่มย้ายเข้าไปอยู่ในแถบหัวหน้าต่าง (ซ้ายของปุ่ม ✕) แทนการลอยอยู่เหนือหน้าต่าง
 (function () {
   'use strict';
 
   // ---------- ตั้งค่า (ปรับตรงนี้) ----------
   var MIN = 0.5, MAX = 1.6, STEP = 0.1;   // ช่วงขนาด (1 = ขนาดเดิมของเกม)
   var BTN = 24;                           // ขนาดปุ่ม (px)
+  var GAP_X = 8;                          // ระยะห่างจากปุ่ม ✕ (px)
   var KEY = 'xh_zoom_v1_';                // ที่จำขนาดที่เลือก (เก็บในเครื่อง)
 
   var bar = null, cur = null, curKey = '';
@@ -45,6 +47,23 @@
     }
   }
 
+  // หาปุ่มปิด (✕) ของหน้าต่าง ใช้เป็นจุดอ้างอิงวางปุ่ม − + ไว้ซ้ายของมัน
+  function findClose(el) {
+    if (el._pzClose && el._pzClose.isConnected) return el._pzClose;
+    var c = null;
+    try {
+      c = el.querySelector('.pp-x,[aria-label*="ปิด"],[class*="close" i],[id*="close" i]');
+    } catch (e) { c = null; }
+    if (!c) {
+      var bs = el.querySelectorAll('button,div,span');
+      for (var i = 0; i < bs.length; i++) {
+        if (/^[✕✖×xX]$/.test((bs[i].textContent || '').trim())) { c = bs[i]; break; }
+      }
+    }
+    el._pzClose = c;
+    return c;
+  }
+
   // ---------- แถบปุ่ม ----------
   function build() {
     if (bar) return;
@@ -78,16 +97,28 @@
     });
   }
 
+  // วางปุ่มในแถบหัวหน้าต่าง: ซ้ายของปุ่ม ✕ และกึ่งกลางแนวตั้งเดียวกัน
   function place() {
     if (!bar || !cur) return;
     var r = cur.getBoundingClientRect();
-    var left = Math.max(2, Math.min(r.left + 4, window.innerWidth - 110));
-    var top = r.top - BTN - 6;
-    if (top < 2) top = r.top + 4;
-    bar.style.left = left + 'px';
-    bar.style.top = top + 'px';
+    var bw = bar.offsetWidth || 100;
+    var left, top;
+    var x = findClose(cur);
+    var xr = x ? x.getBoundingClientRect() : null;
+    if (xr && xr.width > 0) {
+      left = xr.left - bw - GAP_X;
+      top = xr.top + (xr.height - BTN) / 2;
+    } else {                                   // หาปุ่มปิดไม่เจอ: วางมุมขวาบนของหน้าต่าง
+      left = r.right - bw - 48;
+      top = r.top + 8;
+    }
+    left = Math.max(r.left + 4, Math.min(left, window.innerWidth - bw - 2));
+    top = Math.max(2, top);
+    bar.style.left = Math.round(left) + 'px';
+    bar.style.top = Math.round(top) + 'px';
     var v = bar.querySelector('.pz-v');
-    if (v) v.textContent = Math.round(load(curKey) * 100) + '%';
+    var t = Math.round(load(curKey) * 100) + '%';
+    if (v && v.textContent !== t) v.textContent = t;
   }
 
   function tick() {
@@ -109,6 +140,6 @@
     }
   }
 
-  setInterval(tick, 250);
+  setInterval(tick, 150);
   window.addEventListener('resize', function () { setTimeout(tick, 100); });
 })();
