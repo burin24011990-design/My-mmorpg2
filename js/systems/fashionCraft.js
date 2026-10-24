@@ -239,7 +239,7 @@
   function iconBox(r, size) {   // รูปจริงถ้ามีไฟล์ ไม่มี = อีโมจิประจำหมวด
     const b = el('div', '', CAT[r.type].icon);
     b.style.cssText = 'width:' + size + 'px;height:' + size + 'px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:' + Math.round(size * 0.6) + 'px;background-repeat:no-repeat;background-position:center;';
-    const path = r.type === 'wing' ? r.img.back : r.img.main;
+    const path = r.type === 'wing' ? r.img.back : (r.type === 'tail' ? r.img.left : r.img.main);
     probe(path, function (ok) {
       if (!ok) return;
       b.textContent = '';
@@ -365,8 +365,9 @@
 
   // ================= แสดงปีก/หาง/สัตว์เลี้ยงที่ตัวละคร =================
   // รูปโหลดตอนสวมครั้งแรก (assets/fashion/) | ยังไม่มีไฟล์รูป = โชว์อีโมจิแทน เกมไม่พัง
+  // หาง: 3 ภาพ tail_XX_left / _right / _back (หันซ้าย / หันขวา / หันขึ้น-ลง)
   // ปีก: ใช้ภาพ front (หันลง/ข้าง) และ back (หันขึ้น) แยกไฟล์ wing_XX_front.png / wing_XX_back.png | หาง: ภาพด้านข้างชี้ขวา | สัตว์เลี้ยง: แผ่น 3 มุมมอง หน้า/ข้าง/หลัง
-  const WING_W = 116, TAIL_W = 60, PET_W = 48;
+  const WING_W = 116, TAIL_H = 66, PET_W = 48;   // TAIL_H = ความสูงของภาพหางที่สูงที่สุดในชุด 3 มุม (px)
   const WING_SIDE_RATIO = 0.6;   // ตอนหันข้าง ปีกกว้างเหลือกี่เท่าของตอนหันตรง (สูงเท่าเดิม) | อยากให้แคบลงอีกใส่ 0.5, อยากให้กว้างขึ้นใส่ 0.75
   const LOAD = {};
   function ensureTex(m, key, path, isPet) {
@@ -443,12 +444,15 @@
     }
     const to = getSlot(fm, 'tail', w.tail);
     if (to) {
-      const r = to.r;
-      const real = visual(m, to, 'fm_' + r.id, r.img.main, '🦊', false);
-      if (real) fit(to.obj, TAIL_W);
-      const side = d === 'left' ? 1 : (d === 'right' ? -1 : 0);
-      to.obj.setPosition(p.x + side * TAIL_W * 0.4, p.y + (side ? 8 : (d === 'up' ? 14 : 8)));
-      if (real) to.obj.setFlipX(side < 0);
+      // left/right: ฐานหางอยู่ปลายล่างด้านที่ติดตัวละคร | back: ฐานหางอยู่บนสุด ห้อยลง (หันขึ้นเห็นทับหลัง / หันลงอยู่หลังตัว)
+      const r = to.r, view = d === 'left' ? 'left' : (d === 'right' ? 'right' : 'back');
+      const real = visual(m, to, 'fm_' + r.id + '_' + view, r.img[view], '🦊', false);
+      let ox = 0.5, oy = 0.5, tx = p.x, ty = p.y + 10;
+      if (view === 'left') { ox = 0; oy = 0.85; tx = p.x + 6; }
+      else if (view === 'right') { ox = 1; oy = 0.85; tx = p.x - 6; }
+      else if (real) { oy = 0; ty = p.y + (d === 'up' ? 6 : 10); }
+      if (real) to.obj.setOrigin(ox, oy).setScale(TAIL_H / 300);
+      to.obj.setPosition(tx, ty);
       to.obj.setDepth(d === 'up' ? dep + 0.05 : dep - 0.04).setVisible(vis);
     }
     const po = getSlot(fm, 'pet', w.pet);
