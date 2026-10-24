@@ -1,5 +1,5 @@
 // ===== ข้อมูลแฟชั่น: ปีก / หาง / สัตว์เลี้ยง (อย่างละ 30 แบบ) =====
-// รูปอยู่ที่ assets/fashion/ : wing_01_front.png, wing_01_back.png, tail_01.png, pet_01.png (01-30)
+// รูปอยู่ที่ assets/fashion/ : wing_01_front.png, wing_01_back.png, tail_01_left.png, tail_01_right.png, tail_01_back.png, pet_01.png (01-30)
 // สูตรสร้าง/โบนัสสถานะ อยู่ใน js/systems/fashionCraft.js (ไฟล์นี้เก็บแค่ชื่อ/ระดับ/ไฟล์รูป)
 // ระดับ (tier): 1 ธรรมดา (01-10) | 2 หายาก (11-20) | 3 เอพิค (21-26) | 4 ตำนาน (27-30)
 (function () {
@@ -37,7 +37,9 @@
         look: DEFAULT_LOOK[type],
         img: type === 'wing'
           ? { front: 'assets/fashion/' + id + '_front.png', back: 'assets/fashion/' + id + '_back.png' }
-          : { main: 'assets/fashion/' + id + '.png' }
+          : type === 'tail'
+            ? { left: 'assets/fashion/' + id + '_left.png', right: 'assets/fashion/' + id + '_right.png', back: 'assets/fashion/' + id + '_back.png' }
+            : { main: 'assets/fashion/' + id + '.png' }
       };
     });
   });
