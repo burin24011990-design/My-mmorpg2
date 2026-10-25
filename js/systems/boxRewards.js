@@ -1,4 +1,3 @@
-
 // ===== กล่องวัตถุดิบ: กล่องธรรมดา / กล่องบอส =====
 // ไฟล์: js/systems/boxRewards.js
 // โหลด "หลัง" directDrop.js (และหลัง enhance.js / lootOptions.js / roomMonsters.js / fashionCraft.js) ก่อน js/main.js
