@@ -21,6 +21,8 @@
 //       เครื่องจะส่ง 'lootShare' ให้เซิร์ฟเวอร์เลือกคนรับ แล้วของไปเกิดที่ตัวคนรับ (ถูกเก็บเข้ากระเป๋าทันที) | ใช้คู่กับ server.js v14
 // - v7 (ลดแลค): โหมดห้อง ซ่อนชื่อมอนที่อยู่นอกจอ (เดิมอัปเดตตำแหน่งชื่อมอนทุกตัวทุกเฟรม) + ไม่เล่นอนิเมชันมอนนอกจอ
 //       (ในโหมดห้อง ส่วนลดแลคของ monsters.js ไม่ทำงาน เพราะไฟล์นี้คุมมอนแทน)
+// - v8: แชร์กล่องบอสในปาร์ตี้: 'lootShare' ส่งธง boss ไปด้วย และตอนรับ 'lootGet' ติดธง boss กลับให้กล่อง
+//       (ใช้คู่กับ boxRewards.js และ server.js v18)
 
 (function () {
   const P = Main.prototype;
@@ -53,7 +55,7 @@
     if (!sc.socket || !sc.socket.connected) return false;
     const kind = it.getData('kind');
     if (kind !== 'box' && kind !== 'skill') return false;
-    const item = { kind: kind, level: it.getData('level'), tier: it.getData('tier'), sid: it.getData('sid') };
+    const item = { kind: kind, level: it.getData('level'), tier: it.getData('tier'), sid: it.getData('sid'), boss: !!it.getData('boss') };
     if (sc.tweens) sc.tweens.killTweensOf(it);
     it.destroy();
     sc.socket.emit('lootShare', item);
@@ -417,6 +419,7 @@
       it.setData('kind', d.kind);
       if (d.level !== undefined) it.setData('level', d.level);
       if (d.tier) it.setData('tier', d.tier);
+      if (d.boss) it.setData('boss', true);          // กล่องบอส: ติดธงกลับให้ boxRewards.js แยกกอง
       if (d.sid) it.setData('sid', d.sid);
       it.setData('shared', true);                    // กันแชร์ซ้ำ
       if (d.from && sc.toastMsg) sc.toastMsg('🎁 ได้ไอเทมจากปาร์ตี้ (' + d.from + ')');
