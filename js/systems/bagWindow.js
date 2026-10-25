@@ -533,7 +533,7 @@
       h += window.enhanceInfoHTML(s, it);
       h += window.itemExtraInfoHTML(s, it);
     } else {
-      h += '<div class="d-note">เปิดแล้วจะได้อุปกรณ์สุ่ม 1 ชิ้น สี' + TIER_DEFS[tierOf(it)].name + ' (เลเวล ' + it.level + ')</div>'
+      h += '<div class="d-note">' + (window.boxNoteText ? window.boxNoteText(it) : 'เปิดกล่อง') + '</div>'
         + '<div class="d-row"><span>เลเวลกล่อง</span><span>Lv.' + it.level + '</span></div>'
         + '<div class="d-row"><span>จำนวนคงเหลือ</span><span>x' + (it.count || 1) + '</span></div>'
         + '<div class="d-row"><span>ย่อยกล่องได้หิน</span><span>' + window.boxStoneYield(it.level, it.tier) + ' ก้อน/ใบ</span></div>';
