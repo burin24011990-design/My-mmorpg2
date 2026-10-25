@@ -18,6 +18,8 @@
 //        * เพิ่ม MONSTER_DMG_SCALE (ตัวคูณดาเมจมอนทั้งหมดฝั่งเซิร์ฟเวอร์ ตั้ง 1 = ตามสูตรเดิม)
 // - v17: ปิดมอน Epic (EPIC_COUNT = 0) | เพิ่มจำนวนมอนธรรมดา/ยิงไกลต่อห้อง x COUNT_MUL (2) | เพิ่มตัวปรับเลือด/ดาเมจ MON_TUNE
 //        (ตัวปรับเลือด/ดาเมจนี้คือตัวเดียวกับ monsterTune.js ฝั่งเกม แต่ใช้กับโหมดห้องออนไลน์)
+// - v18: แชร์กล่องบอสในปาร์ตี้ -- 'lootShare' ส่งต่อธง boss (ต้องมี bossCredit จากการฆ่าบอสมาก่อน กันโกง)
+//        + ส่งต่อสีกล่องครบ 4 สี (เดิมส่งต่อได้แค่สีแดง) | ใช้คู่กับ roomMonsters.js v8 และ boxRewards.js
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -321,7 +323,11 @@ function killMonster(key, R, m, byId) {
 
   // ของดรอปตกที่คนฆ่าเสมอ (แชร์ตอนเก็บเข้าตัว ดู 'lootShare') | เครดิตกันโกง: ฆ่า 1 ตัว = ส่งต่อไอเทมได้ไม่เกิน 6 ชิ้น
   const lootTo = here(byId) ? byId : null;
-  if (lootTo) players[lootTo].lootCredit = Math.min(60, (players[lootTo].lootCredit || 0) + 6);
+  if (lootTo) {
+    players[lootTo].lootCredit = Math.min(60, (players[lootTo].lootCredit || 0) + 6);
+    // v18: ฆ่าบอส = ส่งต่อ "กล่องบอส" ได้ (บอสดรอปกล่อง 3 ใบ จึงให้เครดิต 3)
+    if (m.kind === 'boss') players[lootTo].bossCredit = Math.min(10, (players[lootTo].bossCredit || 0) + 3);
+  }
 
   io.to(key).emit('mdead', { id: m.id, by: byId, who: Object.keys(exp), exp, lootTo });
   const delay = m.kind === 'boss' ? rnd(BOSS_RESPAWN_MIN_MS, BOSS_RESPAWN_MAX_MS) : RESPAWN_DELAY;
@@ -577,8 +583,9 @@ io.on('connection', socket => {
     socket.to(p.room).emit('skill', out);
   });
 
-  // แชร์ไอเทมตอนเก็บเข้าตัว: เครื่องคนฆ่าส่ง { kind:'box'|'skill', level, tier?, sid? } มาตอนเก็บของที่ตกจากมอน
+  // แชร์ไอเทมตอนเก็บเข้าตัว: เครื่องคนฆ่าส่ง { kind:'box'|'skill', level, tier?, sid?, boss? } มาตอนเก็บของที่ตกจากมอน
   // เซิร์ฟเวอร์เลือกคนรับตามโหมดปาร์ตี้ (own = คนเก็บเอง | random = สุ่ม | rotate = สลับ) ทุกคนในห้องเดียวกัน ไม่จำกัดระยะ
+  // v18: ส่งต่อสีกล่องครบ 4 สี + ธง boss (ต้องมี bossCredit จากการฆ่าบอส ไม่งั้นนับเป็นกล่องธรรมดา)
   socket.on('lootShare', d => {
     const p = players[socket.id];
     if (!p || !p.room || !d || typeof d !== 'object') return;
@@ -590,9 +597,11 @@ io.on('connection', socket => {
     if (kind === 'skill' && !/^[\w-]{1,40}$/.test(sid)) return;
     const item = {
       kind, level: clamp(Math.floor(Number(d.level)) || 1, 1, 999),
-      tier: d.tier === 'red' ? 'red' : undefined,
+      tier: ['white', 'blue', 'red', 'gold'].indexOf(d.tier) >= 0 ? d.tier : undefined,
+      boss: kind === 'box' && d.boss === true && (p.bossCredit || 0) > 0 ? true : undefined,
       sid: kind === 'skill' ? sid : undefined,
     };
+    if (item.boss) p.bossCredit--;
     let to = socket.id;
     const Pt = p.party ? social.getParty(p.party) : null;
     if (Pt && Pt.lootMode && Pt.lootMode !== 'own') {
